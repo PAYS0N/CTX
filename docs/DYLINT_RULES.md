@@ -6,7 +6,7 @@ mechanical subset (rule 1, line-count portion) for now.
 
 ## 1. Rationale-comment enforcement
 
-Replaces the pre-commit `rationale_check.sh` script. Lint flags functions
+Replaces the pre-commit `rationale_check.py` script. Lint flags functions
 30-80 lines without a `// rationale:` comment immediately preceding the
 `fn` keyword, and files 250+ lines without `// rationale:` at the top.
 

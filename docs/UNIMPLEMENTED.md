@@ -7,10 +7,13 @@ L (weeks).
 ## What IS in this scaffolding
 
 - Cargo workspace template with all lint configs (`template/`).
-- Pre-commit and CI scripts for the mechanical checks (`scripts/`).
+- Pre-commit and CI scripts for the mechanical checks (`scripts/`),
+  including `workspace_lints_check.sh` (every member must opt into the
+  workspace lint table).
 - Agent prompts as plain files in `prompts/`, decoupled from any code.
-- Full sealed spec (`docs/SPEC.md`).
+- Full sealed spec, rev 2 (`docs/SPEC.md`).
 - Deferred dylint rule list (`docs/DYLINT_RULES.md`).
+- Sandbox deployment design (`docs/SANDBOX.md`).
 - This document.
 
 ## What is NOT implemented
@@ -36,25 +39,36 @@ names across Rust versions.
 **`ctx-access` CLI (M).** This is the load-bearing piece. The spec is
 complete; no code exists. Required behavior:
 
-- Subcommands: `read`, `write`, `list`, `init-task`, `end-task`.
-- Per-task cache management at `.context/.cache/<task-id>.json`.
+- Subcommands: `init-task`, `read`, `write`, `list`, `end-task`.
+- Per-task cache management at `.context/.cache/<task-id>.json` with the
+  rev-2 schema (`served_nodes` set, not `chains_read`).
 - Chain computation from repo root to target path.
-- Step-by-step serving with separate tool calls (do not bundle).
+- Single-call chain serving: one `read` returns every not-yet-served
+  ancestor node plus source, in order; `served_nodes` is the prefix
+  cache. `--shallow` stops before source. NOT step-by-step / one call
+  per node (that was rev 1; rev 2 bundles).
 - Stale banner logic based on cache `paths_written`.
-- Enforcement that `write` requires prior `read` of the same path in the
-  same task.
-- Sandboxing instructions for the host environment (the CLI cannot enforce
-  the sandbox itself — that is a deployment concern).
+- Enforcement that `write` requires a prior non-`--shallow` `read` of the
+  same path in the same task.
+- Mandatory internal seam: `cli` (argv/io) / `enforcement` (pure logic
+  over injected fs+clock) / `transport` (MVP: in-process; future: UDS to
+  `ctx-broker`). The sandbox depends on this seam — it is not optional.
+  See `docs/SANDBOX.md`.
 
 Suggested implementation: Rust binary, ~800-1500 lines, using `clap` for
 arg parsing and `serde_json` for the cache. Built under the same lint rules
-as everything else (eat the dogfood).
+as everything else (eat the dogfood). The `enforcement` module must avoid
+`indexing_slicing`/`string_slice`/`as_conversions`/`unwrap` from the start
+(typed `thiserror` enums, `.get()`, `TryFrom`); retrofitting is expensive.
 
 **Sandbox configuration (M, deployment-specific).** The agent's shell must
 block direct reads of paths under configured source roots. This is not
-something the CLI can do — it requires container, seccomp, or
-shell-wrapper configuration at the agent runtime layer. Document but do
-not implement here.
+something the CLI can do. Design is specified in `docs/SANDBOX.md`
+(`ctx-broker` daemon as the only source-reading identity + mount-namespace
+or container isolation of the agent). Until deployed, **Layer 2 is
+advisory, not enforced** — the spec now says so explicitly. The only part
+built at MVP is the `ctx-access` internal seam that makes the later broker
+split a transport swap rather than a rewrite.
 
 **Summarization-agent runner (M).** A script that:
 
@@ -73,8 +87,11 @@ thin shell over the prompt files, with prompt content never embedded in
 code.
 
 **`ctx-audit` script (S).** Compares each modified `rollup.ctx` against its
-sibling `intent.md`. Probably implemented as another small agent call using
-`prompts/auditor.md`. Produces JSON at `.context/.reports/<task-id>.json`.
+sibling `intent.md` via an agent call using `prompts/auditor.md`. Produces
+JSON at `.context/.reports/<task-id>.json`. The per-directory auditor JSON
+(`{path, verdict, severity, rationale}`) is passed through verbatim into
+the `divergences` array; the runner only adds the `task_id`/`completed_at`
+wrapper and does not reshape entries (rev-2 schema).
 
 **`ctx-resummarize <path>` recovery CLI (S).** Wraps the summarization
 runner for manual invocation on a specific subtree, used after a merge

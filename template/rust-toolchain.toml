@@ -2,6 +2,6 @@
 # When updating, smoke-test the full lint list against the new version;
 # clippy restriction lints occasionally rename between releases.
 [toolchain]
-channel = "1.83.0"
+channel = "1.95.0"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

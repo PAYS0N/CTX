@@ -42,10 +42,11 @@ entirely when absent).
    Single-file invariants live in that file's `.ctx`, not here. Include
    only invariants that span multiple children or constrain the subtree's
    external interface.
-5. **Compactness budget.** Target 50 lines or fewer. Hard ceiling 100
+5. **Compactness budget.** Target 15 lines or fewer. Hard ceiling 40
    lines. If you exceed the ceiling, the directory has too many children
    or too much surface area; emit the summary anyway and the auditor will
-   flag it.
+   flag it. This budget is fixed by `docs/SPEC.md` and must not be
+   loosened here independently.
 6. **Intent divergence.** Read the directory's `intent.md`. If the current
    subtree, as you have summarized it, plausibly satisfies the intent,
    omit the `intent_divergence:` line. If it does not — if the subtree has

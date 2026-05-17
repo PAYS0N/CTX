@@ -31,7 +31,7 @@ PHASE "Compiler + clippy"
 RUN "cargo clippy" env RUSTFLAGS="-D warnings" cargo clippy --all-targets --all-features -- -D warnings
 
 PHASE "Documentation"
-RUN "cargo doc" cargo doc --no-deps --workspace
+RUN "cargo doc" env RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 
 PHASE "Dependency policy"
 RUN "cargo deny check" cargo deny check
@@ -39,6 +39,9 @@ RUN "cargo machete" cargo machete
 
 PHASE "Rationale comments (soft tiers)"
 RUN "rationale_check.py" python3 "$SCRIPTS_DIR/rationale_check.py" .
+
+PHASE "Workspace lints opt-in"
+RUN "workspace_lints_check.sh" bash "$SCRIPTS_DIR/workspace_lints_check.sh" .
 
 PHASE "No #[allow] attributes"
 RUN "no_allow_check.sh" bash "$SCRIPTS_DIR/no_allow_check.sh" .

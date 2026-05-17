@@ -2,6 +2,15 @@
 
 Status: sealed. Changes require explicit re-spec.
 
+Revision 2 (2026-05-16, owner-authorized re-spec). Changes from rev 1:
+sandbox dependency made explicit (Layer 2 advisory until deployed; see
+`docs/SANDBOX.md`); module-cycle detection corrected to deferred; rollup
+budget set to 15/40; `ctx-access read` changed from N step-calls to one
+bundled call; task lifecycle (`init-task`/`end-task`) and per-task cache
+schema specified; audit report schema aligned to `prompts/auditor.md`;
+crate-root deny mechanism corrected to workspace lints; `cargo doc`
+enforcement mechanism corrected; prompt-file references corrected.
+
 ## Goals
 
 1. Make bad code unrepresentable or uncompilable, not merely discouraged.
@@ -26,7 +35,13 @@ Status: sealed. Changes require explicit re-spec.
 ### Compiler
 
 - `RUSTFLAGS="-D warnings"`.
-- Every crate root: `#![deny(missing_docs)]`, `#![forbid(unsafe_code)]`.
+- `missing_docs` and `unsafe_code` are denied/forbidden via the
+  `[workspace.lints]` table in the workspace `Cargo.toml`, not via
+  per-crate-root `#![...]` attributes. This table only binds to member
+  crates that declare `[lints] workspace = true`. Every member crate MUST
+  declare it; CI fails any member that does not (see
+  `scripts/workspace_lints_check.sh`). This is the single source of truth —
+  do not also add crate-root attributes.
 
 ### Clippy
 
@@ -66,13 +81,22 @@ Exceptions:
 - `cargo-deny` with allowlist: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
   ISC, Unicode-DFS-2016. Zero advisories. No duplicate versions.
 - `cargo-machete`: no unused dependencies.
-- `cargo-modules` + custom script: no circular module deps within a crate.
+- No circular module deps within a crate. NOT enforced at MVP: the
+  `scripts/cycle_check.sh` script only verifies `cargo-modules` runs
+  cleanly; it does not parse the dependency graph for cycles. Real cycle
+  detection is deferred to custom dylint rule 4 (see
+  `docs/DYLINT_RULES.md`). This policy is therefore aspirational until that
+  rule lands.
 
 ### Formatting and docs
 
 - `cargo fmt --check` in CI.
-- `cargo doc --no-deps -D rustdoc::broken_intra_doc_links -D
-  rustdoc::missing_crate_level_docs` in CI.
+- `cargo doc --no-deps --workspace` in CI with
+  `RUSTDOCFLAGS="-D warnings"`. The specific rustdoc denies
+  (`broken_intra_doc_links`, `missing_crate_level_docs`) are set in the
+  `[workspace.lints.rustdoc]` table, which binds only to crates that opt
+  into workspace lints (see Compiler section). `RUSTDOCFLAGS="-D warnings"`
+  is belt-and-suspenders so any escaped rustdoc warning still fails CI.
 
 ### Deferred custom dylint rules (specified, not built)
 
@@ -115,7 +139,11 @@ functions:
     notes: <optional>
 ```
 
-**Non-leaf `rollup.ctx`** (≤10 lines target, ≤40 hard ceiling):
+**Non-leaf `rollup.ctx`** (≤15 lines target, ≤40 hard ceiling). A
+directory whose rollup cannot fit in 40 lines has too much surface area;
+emit anyway and let the auditor flag it. This budget must match
+`prompts/summarizer-rollup.md` exactly; changing one requires changing the
+other.
 
 ```
 directory: <repo-relative dir path>
@@ -137,42 +165,79 @@ intent_version: 1
 
 ### Access protocol
 
-The `ctx-access` CLI is the only path to source. All invocations take
-`--task-id <uuid>`. The agent's shell is sandboxed to block direct reads of
-source paths.
+The `ctx-access` CLI is the intended only path to source. All invocations
+take `--task-id <uuid>`. Enforcement that the agent cannot read source
+directly is a *deployment* concern (the sandbox), not something the CLI
+does itself. **Until the sandbox in `docs/SANDBOX.md` is deployed, Layer 2
+is advisory: a determined or lazy agent can bypass `ctx-access` by reading
+source directly.** The CLI is built with an internal `cli` / `enforcement`
+/ `transport` seam so the sandbox broker split is a later transport change,
+not a rewrite.
 
-Commands:
+#### Task lifecycle
 
-- `ctx-access read <path> --task-id <id>` — serves the chain step-by-step.
-  Each step requires a separate tool call. Per-task cache skips already-read
-  chain prefixes within the same task. Final step returns source contents.
-- `ctx-access write <path> <content> --task-id <id>` — requires that `read`
-  has been called for the same path under the same task id. Records the
-  write in the per-task cache (no in-tree stale flags).
-- `ctx-access list <path> --task-id <id>` — directory listing, requires the
-  directory's `rollup.ctx` to have been read first.
+A task is an explicit, bounded unit of work with its own cache and report.
 
-Per-task state lives at `.context/.cache/<task-id>.json` (gitignored):
+- `ctx-access init-task --task-id <uuid>` — validates `<uuid>`, refuses if
+  a cache for it already exists (no clobber), writes the initial per-task
+  cache. Must be called before any `read`/`write`/`list` for that task;
+  those commands fail with a clear error if the cache is absent.
+- `ctx-access end-task --task-id <id>` — the only command that mutates
+  generated context files. It hands `paths_written` to the summarization
+  runner (leaf-up), then to `ctx-audit`, writes
+  `.context/.reports/<id>.json`, then deletes the cache file. Errors if no
+  cache exists for `<id>`.
+
+An orphaned cache (task crashed before `end-task`) is harmless: it is
+gitignored and uniquely keyed by task id. `init-task --force` reclaims one.
+
+#### Per-request commands
+
+- `ctx-access read <path> --task-id <id>` — computes the chain from repo
+  root to `<path>` (each directory contributes its `rollup.ctx` then its
+  `intent.md`, top-down; then `<path>`'s leaf `<file>.ctx`; then source)
+  and returns, in one response, every chain node not already in the task's
+  `served_nodes`, in order, followed by the source contents. Nodes already
+  served this task are omitted (prefix-cached). A second read in the same
+  subtree therefore returns only the delta — often just the new leaf and
+  source. `--shallow` returns the unserved ancestor nodes only and stops
+  before source, for explore-without-edit. There is one tool call per
+  `read`, not one per chain node.
+- `ctx-access write <path> <content> --task-id <id>` — requires that a
+  non-`--shallow` `read` of the same `<path>` succeeded earlier in the same
+  task (i.e. its full chain incl. source is in `served_nodes`). Appends
+  `<path>` to `paths_written`. No in-tree stale flags.
+- `ctx-access list <path> --task-id <id>` — directory listing; requires
+  that directory's `rollup.ctx` to be in `served_nodes`.
+
+Per-task state lives at `.context/.cache/<task-id>.json` (gitignored).
+`served_nodes` is the set of context-tree node identifiers (chain nodes and
+source paths) already returned to the agent this task; it fully expresses
+chain progress, so no per-step counter is needed:
 
 ```json
 {
   "task_id": "...",
-  "started_at": "...",
-  "chains_read": ["..."],
+  "started_at": "<RFC3339>",
+  "served_nodes": ["..."],
   "paths_written": ["..."]
 }
 ```
 
-A read of a file whose path appears in `paths_written` for the current task
+A read whose source path appears in `paths_written` for the current task
 prepends a `STALE — modified in current task` banner to the served context
-files.
+nodes (the leaf `.ctx` and rollups are stale because source changed but the
+summarizer has not run; it runs only at `end-task`).
 
 ### Summarization agent
 
 Separate from the editing agent. Invoked once at task end. Operates leaf-up
 over modified paths.
 
-Prompt: `prompts/summarizer.md`. Decoupled from any code that invokes it.
+Prompts: `prompts/summarizer-leaf.md` (per source file) and
+`prompts/summarizer-rollup.md` (per directory). Decoupled from any code
+that invokes them; the runner loads them at runtime and passes dynamic data
+in the user message only.
 
 Never edits `intent.md`. If the new rollup contradicts intent, the rollup
 notes the disagreement in a `intent_divergence:` field for the audit step.
@@ -189,13 +254,19 @@ After summarization, `ctx-audit` produces a JSON report at
   "divergences": [
     {
       "path": "...",
-      "intent_summary": "...",
-      "rollup_summary": "...",
-      "severity": "low|medium|high"
+      "verdict": "consistent|divergent",
+      "severity": "none|low|medium|high",
+      "rationale": "..."
     }
   ]
 }
 ```
+
+Each `divergences` entry is the verbatim JSON object emitted by the
+auditor agent for one directory (see `prompts/auditor.md`); the runner
+wraps them with `task_id`/`completed_at` and does not reshape them. The
+array includes both `consistent` and `divergent` verdicts so the report is
+a complete record, not only the flagged subset.
 
 No CI failure on divergence at MVP. Report is informational.
 
@@ -213,6 +284,10 @@ home of the "is this file/module doing too much" semantic check.
 - `.gitattributes` declares merge policy for generated context files.
   `ctx-resummarize <path>` is the manual recovery path on merge conflict.
 - Divergence reports are JSON for later aggregation.
+- Shared-filesystem concurrency (cache locking, task-affinity) is a
+  `ctx-broker` concern (see `docs/SANDBOX.md`), not solved at MVP. MVP
+  concurrency is branch/worktree-per-agent; the per-task keying above is
+  what makes the later broker addition non-breaking.
 
 ## Reference project
 

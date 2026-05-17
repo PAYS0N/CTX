@@ -23,6 +23,8 @@ reference-project/  # placeholder for the reference project (config validator)
 
 1. Copy `template/` to a new repo.
 2. Initialize the `.context/` tree.
-3. Run agent tasks via the (unimplemented) `ctx-access` CLI with `--task-id`.
-4. On task completion, run the summarization agent with the prompt from
-   `prompts/summarizer.md`.
+3. Run `ctx-access init-task --task-id <uuid>`, then agent tasks via the
+   `ctx-access` CLI (`read`/`write`/`list`) with that `--task-id`.
+4. Run `ctx-access end-task --task-id <uuid>`, which drives the
+   summarization agent (`prompts/summarizer-leaf.md`,
+   `prompts/summarizer-rollup.md`) and the audit.

@@ -1,7 +1,7 @@
 # Thresholds for clippy lints. Single source of truth.
 
 # Hard fail at 80 lines per function. Soft tier (30) enforced by
-# scripts/rationale_check.sh — clippy cannot express the soft tier directly.
+# scripts/rationale_check.py — clippy cannot express the soft tier directly.
 too-many-lines-threshold = 80
 
 # Cognitive complexity hard fail at 25. Soft tier (15) is deferred to the
