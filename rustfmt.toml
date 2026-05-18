@@ -1,0 +1,31 @@
+# rustfmt is the source of truth. No discussion, no per-file overrides.
+# Settings below favor consistency and minimize diff churn.
+#
+# ONLY stable-channel rustfmt options appear here. The pinned toolchain is
+# the stable channel (rust-toolchain.toml); rustfmt SILENTLY IGNORES
+# unstable options on stable, so any nightly-only option here would be a
+# rule that looks enforced but is not. That failure mode is exactly what
+# this project exists to prevent, so such options are excluded by policy,
+# not commented-out-but-present.
+
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+use_small_heuristics = "Default"
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+match_block_trailing_comma = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# Deferred — blocked on rustfmt stabilization (nightly-only as of the
+# pinned toolchain; verified ignored-on-stable by the Phase 0 smoke test):
+#   format_code_in_doc_comments, format_macro_matchers, format_strings,
+#   imports_granularity = "Crate", group_imports = "StdExternalCrate",
+#   trailing_comma = "Vertical", trailing_semicolon
+# imports_granularity and group_imports are the high-value losses (import
+# block shape is unenforced on stable). Revisit if/when they stabilize, or
+# adopt a separately-pinned nightly rustfmt as a deliberate spec change.

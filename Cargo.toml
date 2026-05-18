@@ -1,0 +1,53 @@
+# Dogfood workspace. This repository builds its own tooling (ctx-access)
+# under the exact lint regime the template enforces. The lint table below
+# is kept byte-identical to template/Cargo.toml on purpose; if they drift,
+# the tooling is no longer eating its own dog food. Any change here must be
+# mirrored in template/Cargo.toml.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/ctx-access",
+    "crates/ctx-check",
+    "crates/ctx-summarize",
+]
+
+[workspace.lints.rust]
+warnings = "deny"
+missing_docs = "deny"
+unsafe_code = "forbid"
+dead_code = "deny"
+unused_imports = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+missing_crate_level_docs = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+as_conversions = "deny"
+float_arithmetic = "deny"
+mem_forget = "deny"
+exit = "deny"
+get_unwrap = "deny"
+indexing_slicing = "deny"
+missing_docs_in_private_items = "deny"
+string_slice = "deny"
+shadow_unrelated = "deny"
+shadow_same = "deny"
+
+too_many_lines = "deny"
+cognitive_complexity = "deny"

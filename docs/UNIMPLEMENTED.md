@@ -36,8 +36,15 @@ names across Rust versions.
 
 ### Layer 2
 
-**`ctx-access` CLI (M).** This is the load-bearing piece. The spec is
-complete; no code exists. Required behavior:
+**`ctx-access` CLI — IMPLEMENTED.** Built and dogfooded at the repo root
+(`crates/ctx-access`, `cargo_access` lib + bin) under the full lint regime
+(clippy pedantic/nursery/restriction + `-D warnings`, fmt, rustdoc,
+rationale, workspace-lints, no-allow all green; 8 in-memory behavioral
+tests pass; end-to-end CLI smoke verified). The `cli` / `enforce` / `env`
+seam from `docs/SANDBOX.md` is in place. Remaining within this piece: the
+`end-task` summarizer is a `NoopSummarizer` (the agent-driven runner is the
+separate item below); a real `transport`-to-`ctx-broker` is deployment
+work. Original required behavior, all now satisfied:
 
 - Subcommands: `init-task`, `read`, `write`, `list`, `end-task`.
 - Per-task cache management at `.context/.cache/<task-id>.json` with the
@@ -55,11 +62,41 @@ complete; no code exists. Required behavior:
   `ctx-broker`). The sandbox depends on this seam — it is not optional.
   See `docs/SANDBOX.md`.
 
-Suggested implementation: Rust binary, ~800-1500 lines, using `clap` for
-arg parsing and `serde_json` for the cache. Built under the same lint rules
-as everything else (eat the dogfood). The `enforcement` module must avoid
-`indexing_slicing`/`string_slice`/`as_conversions`/`unwrap` from the start
-(typed `thiserror` enums, `.get()`, `TryFrom`); retrofitting is expensive.
+Implemented as: Rust lib+bin (~700 LoC), `clap` + `serde_json` + `thiserror`.
+The `enforce` module avoids `indexing_slicing`/`string_slice`/
+`as_conversions`/`unwrap` throughout (typed `thiserror` enums, `.get()`,
+`strip_prefix`, no print macros — output via injected `Write`).
+
+**Dogfood findings (Phase 0/1), recorded for the reference-project notes:**
+
+- Toolchain pin was a stale, untested `1.83.0`; bumped to the installed
+  current stable `1.95.0`. The full clippy restriction list is valid on
+  1.95.0 with zero renames.
+- `rustfmt.toml` set 7 nightly-only options silently ignored on stable
+  (`imports_granularity`/`group_imports` are the impactful losses).
+  Removed; documented as deferred. Classic "looks-enforced-but-isn't".
+- The spec exempts `unwrap`/`expect` in tests but no mechanism expressed
+  it (`#[allow]` is banned); added `allow-unwrap-in-tests` /
+  `allow-expect-in-tests` to `clippy.toml`.
+- rustfmt's 80-col expansion inflates physical line count, so the 30-line
+  soft tier bites cohesive functions that are ~22 logical lines. Handled
+  by small helper extraction; one genuinely-linear test uses the spec's
+  `// rationale:` escape hatch as intended.
+- `rationale_check.py` mis-measured bodyless trait-method signatures
+  (brace heuristic ran past them); fixed to skip `;`-terminated decls. It
+  still only recognizes a *single-line* `// rationale:` immediately
+  preceding — multi-line rationale blocks are not supported (minor).
+- Latent, not yet resolved: the spec grants a `print_stdout`/`print_stderr`
+  exception for bin `main.rs`, but the workspace clippy table denies them
+  globally and `#[allow]` is banned, making the exception unusable. Side-
+  stepped here by writing through `Write` handles (never print macros), so
+  no re-spec was required — but the dead exception should be struck on the
+  next spec touch.
+
+Still pending (separate S items, unchanged): `cargo-deny` validation
+against the real dependency graph, `cargo-machete`, and `cargo-modules`
+are not installed in this environment, so those CI phases do not yet run.
+`Cargo.lock` is now committed so the dep graph is pinnable.
 
 **Sandbox configuration (M, deployment-specific).** The agent's shell must
 block direct reads of paths under configured source roots. This is not
@@ -70,21 +107,35 @@ advisory, not enforced** — the spec now says so explicitly. The only part
 built at MVP is the `ctx-access` internal seam that makes the later broker
 split a transport swap rather than a rewrite.
 
-**Summarization-agent runner (M).** A script that:
+**Summarization-agent runner — DONE.** `crates/ctx-summarize` (lib+bin,
+dogfooded through `ctx-check`, 6 tests incl. real-subprocess agent):
 
-- Reads the task-end cache to find `paths_written`.
-- For each modified source file, calls the summarization agent with the
-  prompt from `prompts/summarizer-leaf.md` and the file's current contents.
-- Writes the resulting `.ctx` file.
-- For each directory containing a modified file or modified child rollup,
-  calls the summarization agent with `prompts/summarizer-rollup.md` and
-  the current children summaries.
-- Walks leaf-up to the root.
-- Cleans up the per-task cache when done.
+- `from-cache --task-id` reads `paths_written` from the task cache;
+  `paths <p>...` takes explicit targets.
+- Each source file -> `prompts/summarizer-leaf.md` as system prompt, file
+  contents as user message -> writes `.context/<path>.ctx`.
+- Each affected directory -> `prompts/summarizer-rollup.md` + assembled
+  children summaries + the dir's `intent.md` -> writes `rollup.ctx`.
+- Walks leaf-up (deepest dir first, repo root last).
+- Does NOT touch the per-task cache: per SPEC rev 2, `ctx-access
+  end-task` is the cache's sole deleter (this corrects the rev-1 wording
+  that had the runner clean it up). `ctx-summarize` also never writes
+  `intent.md`.
+- LLM is behind an `Agent` seam; the real `SubprocessAgent` speaks a
+  model-agnostic JSON-on-stdin contract via `CTX_AGENT_CMD` (no SDK
+  dependency; the network/dep-policy stress lands in the reference
+  project as intended).
 
-This is where prompt iteration will be heaviest. The runner should be a
-thin shell over the prompt files, with prompt content never embedded in
-code.
+Prompt iteration will still be heaviest here; the runner is a thin shell
+with prompt content never embedded in code.
+
+KNOWN DEBT (`ctx-core` extraction): the repo-relative path-safety + the
+`.context` mirror mapping now exist in BOTH `ctx-access`
+(`repo_path`/`chain`) and `ctx-summarize` (`cpath`), kept deliberately
+small and identical in spirit. Post-MVP these (and the task-cache view)
+should move to a shared `ctx-core` crate so the security-sensitive path
+validation has a single source of truth. Recorded so the
+architecture-audit layer flags it rather than it being silent drift.
 
 **`ctx-audit` script (S).** Compares each modified `rollup.ctx` against its
 sibling `intent.md` via an agent call using `prompts/auditor.md`. Produces
@@ -153,13 +204,23 @@ across multiple real projects becomes painful.
 
 ## Suggested order of implementation
 
-1. Smoke-test the lint config on a hello-world crate. Adjust list to match
-   what current Rust/clippy actually accept.
-2. Build `ctx-access` CLI. This unblocks everything else.
-3. Build the summarization runner with the existing prompt files.
-4. Build the reference project under the full toolchain. Iterate on prompts
-   and lint thresholds as pain surfaces.
-5. Build `ctx-audit`.
-6. Custom dylint crate (rules in priority order from `DYLINT_RULES.md`).
-7. Deployment-layer sandbox.
-8. Architecture-audit layer.
+1. ~~Smoke-test the lint config~~ — DONE (Phase 0; toolchain 1.95.0).
+2. ~~Build `ctx-access` CLI~~ — DONE (Phase 1; dogfooded).
+3. ~~Build `ctx-check`~~ — DONE. Token-frugal verification broker
+   (`crates/ctx-check`): wraps clippy/doc/fmt/rationale/workspace_lints/
+   no_allow via a `Runner` seam, parses structured + `FAIL:`-line output,
+   returns one capped JSON report (audit-report schema family); missing
+   tools => `skipped`, not `fail`. Dogfooded (full workspace verifies as
+   one ~35-line JSON `pass`); 8 hermetic tests incl. failure paths
+   (capping, failed-command-without-diagnostics, raw rustc compile error);
+   green on the full regime. Does NOT wrap `cargo test` — it mirrors
+   `ci.sh`'s gate set, which excludes the test suite (compile/lint
+   failures still surface via the `clippy`/`doc` checks).
+4. ~~Build the summarization runner~~ — DONE (`crates/ctx-summarize`).
+5. Build the reference project under the full toolchain via `ctx-access`,
+   verifying each step through `ctx-check`. Iterate on prompts and lint
+   thresholds as pain surfaces.
+6. Build `ctx-audit`.
+7. Custom dylint crate (rules in priority order from `DYLINT_RULES.md`).
+8. Deployment-layer sandbox.
+9. Architecture-audit layer.

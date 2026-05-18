@@ -11,6 +11,15 @@ schema specified; audit report schema aligned to `prompts/auditor.md`;
 crate-root deny mechanism corrected to workspace lints; `cargo doc`
 enforcement mechanism corrected; prompt-file references corrected.
 
+Revision 3 (2026-05-17, owner-authorized). `started_at` is unix epoch
+seconds (not RFC3339); `--shallow` serves through the leaf and stops
+before source; `write` evicts the path's leaf+source from `served_nodes`
+so the stale banner is reachable; `clippy.toml` gains
+`allow-unwrap/expect-in-tests` (the only mechanism for the spec's test
+exemption given `#[allow]` is banned). New component `ctx-check` (a
+token-frugal verification broker) is sequenced BEFORE the reference
+project; see `docs/UNIMPLEMENTED.md`.
+
 ## Goals
 
 1. Make bad code unrepresentable or uncompilable, not merely discouraged.
@@ -200,9 +209,10 @@ gitignored and uniquely keyed by task id. `init-task --force` reclaims one.
   `served_nodes`, in order, followed by the source contents. Nodes already
   served this task are omitted (prefix-cached). A second read in the same
   subtree therefore returns only the delta — often just the new leaf and
-  source. `--shallow` returns the unserved ancestor nodes only and stops
-  before source, for explore-without-edit. There is one tool call per
-  `read`, not one per chain node.
+  source. `--shallow` serves the unserved chain nodes up to and including
+  the target's leaf `<file>.ctx` but stops before source, for
+  explore-without-edit. There is one tool call per `read`, not one per
+  chain node.
 - `ctx-access write <path> <content> --task-id <id>` — requires that a
   non-`--shallow` `read` of the same `<path>` succeeded earlier in the same
   task (i.e. its full chain incl. source is in `served_nodes`). Appends
@@ -218,16 +228,22 @@ chain progress, so no per-step counter is needed:
 ```json
 {
   "task_id": "...",
-  "started_at": "<RFC3339>",
+  "started_at": "<unix-epoch-seconds>",
   "served_nodes": ["..."],
   "paths_written": ["..."]
 }
 ```
 
-A read whose source path appears in `paths_written` for the current task
-prepends a `STALE — modified in current task` banner to the served context
-nodes (the leaf `.ctx` and rollups are stale because source changed but the
-summarizer has not run; it runs only at `end-task`).
+`write` evicts the written path's leaf `<file>.ctx` and its source from
+`served_nodes`. The next `read` of that path therefore re-serves those two
+nodes, and the leaf `<file>.ctx` carries a `STALE — modified in current
+task` banner (its summary predates the edit; the summarizer runs only at
+`end-task`). Ancestor `rollup.ctx`/`intent.md` nodes stay cached and
+un-bannered — subtree summaries are regenerated wholesale at `end-task`,
+not per-file. Without this eviction the banner would be unreachable: any
+path writable in a task has, by the write-needs-read rule, already had its
+entire chain served and cached, so it would never be re-served to carry
+the banner.
 
 ### Summarization agent
 
@@ -291,6 +307,31 @@ home of the "is this file/module doing too much" semantic check.
 
 ## Reference project
 
-A CLI tool that parses, validates, and pretty-prints a non-trivial config
-format. Chosen to exercise modules, errors, public API, and IO without
-needing networking or async.
+(Rev 3, owner-decided 2026-05-17. Replaces the rev-1 config-validator,
+which was a single linear pipeline; the meal planner has more module
+surface, a real error taxonomy, persistence, and an external-call
+boundary, so it exercises the context tree depth and the lint regime
+harder. The rev-1 "no networking/async" constraint is intentionally
+dropped — the network/dependency-policy stress is now part of the test.)
+
+A CLI **meal planner**. Captures a user nutritional profile (weight, age,
+gender, allergies, etc.) and persists it; generates a one-week plan close
+to the WHO/FAO dietary guidelines; saves favorite meals; revises the plan
+from user feedback; emits a full shopping list from the plan.
+
+Hard design constraints (these are what make it a valid system test):
+
+- **Numeric model is integer/fixed-point.** kcal as integers, nutrients
+  as integer milligrams, ratios as basis points, explicit rounding. No
+  raw float math — `float_arithmetic = deny` is honored, not relaxed.
+  Whether this is tolerable for a real numeric domain is a primary thing
+  the reference project is meant to learn.
+- **The LLM ideation step sits behind a trait seam** (e.g.
+  `MealIdeator`), with a deterministic fake for tests — mirroring the
+  `Env`/`Summarizer` seams in `ctx-access`. Non-determinism stays out of
+  the testable core.
+- The HTTP/LLM client is quarantined behind that trait so the core stays
+  pure; expect the dependency policy (`cargo-deny` `multiple-versions`,
+  license allowlist) to require deliberate widening — that signal is
+  wanted, since `deny.toml` is otherwise untested.
+- Built and verified exclusively through `ctx-access` and `ctx-check`.
