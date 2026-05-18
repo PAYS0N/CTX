@@ -1,0 +1,23 @@
+# Thresholds for clippy lints. Single source of truth.
+
+# Hard fail at 80 lines per function. Soft tier (30) enforced by
+# scripts/rationale_check.py — clippy cannot express the soft tier directly.
+too-many-lines-threshold = 80
+
+# Cognitive complexity hard fail at 25. Soft tier (15) is deferred to the
+# custom dylint crate (see docs/DYLINT_RULES.md rule 1).
+cognitive-complexity-threshold = 25
+
+# Disallow legacy `print!` etc; clippy's print_stdout/print_stderr lints cover
+# this but ensure no project-level relaxation here.
+
+# Limit how aggressively clippy::pedantic complains about doc examples — at
+# MVP we just require docs to exist, not that every doc has an example.
+doc-valid-idents = ["MVP", "CLI", "JSON", "YAML"]
+
+# The spec exempts `unwrap`/`expect` in `#[cfg(test)]` and `tests/`. With
+# `#[allow(...)]` banned project-wide, clippy.toml is the ONLY mechanism
+# that can express this exemption; without these the spec's stated test
+# exception would be unrepresentable. Non-test code is unaffected.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

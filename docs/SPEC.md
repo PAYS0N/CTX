@@ -255,6 +255,12 @@ Prompts: `prompts/summarizer-leaf.md` (per source file) and
 that invokes them; the runner loads them at runtime and passes dynamic data
 in the user message only.
 
+The runner (`ctx-summarize`) is model-agnostic: it shells a
+deployment-configured command (`CTX_AGENT_CMD`) speaking a fixed contract
+(stdin JSON `{"system","user"}` -> stdout completion text). The adapter
+that calls a concrete LLM is a non-Rust, non-linted edge like the prompts;
+a reference adapter lives in `agents/` (see `agents/README.md`).
+
 Never edits `intent.md`. If the new rollup contradicts intent, the rollup
 notes the disagreement in a `intent_divergence:` field for the audit step.
 

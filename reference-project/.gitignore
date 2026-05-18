@@ -1,0 +1,8 @@
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Per-task cache and reports. Generated context files (rollup.ctx, *.ctx,
+# intent.md) ARE committed.
+.context/.cache/
+.context/.reports/

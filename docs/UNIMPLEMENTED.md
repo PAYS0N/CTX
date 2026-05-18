@@ -217,6 +217,14 @@ across multiple real projects becomes painful.
    `ci.sh`'s gate set, which excludes the test suite (compile/lint
    failures still surface via the `clippy`/`doc` checks).
 4. ~~Build the summarization runner~~ — DONE (`crates/ctx-summarize`).
+4b. ~~Reference agent adapter~~ — DONE. `agents/summarizer-claude.py`
+   (Anthropic API, python3 stdlib, Sonnet default, prompt-cached system
+   block) + `agents/README.md` documenting the model-agnostic
+   stdin-JSON->stdout contract. Non-Rust, non-linted edge (like
+   `prompts/`). It is the default `CTX_AGENT_CMD`. Error paths smoke-
+   tested; the live Anthropic HTTP call is exercised by the reference
+   project (cannot be smoke-tested without billing). Hard prerequisite
+   for step 5 — the reference-project loop needs a real agent.
 5. Build the reference project under the full toolchain via `ctx-access`,
    verifying each step through `ctx-check`. Iterate on prompts and lint
    thresholds as pain surfaces.
