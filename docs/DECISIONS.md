@@ -237,3 +237,127 @@ report a failing check with zero information; conflating
 infrastructure failure with code failure trains agents to distrust or
 misread the gate. Execution is strictly sequential (blocking
 `Command`s); the defect was error *classification*, not timing.
+**Amended by ADR-025:** the triggering incident was *not* a spawn
+failure — the scripts ran and aborted mid-filesystem-walk. ADR-024's
+mechanism stands as defense-in-depth (any inconclusive check must still
+be legible); ADR-025 removes the actual cause.
+
+## ADR-025 — Static checks enumerate via `git ls-files`, not a FS walk
+**Decision:** the three static checks (`rationale_check.py`,
+`workspace_lints_check.sh`, `no_allow_check.sh`) enumerate their inputs
+with `git ls-files -z --cached --others --exclude-standard` (tracked +
+untracked-but-not-ignored), `cd`'d into the root, after a
+`git rev-parse` guard; no `rglob`/`find`/`grep -r` filesystem walk.
+**Context:** the incident behind ADR-024 was a `{status:fail,count:0}`
+triple that flipped to pass on the next run with no source change
+(observed sequence: verify → standalone checks → verify). Root cause,
+found by reading the scripts: their `target/` exclusion *filtered* but
+did not *prune* — `find … -not -path '*/target/*'` is a test not
+`-prune`, and Python `rglob("*.rs")` descends into `target/` before the
+skip. So each "static" check's input set was a function of the live
+build tree, not of source. When that walk raced a concurrent `target/`
+writer (cargo's own post-step churn, or rust-analyzer in the open IDE —
+an independent writer ctx-verify's sequential execution does not gate),
+an entry vanished between readdir and stat; `find`/`rglob` aborted
+non-zero with no `FAIL:` line → the count:0 triple. Quiescent `target/`
+on the next run → pass. **Rationale:** a verification result must be a
+pure function of committed (or at least repo-known) source, independent
+of build state, the IDE, or any concurrent process. git prunes ignored
+paths itself (`target/` is gitignored — verified), so the inspected set
+is deterministic; it also matches the project's existing
+manifest/deny single-source-of-truth (ADR-023), which already keys on
+`git ls-files`/`check-ignore`. `--others --exclude-standard` keeps
+in-progress (uncommitted, non-ignored) source covered, so the gate is
+not weakened during active development. **Rejected:** `find … -prune`
+(a weaker stopgap that still trusts the working tree and diverges from
+the git-tracked model); leaving ADR-024 as the only mitigation (it
+makes the phantom *legible* but does not stop it recurring — masking,
+not fixing). **Scope:** `cycle_check.sh` (uses `cargo modules`, no
+walk) and `ci.sh` (only delegates) are unaffected; both `scripts/` and
+`template/scripts/` updated in lockstep.
+
+## ADR-026 — Cage MVP: bwrap ns + UNIX-socket forwarder to host ctx-access
+**Decision:** the MVP cage (`sandbox/`) is a `bwrap` mount+net namespace
+where `../meal-planning` is mounted **read-only** with
+`crates/mealplan/{src,tests}` and `target/` replaced by empty `tmpfs`
+(source genuinely absent from the agent FS), `--unshare-net` (no
+network), and the in-cage `ctx-access` is a ~20-line forwarding client
+that base64-ships argv over a bound UNIX socket to a host-side broker
+(`socat …,fork EXEC:broker-handler.sh`) that runs the **real**
+`ctx-access` in the real tree. **Context:** STATUS framed Cage C as
+"bind the `ctx-access` binary in"; but a single uid/namespace cannot
+both hide source from the shell and let an in-cage `ctx-access` read it
+— that is precisely SANDBOX.md's "why the CLI cannot do this itself".
+**Rationale:** this realizes SANDBOX.md's client/broker **transport
+seam** (the only thing SANDBOX.md said to build at MVP) at the minimum
+that *proves the property*: enforcement (deny gate, repo-boundary,
+write-requires-prior-read, lifecycle) stays host-side in `ctx-access`,
+so the cage cannot weaken it — verified by `cage-adversary.sh` (secret,
+`../../../etc/passwd`, absolute path, blind write, bogus task all denied
+through the forwarder). **Supersedes** STATUS's literal "bind the
+binary" wording. **Rejected:** binding source at an obscure in-ns path
+(a `find`/`/proc/mounts` away — fails even the *lazy* bar); building the
+production broker now (ADR's `ctx` uid + cache ownership + locking
+remains deferred per SANDBOX.md/UNIMPLEMENTED — explicitly NOT MVP).
+**Residual (accepted):** same uid both sides; the threat model is
+*capable & lazy, not adversarial* (SANDBOX.md) — the `cat src/foo.rs`
+shortcut is closed hard; uid separation is the deferred production
+broker. **Prerequisite recorded:** the reference project must be a git
+repo — `ctx-access`'s gate/manifest single-source on
+`git ls-files`/`check-ignore` (ADR-023) and the static checks on
+`git ls-files` (ADR-025); meal-planning lost its `.git` on relocation
+(ADR-015) and was re-init'd.
+
+## ADR-027 — A dry-run that mutates the reference tree is itself a defect
+**Decision:** Cage D's no-spend proof must be strictly non-mutating; the
+adversary runs under its **own fresh task with zero served reads**, the
+blind-write probe targets a non-existent scratch path, and
+`cage-demo.sh` asserts host-tree integrity (`git status` on
+`crates`/manifests, no stray probe) after every run — auto-restoring and
+failing loudly on any mutation. **Context:** the first adversary draft
+reused the reachability task-id; the stub's *legitimate* read of
+`profile.rs` satisfied write-requires-prior-read, so the "blind" write
+**succeeded and overwrote real source** (recovered via
+`git checkout` — only possible because the project is now a git repo).
+The invariant held; the *test* was unsound and destructive.
+**Rationale:** a verification harness that can corrupt the subject it
+verifies is a worse failure than the bug it hunts; isolation of test
+state and a post-condition integrity gate are mandatory, not optional.
+Related: [[ADR-024]] (never a silent/misattributed result) — same
+principle applied to the test harness itself.
+
+## ADR-028 — Agent run: brokered {ctx-access, ctx-verify}, egress 1a, dual mode
+**Decision:** the real run extends the cage ([[ADR-026]]) so the broker
+allowlist is **`{ctx-access, ctx-verify}`** (not ctx-access alone): the
+caged `ctx-verify` is a forwarder too, the real one runs host-side
+against the tree the agent's `ctx-access write`s land in — so the cage
+needs no cargo/rustc/source. One generalized forwarder (`tool-client.sh`,
+tool = `argv0`) is bound as both names. **Model egress = 1a** (owner
+decision): the real caged `claude` reaches the API directly (`--net` +
+`ANTHROPIC_API_KEY` in cage env); accepted residual under the
+*capable-but-lazy, not adversarial* threat model — the key is auth, not
+prompt content, and never committed/`.env`-sourced into a model.
+**Two modes:** headless `claude -p` is the **validity-bearing** run
+(environmental *and* behavioral validity, ADR-016); `--interactive`
+relays a **dedicated** cage pty via `pty-relay.py` (the cage never gets
+the real terminal, so TIOCSTI escapes are contained even with
+`--new-session`) and is for observation only — human steering forfeits
+*behavioral* validity though *environmental* validity still holds.
+**Spend:** two gated boundaries — the agent loop (`CTX_CAGE_ALLOW_SPEND=1`,
+never set by the dry-run) and `end-task`'s audit. A no-spend
+`stub-claude.sh` proves the whole loop (init→verify→read→write→verify→
+shutdown→host-acceptance) wires end-to-end; the only delta to the billed
+run is swapping the stub for `claude`. **Rejected:** brokering the model
+call too (option 1b — owner chose 1a; recorded as the hardening path,
+not MVP); host-side-only acceptance verify (the agent's *own* checkpoint
+is doctrine — it must be able to call `ctx-verify`, hence brokered).
+**Found & fixed building this:** (1) `socat`'s default 0.5s half-close
+timeout reaped slow brokered `ctx-verify` (silent multi-second compile)
+after the one-line request EOF'd → empty result; both ends now `-t
+86400`. A fast call (`manifest`/`read`) masked it — only a slow brokered
+tool exposed it. (2) meal-planning carried the **pre-[[ADR-025]]**
+walk-based scripts; the brokered `ctx-verify` would race the agent's own
+`target/` rebuild — synced from `../template/scripts/` (prereq:
+meal-planning is a git repo, [[ADR-023]]). (3) `pty-relay.py` must not
+kill the child on local stdin EOF (non-interactive driver) — it stops
+forwarding input but relays output until the child exits.

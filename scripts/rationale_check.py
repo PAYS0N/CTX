@@ -24,6 +24,7 @@ robust enough for normal Rust but may miss exotic macros.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -182,18 +183,40 @@ def check_file(path: Path) -> list[str]:
     return failures
 
 
+def tracked_rs_files(root: Path) -> list[Path]:
+    """`.rs` files tracked or untracked-but-not-ignored, via `git ls-files`.
+
+    NOT a filesystem walk: `rglob` descends into `target/` before the
+    skip and can race a concurrent writer (cargo, rust-analyzer),
+    aborting mid-walk — a phantom, non-deterministic failure. git prunes
+    ignored paths itself, so the inspected set is a pure function of repo
+    state, never the live build tree.
+    """
+    try:
+        out = subprocess.run(
+            [
+                "git", "ls-files", "-z", "--cached", "--others",
+                "--exclude-standard", "--", "*.rs",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(
+            f"FAIL: rationale_check.py: cannot enumerate source via git "
+            f"in {root} ({exc})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    rel = (n for n in out.stdout.decode("utf-8", "replace").split("\0") if n)
+    return [root / n for n in rel]
+
+
 def main() -> int:
-    """Walk the given root (default cwd) and check every .rs file."""
+    """Check every tracked .rs file under the given root (default cwd)."""
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
-    targets: list[Path] = []
-    if root.is_file():
-        targets = [root]
-    else:
-        for p in root.rglob("*.rs"):
-            parts = set(p.parts)
-            if "target" in parts or ".git" in parts:
-                continue
-            targets.append(p)
+    targets = [root] if root.is_file() else tracked_rs_files(root)
 
     all_failures: list[str] = []
     for p in targets:

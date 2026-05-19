@@ -10,3 +10,6 @@ Cargo.lock.bak
 # intent.md) ARE committed.
 .context/.cache/
 .context/.reports/
+
+# Cage dry-run scratch (host-prepared seed bound into the cage)
+sandbox/.seed/

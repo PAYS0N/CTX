@@ -102,10 +102,19 @@ are not installed in this environment, so those CI phases do not yet run.
 block direct reads of paths under configured source roots. This is not
 something the CLI can do. Design is specified in `docs/SANDBOX.md`
 (`ctx-broker` daemon as the only source-reading identity + mount-namespace
-or container isolation of the agent). Until deployed, **Layer 2 is
-advisory, not enforced** — the spec now says so explicitly. The only part
-built at MVP is the `ctx-access` internal seam that makes the later broker
-split a transport swap rather than a rewrite.
+or container isolation of the agent).
+
+*Update:* an MVP cage proving this property now exists — `sandbox/`
+(`bwrap` ns + tmpfs over source + UNIX-socket forwarder to a host-side
+`ctx-access`; ADR-026). `sandbox/cage-demo.sh` shows source unreachable
+except via the tool, enforcement preserved through the transport, no
+spend (`CAGE D PASS`). Layer 2 is therefore **enforceable in this
+deployment**, not merely advisory, for a run launched through the cage.
+Still deferred (production, not MVP): the dedicated `ctx` uid /
+cache-owning broker with locking — same-uid is the cage's accepted
+residual under the *capable-but-lazy, not adversarial* threat model.
+The `ctx-access` internal seam already makes that a transport swap, not
+a rewrite.
 
 **Summarization-agent runner — DONE.** `crates/ctx-summarize` (lib+bin,
 dogfooded through `ctx-verify`, 6 tests incl. real-subprocess agent):

@@ -5,7 +5,7 @@ design; `UNIMPLEMENTED.md` is the backlog; `DECISIONS.md` is the rationale
 log; this file is the moving part. Update it whenever the active focus
 changes.
 
-Last updated: 2026-05-18.
+Last updated: 2026-05-19.
 
 ## Done and verified
 
@@ -41,8 +41,21 @@ Last updated: 2026-05-18.
   doctrine in tree without `intent.md` — now addressed for CTX).
 - **Handoff docs**: `CLAUDE.md`, `docs/DECISIONS.md`, this file,
   `.context/intent.md`.
+- **Static checks made deterministic** (ADR-025): `rationale_check.py`,
+  `workspace_lints_check.sh`, `no_allow_check.sh` enumerate via
+  `git ls-files` (no FS walk) — root cause of a phantom
+  `{status:fail,count:0}` triple (walk racing a `target/` writer);
+  ADR-024 retained as defense-in-depth. Validated under heavy concurrent
+  `target/` churn (36 invocations, all clean) + detection intact.
+- **The cage (`sandbox/`) — DONE & proven** (Cage C/D below); `CAGE D
+  PASS`, no spend, reference tree unmutated.
+- **Agent-run wiring — DONE & proven no-spend** (ADR-028):
+  `sandbox/agent-demo.sh` → `AGENT RUN PASS`. Generalized broker
+  `{ctx-access, ctx-verify}`, egress 1a, headless + PTY-isolated
+  interactive, `stub-claude.sh` closes the full loop. Only the billed
+  run remains (explicit go).
 
-## Active focus: build the sandbox cage (deferred spend)
+## Active focus: the real billed run (explicit-go only)
 
 The genuine MVP validation: a blinded agent extends the reference project
 through `ctx-access` only. **Validity is environmental, not behavioral**
@@ -65,18 +78,41 @@ be the caged subject; the agent is a headless `claude -p` inside `bwrap`,
   guidance refactor-first (ADR-021); `ctx-verify` rename+extend
   (ADR-022); `ctx-verify` `errored`≠`fail`/never-silent + deterministic
   (ADR-024). Whole 4-crate workspace `{"status":"pass"}` via ctx-verify.
-- **Cage C.** `bwrap` launcher: tmpfs over `../meal-planning/crates/*/src`,
-  read-only binds of `.context/` + manifest + the `ctx-access` binary,
-  no network. Prove source is unreachable except via the tool.
-- **Cage D.** Lifecycle harness (init-task = startup, end-task =
-  shutdown → summarize), then a **stub-agent dry-run** (no spend)
-  proving a caged process cannot `cat` source and must use `ctx-access`.
-  The real billed run (a headless `claude` doing the task) is gated on
-  explicit user go.
+- **Cage C — DONE.** `sandbox/` cage: `bwrap` mount+net ns,
+  `../meal-planning` mounted **read-only** with `crates/mealplan/{src,
+  tests}`+`target/` as empty `tmpfs` (source absent), `--unshare-net`.
+  In-cage `ctx-access` is a UNIX-socket forwarder to a host-side broker
+  running the real binary in the real tree — SANDBOX.md's client/broker
+  **transport seam** at the proving minimum (ADR-026; production
+  `ctx`-uid/cache-owning broker stays deferred).
+- **Cage D — DONE.** `sandbox/cage-demo.sh`: init-task (no spend) →
+  broker up → cage runs `stub-agent.sh` (reachability: `cat`/`find`/
+  `grep -r` all blocked, only `ctx-access` serves — 36-entry manifest,
+  profile.rs 4450 B) → cage runs `cage-adversary.sh` under a **fresh
+  zero-read task** (enforcement preserved through the forwarder: secret/
+  repo-boundary/blind-write/bogus-task all denied host-side) → integrity
+  gate (reference tree unmutated) → broker down → shutdown. `CAGE D
+  PASS`, no model called. An unsound first adversary draft overwrote
+  real source (recovered via git); fixed + integrity net added (ADR-027;
+  prereq: meal-planning is now a git repo, ADR-023/025).
 
-**Chosen test task for the eventual real run:** add a `profile edit`
-command to `mealplan` (reads `profile.rs`/`cli` via the chain, writes,
-keeps `ctx-verify` green).
+**The wiring is built and proven; one gated step remains.** The full
+agent loop runs end-to-end with **no spend** via `sandbox/agent-demo.sh`
+(`AGENT RUN PASS`): init-task → caged agent → brokered
+`ctx-access`+`ctx-verify` → shutdown → host acceptance. Decided &
+implemented (ADR-028): egress **1a** (caged `claude` calls the API
+directly, `--net`+key); `ctx-verify` brokered too (cage needs no
+toolchain/source); blinded brief; dual **headless** (validity-bearing)
+and **`--interactive`** (PTY-isolated, observation only) modes — both
+proven with the no-spend `stub-claude.sh`. The only thing not done is
+flipping the switch.
+
+**To do the real billed run:** `CTX_CAGE_ALLOW_SPEND=1
+ANTHROPIC_API_KEY=… sandbox/agent-demo.sh` (add `--interactive` to
+watch). Task: add a `profile edit` command to `mealplan` (reads
+`profile.rs`/`cli` via the chain, writes, keeps `ctx-verify` green).
+Spend boundaries: the agent loop (that env switch) and `end-task`
+(audit→summarize). **Requires explicit user go.**
 
 ## Open decisions / risks
 
