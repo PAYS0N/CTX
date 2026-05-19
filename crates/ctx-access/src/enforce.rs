@@ -4,6 +4,7 @@
 //! here touches argv, stdout, sockets, or the process boundary. This is
 //! the body that moves behind `ctx-broker` later (see `docs/SANDBOX.md`).
 
+use crate::access;
 use crate::cache::{cache_path, validate_task_id, TaskCache};
 use crate::chain::{self, ChainNode, NodeKind};
 use crate::env::Env;
@@ -11,6 +12,12 @@ use crate::error::CtxError;
 use crate::repo_path::RepoPath;
 use crate::report::report_path;
 pub use crate::report::{Divergence, EndReport, NoopSummarizer, Summarizer};
+
+/// Refuse a target that is secret, binary, or gitignored — even when it
+/// was explicitly requested. The deny-by-default access gate.
+fn gate<E: Env>(env: &E, path: &RepoPath) -> Result<(), CtxError> {
+    access::check(&path.as_string(), env.is_ignored(path)?)
+}
 
 /// Banner prepended to context nodes whose source was written this task.
 const STALE_BANNER: &str = "STALE — modified in current task\n";
@@ -60,15 +67,39 @@ pub fn init_task<E: Env>(env: &E, task_id: &str, force: bool) -> Result<(), CtxE
         return Err(CtxError::TaskExists(task_id.to_owned()));
     }
     let started_at = env.now_unix()?;
-    TaskCache::new(task_id.to_owned(), started_at).save(env)
+    TaskCache::new(task_id.to_owned(), started_at).save(env)?;
+    crate::manifest::build(env, task_id)?;
+    Ok(())
+}
+
+/// The body to serve for `node`: file contents (stale-bannered for
+/// non-Source nodes) or, for absent scaffolding, an explicit marker.
+/// Missing *source* is the only hard error (see DECISIONS ADR-010).
+///
+/// # Errors
+///
+/// [`CtxError::MissingNode`] if a Source file is absent;
+/// [`CtxError::Io`] on read failure.
+fn served_body<E: Env>(env: &E, node: &ChainNode, stale: bool) -> Result<String, CtxError> {
+    if env.exists(&node.id) {
+        let decoded = String::from_utf8_lossy(&env.read(&node.id)?).into_owned();
+        return Ok(if stale && node.kind != NodeKind::Source {
+            format!("{STALE_BANNER}{decoded}")
+        } else {
+            decoded
+        });
+    }
+    if node.kind == NodeKind::Source {
+        return Err(CtxError::MissingNode(node.id.as_string()));
+    }
+    Ok(format!("(absent: no {} at this level)", node.kind.label()))
 }
 
 /// Serve one chain node, or `None` if already served this task.
 ///
 /// # Errors
 ///
-/// [`CtxError::MissingNode`] if the node's file is absent;
-/// [`CtxError::Io`] on read failure.
+/// Propagates [`served_body`] failures.
 fn serve_node<E: Env>(
     env: &E,
     cache: &mut TaskCache,
@@ -79,17 +110,7 @@ fn serve_node<E: Env>(
     if cache.has_served(&id) {
         return Ok(None);
     }
-    if !env.exists(&node.id) {
-        return Err(CtxError::MissingNode(id));
-    }
-    let raw = env.read(&node.id)?;
-    let decoded = String::from_utf8_lossy(&raw).into_owned();
-    let banner_applies = stale && node.kind != NodeKind::Source;
-    let body = if banner_applies {
-        format!("{STALE_BANNER}{decoded}")
-    } else {
-        decoded
-    };
+    let body = served_body(env, node, stale)?;
     cache.mark_served(id.clone());
     Ok(Some(ServedNode {
         id,
@@ -114,6 +135,7 @@ pub fn read<E: Env>(
     validate_task_id(task_id)?;
     let mut cache = TaskCache::load(env, task_id)?;
     let target_path = RepoPath::parse(target)?;
+    gate(env, &target_path)?;
     let stale = cache.has_written(&target_path.as_string());
     let mut nodes = Vec::new();
     for node in chain::build(&target_path)? {
@@ -139,6 +161,7 @@ pub fn write<E: Env>(env: &E, task_id: &str, target: &str, content: &[u8]) -> Re
     validate_task_id(task_id)?;
     let mut cache = TaskCache::load(env, task_id)?;
     let target_path = RepoPath::parse(target)?;
+    gate(env, &target_path)?;
     let source_id = target_path.as_string();
     if !cache.has_served(&source_id) {
         return Err(CtxError::WriteWithoutRead {
@@ -162,6 +185,7 @@ pub fn list<E: Env>(env: &E, task_id: &str, dir: &str) -> Result<Vec<String>, Ct
     validate_task_id(task_id)?;
     let cache = TaskCache::load(env, task_id)?;
     let dir_path = RepoPath::parse(dir)?;
+    gate(env, &dir_path)?;
     let rollup_id = chain::context_dir(&dir_path)
         .child("rollup.ctx")
         .as_string();

@@ -40,6 +40,16 @@ pub enum CtxError {
     /// A required context-tree node does not exist on disk.
     #[error("missing context node: {0:?}")]
     MissingNode(String),
+    /// The path is not git-tracked, or is a secret/binary file: it is
+    /// outside the deny-by-default accessible set, even if explicitly
+    /// requested.
+    #[error("access denied: {path:?} is not an accessible source path ({reason})")]
+    AccessDenied {
+        /// The repo-relative path that was refused.
+        path: String,
+        /// Why it was refused (untracked / secret / binary).
+        reason: String,
+    },
     /// An underlying filesystem operation failed.
     #[error("io error on {path:?}: {detail}")]
     Io {

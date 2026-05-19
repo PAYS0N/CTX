@@ -1,0 +1,15 @@
+file: crates/ctx-access/src/main.rs
+purpose: Binary entry point for ctx-access: parses argv, constructs a `StdEnv` rooted at cwd, dispatches to library logic, and maps results to process exit codes.
+invariants:
+  - All output uses explicit writer handles; `println!`/`eprintln!` are never called.
+  - Write failures in `emit` are silently ignored.
+external_deps:
+  - clap: argv parsing via `Cli::parse()`
+  - ctx_access: provides `dispatch`, `Cli`, and `StdEnv`
+functions:
+  - name: emit
+    signature: fn emit<W: Write>(mut w: W, msg: &str)
+    purpose: Writes a line to the given handle, discarding write errors.
+  - name: main
+    signature: fn main() -> ExitCode
+    purpose: Resolves cwd, builds `StdEnv`, dispatches the parsed CLI command, and returns success or exit code 1 on any error.

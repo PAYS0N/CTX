@@ -1,0 +1,9 @@
+directory: crates/ctx-access
+summary: Delivers the `ctx-access` binary and its backing library: a gated, audited access path through which agents read and write source files. The public contract is five operations (init-task, read, write, list, end-task) enforced by `enforce.rs`, with path validation, per-task caching, chain ordering, and a filesystem+clock seam for testability.
+children:
+  - src/: Full implementation of the binary and library.
+key_invariants:
+  - No path can escape the repository root; `RepoPath::parse` is the sole entry point for untrusted path strings.
+  - write() is gated on a prior non-shallow read of the same target this task.
+  - list() is gated on the directory's rollup.ctx having been served this task.
+  - All binary output flows through injected writers; no direct stdout/stderr calls.

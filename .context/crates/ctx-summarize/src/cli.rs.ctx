@@ -1,0 +1,11 @@
+file: crates/ctx-summarize/src/cli.rs
+purpose: Defines the CLI structure and dispatches summarization runs, resolving targets from either a task cache or explicit paths and writing JSON output.
+invariants:
+  - Output is always followed by a trailing newline via `writeln!`.
+external_deps:
+  - clap: argument parsing with subcommand dispatch.
+  - serde_json: pretty-prints the summary struct to the writer.
+functions:
+  - name: dispatch
+    signature: pub fn dispatch<F: Fs, A: Agent, W: Write>(fs: &F, agent: &A, cli: &Cli, out: &mut W) -> Result<(), SummError>
+    purpose: Resolves target paths, runs the summarizer, and writes the pretty-printed JSON result to `out`.

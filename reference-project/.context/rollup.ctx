@@ -1,4 +1,0 @@
-directory: .
-summary: PLACEHOLDER. Re-run the rollup summarizer over the repo root after the first agent task adds real source.
-children:
-key_invariants:

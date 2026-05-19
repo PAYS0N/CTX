@@ -1,0 +1,9 @@
+directory: crates
+summary: The workspace root for three agent-facing binaries and their backing libraries: `ctx-access` (gated file I/O for agents), `ctx-check` (workspace verification and reporting), and `ctx-summarize` (LLM-driven `.ctx` generation). Together they form the full toolchain surface that agents interact with during a task lifecycle.
+children:
+  - ctx-access: Enforced, audited read/write gateway — the only sanctioned path for agents to touch source files.
+  - ctx-check: Verification broker that runs cargo/clippy/fmt/script checks and emits a structured JSON `Report`.
+  - ctx-summarize: Orchestrates LLM calls to produce and update `.ctx` leaf and rollup summaries across the repo.
+key_invariants:
+  - Each crate ships both a library and a binary; public library surfaces are kept narrow and testable via injected seams.
+  - No crate directly depends on another within this workspace (each is independently deployable).

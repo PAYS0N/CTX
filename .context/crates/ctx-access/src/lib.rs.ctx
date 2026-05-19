@@ -1,0 +1,6 @@
+file: crates/ctx-access/src/lib.rs
+purpose: Root of the ctx-access crate; re-exports all public submodules that together form the sanctioned agent access path to source files.
+invariants:
+  - Layering is enforced by module visibility: cli → enforce → env; nothing below cli touches the process boundary.
+external_deps:
+functions:

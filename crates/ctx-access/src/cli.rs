@@ -8,7 +8,6 @@ use std::io::Write;
 
 use clap::{Parser, Subcommand};
 
-use crate::chain::NodeKind;
 use crate::enforce::{self, NoopSummarizer};
 use crate::env::Env;
 use crate::error::CtxError;
@@ -72,16 +71,13 @@ enum Command {
         #[arg(long)]
         task_id: String,
     },
-}
-
-/// Short label for a node kind, used in served-node headers.
-const fn kind_label(kind: NodeKind) -> &'static str {
-    match kind {
-        NodeKind::Rollup => "rollup",
-        NodeKind::Intent => "intent",
-        NodeKind::Leaf => "leaf",
-        NodeKind::Source => "source",
-    }
+    /// Print (and re-materialize) the deny-by-default manifest of
+    /// readable source paths.
+    Manifest {
+        /// Task identifier.
+        #[arg(long)]
+        task_id: String,
+    },
 }
 
 /// Wrap a writer error as [`CtxError::Io`].
@@ -95,7 +91,7 @@ fn out_err(e: &std::io::Error) -> CtxError {
 /// Render a `read` response: a header then body per served node.
 fn render_read<W: Write>(resp: &enforce::ReadResponse, out: &mut W) -> Result<(), CtxError> {
     for node in &resp.nodes {
-        writeln!(out, "=== {} [{}] ===", node.id, kind_label(node.kind))
+        writeln!(out, "=== {} [{}] ===", node.id, node.kind.label())
             .and_then(|()| writeln!(out, "{}", node.body))
             .map_err(|e| out_err(&e))?;
     }
@@ -162,6 +158,12 @@ fn cmd_end<E: Env, W: Write>(env: &E, task_id: &str, out: &mut W) -> Result<(), 
     .map_err(|e| out_err(&e))
 }
 
+/// Handle `manifest`.
+fn cmd_manifest<E: Env, W: Write>(env: &E, task_id: &str, out: &mut W) -> Result<(), CtxError> {
+    let text = crate::manifest::build(env, task_id)?;
+    write!(out, "{text}").map_err(|e| out_err(&e))
+}
+
 /// Execute the parsed command against `env`, rendering to `out`.
 ///
 /// # Errors
@@ -182,5 +184,6 @@ pub fn dispatch<E: Env, W: Write>(env: &E, cli: Cli, out: &mut W) -> Result<(), 
         } => cmd_write(env, &task_id, &path, &content, out),
         Command::List { path, task_id } => cmd_list(env, &task_id, &path, out),
         Command::EndTask { task_id } => cmd_end(env, &task_id, out),
+        Command::Manifest { task_id } => cmd_manifest(env, &task_id, out),
     }
 }

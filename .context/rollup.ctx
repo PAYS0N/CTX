@@ -1,0 +1,7 @@
+directory: .
+summary: Root of the agent-toolchain workspace. Exposes three independently deployable binaries — `ctx-access`, `ctx-check`, and `ctx-summarize` — backed by narrow library crates. This is the top-level composition point; all agent-facing contracts originate here.
+children:
+  - crates: Houses all three crate pairs (binary + library) that constitute the full agent toolchain.
+key_invariants:
+  - All agent interaction with source files, verification, and summarization flows through the binaries defined in this workspace.
+  - No cross-crate dependencies within the workspace; each crate is independently deployable.

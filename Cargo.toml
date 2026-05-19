@@ -7,8 +7,9 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/ctx-core",
     "crates/ctx-access",
-    "crates/ctx-check",
+    "crates/ctx-verify",
     "crates/ctx-summarize",
 ]
 

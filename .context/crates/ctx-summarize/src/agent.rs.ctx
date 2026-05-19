@@ -1,0 +1,17 @@
+file: crates/ctx-summarize/src/agent.rs
+purpose: Defines the `Agent` trait and a `SubprocessAgent` implementation that sends `{"system","user"}` JSON to a shell command via stdin and returns its stdout as the completion.
+invariants:
+  - Returns `SummError::Agent` on non-zero exit, spawn failure, or empty stdout.
+  - Returns `SummError::NoAgentCommand` if `CTX_AGENT_CMD` is unset or whitespace-only.
+external_deps:
+  - serde_json: serializes the `Payload` struct to bytes for stdin.
+functions:
+  - name: SubprocessAgent::new
+    signature: pub const fn new(command: String) -> Self
+    purpose: Constructs a `SubprocessAgent` from an explicit command string.
+  - name: SubprocessAgent::from_env
+    signature: pub fn from_env() -> Result<Self, SummError>
+    purpose: Constructs a `SubprocessAgent` from the `CTX_AGENT_CMD` environment variable.
+  - name: complete
+    signature: fn complete(&self, system: &str, user: &str) -> Result<String, SummError>
+    purpose: Serializes the prompt payload, spawns the configured shell command, feeds it via stdin, and returns trimmed stdout.

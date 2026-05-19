@@ -20,6 +20,10 @@ number of lines that preserves that contract.
 
 ## Output format (strict)
 
+Emit exactly this structure. No prose before or after. No code fences. No
+markdown headings. The fenced block below shows the shape only — do not
+emit the backtick fences themselves.
+
 ```
 directory: <DIR_PATH>
 summary: <TWO_TO_FIVE_SENTENCES>

@@ -54,6 +54,12 @@ fn summarize_leaf<F: Fs, A: Agent>(
     src: &str,
 ) -> Result<String, SummError> {
     cpath::validate_rel(src)?;
+    if let Some(reason) = ctx_core::access::deny_reason(src, fs.is_ignored(src)?) {
+        return Err(SummError::AccessDenied {
+            path: src.to_owned(),
+            reason: reason.to_owned(),
+        });
+    }
     let contents = fs.read(src)?;
     let user = format!("SOURCE_PATH: {src}\n\n{contents}");
     let output = agent.complete(&prompts.leaf, &user)?;
@@ -156,6 +162,26 @@ fn depth(dir: &str) -> usize {
     } else {
         dir.split('/').count()
     }
+}
+
+/// Targets a run may touch before requiring explicit `--approve`.
+/// Guards against an accidental whole-repo (cost/blast-radius) run.
+pub const MAX_TARGETS: usize = 50;
+
+/// Gate an over-large run unless explicitly approved.
+///
+/// # Errors
+///
+/// [`SummError::ScopeTooLarge`] if `count` exceeds [`MAX_TARGETS`] and
+/// `approve` is false.
+pub const fn scope_check(count: usize, approve: bool) -> Result<(), SummError> {
+    if count > MAX_TARGETS && !approve {
+        return Err(SummError::ScopeTooLarge {
+            count,
+            max: MAX_TARGETS,
+        });
+    }
+    Ok(())
 }
 
 /// Run the full leaf-up summarization over `targets`.

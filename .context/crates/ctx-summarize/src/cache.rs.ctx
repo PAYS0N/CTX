@@ -1,0 +1,10 @@
+file: crates/ctx-summarize/src/cache.rs
+purpose: Reads `paths_written` from a per-task JSON cache file at `.context/.cache/<task-id>.json`.
+invariants:
+  - Returns `Err(SummError::CacheRead)` for any task_id containing characters outside `[A-Za-z0-9._-]` or that is empty.
+external_deps:
+  - serde_json: deserializes the cache JSON file.
+functions:
+  - name: paths_from_cache
+    signature: pub fn paths_from_cache<F: Fs>(fs: &F, task_id: &str) -> Result<Vec<String>, SummError>
+    purpose: Validates the task ID, reads the cache file, and returns the list of repo-relative paths written during the task.

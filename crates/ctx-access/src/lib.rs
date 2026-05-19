@@ -7,11 +7,13 @@
 //! knows about the process boundary, so the future `ctx-broker` split is a
 //! transport swap rather than a rewrite.
 
+pub mod access;
 pub mod cache;
 pub mod chain;
 pub mod cli;
 pub mod enforce;
 pub mod env;
 pub mod error;
+pub mod manifest;
 pub mod repo_path;
 pub mod report;

@@ -1,0 +1,17 @@
+directory: crates/ctx-summarize/src
+summary: Implements the `ctx-summarize` binary and library: given a set of repo-relative source paths (from CLI args or a task cache), it generates `.ctx` leaf summaries and `rollup.ctx` directory summaries by invoking an external LLM agent subprocess. The public contract is `run()` for programmatic use and `dispatch()` for CLI-driven use, both parameterized over abstract `Fs` and `Agent` traits to allow in-process testing.
+children:
+  - main.rs: Binary entry point wiring StdFs, SubprocessAgent, and CLI dispatch with exit-code conventions.
+  - cli.rs: Argument parsing and top-level dispatch; bridges CLI inputs to `runner::run`.
+  - runner.rs: Core orchestration — leaf `.ctx` then deepest-first `rollup.ctx` generation.
+  - agent.rs: LLM agent abstraction; `SubprocessAgent` drives an external command via stdin/stdout JSON.
+  - fs.rs: Filesystem abstraction; `StdFs` roots I/O at a base path for testability.
+  - cache.rs: Resolves target paths from a per-task JSON cache file.
+  - cpath.rs: Path validation and `.context`-mirror path computation used throughout the crate.
+  - error.rs: Typed error enum covering all failure modes across the subtree.
+  - lib.rs: Crate root; declares submodules and documents top-level invariants.
+key_invariants:
+  - `intent.md` is read as prompt context but never written by any code path.
+  - All filesystem errors surface as `SummError::Io`; all agent failures as `SummError::Agent`.
+  - Rollup directories are always processed deepest-first, repo root last.
+  - Prompt content is loaded from `prompts/` at runtime, not compiled in.

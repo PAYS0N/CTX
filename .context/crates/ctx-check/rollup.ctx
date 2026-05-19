@@ -1,0 +1,9 @@
+directory: crates/ctx-check
+summary: The `ctx-check` crate is a standalone verification broker binary and library. It runs cargo/clippy/fmt/script checks against a workspace, parses tool output into capped `Diagnostic` lists, and emits a single JSON `Report` with per-check pass/fail/skip status. The public surface is `run`, `Cli`, `ProcRunner`, and the report model types.
+children:
+  - src: Full implementation — CLI, check registry, process runner, parsers, report model, and error types.
+key_invariants:
+  - Diagnostic lists are capped; truncation count is preserved so callers know data was dropped.
+  - `Report::status` is `Fail` iff at least one non-skipped check failed; skipped checks do not affect overall status.
+  - `ToolMissing` produces a skipped entry; other spawn errors produce a bare-failed entry.
+  - All parsers return empty `Vec` on unrecognized input and never panic.

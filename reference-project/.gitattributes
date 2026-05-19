@@ -1,9 +1,0 @@
-# Generated context files use a custom merge driver. On conflict, the
-# correct resolution is to regenerate from current source via
-# `ctx-resummarize <path>`, not to manually merge prose.
-#
-# The `ctx-regenerate` driver itself is NOT implemented at MVP. Until it is,
-# merge conflicts in these paths must be resolved manually by running
-# `ctx-resummarize`.
-.context/**/*.ctx       merge=ctx-regenerate
-.context/**/rollup.ctx  merge=ctx-regenerate

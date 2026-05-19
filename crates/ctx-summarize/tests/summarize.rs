@@ -73,6 +73,10 @@ impl Fs for FakeFs {
         names.sort();
         Ok(names)
     }
+
+    fn is_ignored(&self, _rel: &str) -> Result<bool, SummError> {
+        Ok(false)
+    }
 }
 
 /// Records every `(system, user)` and returns a fixed completion.
@@ -181,4 +185,24 @@ fn subprocess_agent_nonzero_exit_is_error() {
 fn subprocess_agent_empty_output_is_error() {
     let agent = SubprocessAgent::new("true".to_owned());
     assert!(matches!(agent.complete("s", "u"), Err(SummError::Agent(_))));
+}
+
+#[test]
+fn gate_refuses_a_secret_target() {
+    let fs = FakeFs::seeded();
+    let agent = RecordingAgent {
+        calls: RefCell::new(Vec::new()),
+    };
+    let err = runner::run(&fs, &agent, "prompts", &["config/.env".to_owned()]).unwrap_err();
+    assert!(matches!(err, SummError::AccessDenied { .. }));
+}
+
+#[test]
+fn scope_check_gates_oversize_runs_unless_approved() {
+    assert!(runner::scope_check(runner::MAX_TARGETS, false).is_ok());
+    assert!(matches!(
+        runner::scope_check(runner::MAX_TARGETS + 1, false),
+        Err(SummError::ScopeTooLarge { .. })
+    ));
+    assert!(runner::scope_check(runner::MAX_TARGETS + 1, true).is_ok());
 }

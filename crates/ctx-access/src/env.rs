@@ -9,6 +9,7 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::CtxError;
@@ -53,6 +54,23 @@ pub trait Env {
     ///
     /// [`CtxError::Io`] if the system clock is before the Unix epoch.
     fn now_unix(&self) -> Result<u64, CtxError>;
+
+    /// Repo-relative paths git tracks — the manifest's source set
+    /// (gitignored/untracked paths, e.g. `.env`, are absent).
+    ///
+    /// # Errors
+    ///
+    /// [`CtxError::Io`] if the tracked set cannot be determined.
+    fn tracked_files(&self) -> Result<Vec<String>, CtxError>;
+
+    /// Whether `path` is gitignored — the access gate's deny spine
+    /// (catches `.env`, `target/`, caches; a new untracked-but-not-ignored
+    /// source file is NOT ignored and stays accessible).
+    ///
+    /// # Errors
+    ///
+    /// [`CtxError::Io`] if ignore status cannot be determined.
+    fn is_ignored(&self, path: &RepoPath) -> Result<bool, CtxError>;
 }
 
 /// Real implementation rooted at an absolute repository path.
@@ -134,5 +152,50 @@ impl Env for StdEnv {
                 path: "<clock>".to_owned(),
                 detail: e.to_string(),
             })
+    }
+
+    fn tracked_files(&self) -> Result<Vec<String>, CtxError> {
+        let git = |d: String| CtxError::Io {
+            path: "<git>".to_owned(),
+            detail: d,
+        };
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&self.base)
+            .args(["ls-files", "-z"])
+            .output()
+            .map_err(|e| git(e.to_string()))?;
+        if !out.status.success() {
+            return Err(git(String::from_utf8_lossy(&out.stderr).into_owned()));
+        }
+        Ok(out
+            .stdout
+            .split(|b| *b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect())
+    }
+
+    fn is_ignored(&self, path: &RepoPath) -> Result<bool, CtxError> {
+        let rel = path.as_string();
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&self.base)
+            .args(["check-ignore", "-q", "--"])
+            .arg(&rel)
+            .status()
+            .map_err(|e| CtxError::Io {
+                path: "<git>".to_owned(),
+                detail: e.to_string(),
+            })?;
+        // git check-ignore: 0 = ignored, 1 = not ignored, >1 = error.
+        match status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            other => Err(CtxError::Io {
+                path: rel,
+                detail: format!("git check-ignore exit {other:?}"),
+            }),
+        }
     }
 }

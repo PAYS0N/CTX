@@ -4,6 +4,9 @@
 //! hermetic and assert the protocol (chain order, prefix caching, shallow
 //! stop, stale banner, write-needs-read, list-needs-rollup, lifecycle).
 
+// rationale: integration scenario file; many small hermetic tests
+// naturally accrete past the 250-line soft tier.
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -92,6 +95,14 @@ impl Env for FakeEnv {
 
     fn now_unix(&self) -> Result<u64, CtxError> {
         Ok(1_700_000_000)
+    }
+
+    fn tracked_files(&self) -> Result<Vec<String>, CtxError> {
+        Ok(self.files.borrow().keys().cloned().collect())
+    }
+
+    fn is_ignored(&self, _path: &RepoPath) -> Result<bool, CtxError> {
+        Ok(false)
     }
 }
 
@@ -229,4 +240,22 @@ fn end_task_writes_report_and_clears_cache() {
     // Cache gone: any further per-request command fails as uninitialized.
     let after = enforce::read(&env, TASK, "crates/foo/bar.rs", false);
     assert!(matches!(after, Err(CtxError::TaskMissing(_))));
+}
+
+#[test]
+fn gate_refuses_secret_even_if_requested() {
+    let env = FakeEnv::seeded();
+    enforce::init_task(&env, TASK, false).expect("init");
+    let r = enforce::read(&env, TASK, "secrets/.env", false);
+    assert!(matches!(r, Err(CtxError::AccessDenied { .. })));
+}
+
+#[test]
+fn init_task_materializes_manifest() {
+    let env = FakeEnv::seeded();
+    enforce::init_task(&env, TASK, false).expect("init");
+    let mpath = RepoPath::parse(".context/.manifest").expect("mp");
+    assert!(env.exists(&mpath));
+    let text = String::from_utf8(env.read(&mpath).expect("read")).expect("utf8");
+    assert!(text.contains("crates/foo/bar.rs --task-id task-1"));
 }

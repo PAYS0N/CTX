@@ -21,6 +21,19 @@ pub enum NodeKind {
     Source,
 }
 
+impl NodeKind {
+    /// Short label, used in served-node headers and absent markers.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Rollup => "rollup",
+            Self::Intent => "intent",
+            Self::Leaf => "leaf",
+            Self::Source => "source",
+        }
+    }
+}
+
 /// One ordered step of a read chain.
 #[derive(Debug, Clone)]
 pub struct ChainNode {

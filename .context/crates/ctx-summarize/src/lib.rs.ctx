@@ -1,0 +1,7 @@
+file: crates/ctx-summarize/src/lib.rs
+purpose: Root of the ctx-summarize crate; declares public submodules for the leaf-up context-tree summarization runner.
+invariants:
+  - `intent.md` is never written by this crate.
+  - Prompt content is loaded from `prompts/` at runtime, not embedded.
+external_deps:
+functions:

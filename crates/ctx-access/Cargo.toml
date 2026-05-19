@@ -17,6 +17,7 @@ name = "ctx_access"
 path = "src/lib.rs"
 
 [dependencies]
+ctx-core = { path = "../ctx-core" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

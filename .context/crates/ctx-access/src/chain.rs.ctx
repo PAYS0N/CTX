@@ -1,0 +1,13 @@
+file: crates/ctx-access/src/chain.rs
+purpose: Builds the ordered sequence of context nodes (rollup, intent, leaf, source) from repo root to a target source file, per the spec's chain ordering rules.
+invariants:
+  - Chain order: for each ancestor dir top-down, rollup.ctx then intent.md; then leaf <file>.ctx; then the source file itself.
+  - Returns CtxError::PathEscape if target has no file-name component.
+external_deps:
+functions:
+  - name: context_dir
+    signature: pub fn context_dir(dir: &RepoPath) -> RepoPath
+    purpose: Returns the `.context`-mirrored directory path for a given repo directory.
+  - name: build
+    signature: pub fn build(target: &RepoPath) -> Result<Vec<ChainNode>, CtxError>
+    purpose: Computes the full ordered chain of ChainNodes for a target source file path.

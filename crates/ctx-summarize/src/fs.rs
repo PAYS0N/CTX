@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 use crate::error::SummError;
 
@@ -31,6 +32,13 @@ pub trait Fs {
     ///
     /// [`SummError::Io`] if the directory exists but cannot be listed.
     fn list_dir(&self, rel: &str) -> Result<Vec<String>, SummError>;
+
+    /// Whether `rel` is gitignored — the access gate's deny spine.
+    ///
+    /// # Errors
+    ///
+    /// [`SummError::Io`] if ignore status cannot be determined.
+    fn is_ignored(&self, rel: &str) -> Result<bool, SummError>;
 }
 
 /// Real filesystem rooted at an absolute repository path.
@@ -104,5 +112,27 @@ impl Fs for StdFs {
         }
         names.sort();
         Ok(names)
+    }
+
+    fn is_ignored(&self, rel: &str) -> Result<bool, SummError> {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&self.base)
+            .args(["check-ignore", "-q", "--"])
+            .arg(rel)
+            .status()
+            .map_err(|e| SummError::Io {
+                path: "<git>".to_owned(),
+                detail: e.to_string(),
+            })?;
+        // git check-ignore: 0 = ignored, 1 = not ignored, >1 = error.
+        match status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            other => Err(SummError::Io {
+                path: rel.to_owned(),
+                detail: format!("git check-ignore exit {other:?}"),
+            }),
+        }
     }
 }

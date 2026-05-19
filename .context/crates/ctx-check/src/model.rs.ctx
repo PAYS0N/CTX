@@ -1,0 +1,21 @@
+file: crates/ctx-check/src/model.rs
+purpose: Defines the JSON report schema for a multi-tool check run: a top-level `Report` with per-check `CheckReport` entries, each capped to a fixed diagnostic budget for deterministic token cost.
+invariants:
+  - `CheckReport` serializes `count`/`diagnostics`/`truncated` only when `status == Fail`; passing/skipped checks emit only `status`.
+  - `Report::status` is `Fail` iff at least one non-skipped check has `status == Fail`.
+  - `diagnostics.len() <= max` after `build()`; `truncated == count.saturating_sub(max)`.
+external_deps:
+  - serde: custom `Serialize` impl on `CheckReport` to suppress fields on non-failing checks.
+functions:
+  - name: CheckReport::skipped
+    signature: pub const fn skipped() -> Self
+    purpose: Constructs a `Skipped` report with zero diagnostics.
+  - name: CheckReport::failed_bare
+    signature: pub const fn failed_bare() -> Self
+    purpose: Constructs a `Fail` report with no parsable diagnostics (e.g. spawn error).
+  - name: CheckReport::build
+    signature: pub fn build(cmd_ok: bool, mut diagnostics: Vec<Diagnostic>, max: usize) -> Self
+    purpose: Builds a report from command success and parsed diagnostics, capping the list to `max` and recording truncation count.
+  - name: Report::new
+    signature: pub fn new(checks: BTreeMap<String, CheckReport>) -> Self
+    purpose: Assembles the top-level report, deriving overall status from the per-check map.

@@ -3,15 +3,16 @@
 
 MVP placeholder for dylint rule 1. See docs/DYLINT_RULES.md.
 
-Rules
+Rules (refactor first; rationale is the backup, not the fix)
 -----
-- Functions of 30+ lines (`SOFT_FN_LINES`) must have `// rationale: <text>`
-  on the line immediately preceding the `fn` keyword. Attributes (`#[...]`)
-  and blank lines between the comment and `fn` are allowed.
+- Functions of 30+ lines (`SOFT_FN_LINES`) should be reduced under the
+  tier by extraction/splitting. Only if genuinely irreducible, a
+  `// rationale: <text>` on the line immediately preceding the `fn`
+  keyword clears it (attributes/blank lines between are allowed).
 - Functions of 80+ lines (`HARD_FN_LINES`) fail unconditionally.
-- Files of 250+ lines (`SOFT_FILE_LINES`) must begin with
-  `// rationale: <text>`. A leading `//!` doc-comment block is allowed
-  above it.
+- Files of 250+ lines (`SOFT_FILE_LINES`) should be split into modules.
+  Only if genuinely cohesive and irreducible, a leading `// rationale:
+  <text>` (after any `//!` block) clears it.
 - Files of 400+ lines (`HARD_FILE_LINES`) fail unconditionally.
 
 This is intentionally conservative. The eventual dylint rule will use the
@@ -153,7 +154,8 @@ def check_file(path: Path) -> list[str]:
     elif total >= SOFT_FILE_LINES and not file_has_rationale_at_top(lines):
         failures.append(
             f"FAIL: {path} has {total} lines (>= {SOFT_FILE_LINES}); "
-            f"needs '// rationale:' at top"
+            f"split into modules to get under {SOFT_FILE_LINES}. Only if "
+            f"genuinely cohesive and irreducible, add '// rationale:' at top"
         )
 
     for idx, line in enumerate(lines):
@@ -173,7 +175,9 @@ def check_file(path: Path) -> list[str]:
         elif fn_lines >= SOFT_FN_LINES and not has_rationale_before(lines, idx):
             failures.append(
                 f"FAIL: {path}:{idx + 1} function spans {fn_lines} lines "
-                f"(>= {SOFT_FN_LINES}); needs '// rationale:' comment"
+                f"(>= {SOFT_FN_LINES}); extract a helper or split to get "
+                f"under {SOFT_FN_LINES}. Only if genuinely irreducible, add "
+                f"a single-line '// rationale:' directly above it"
             )
     return failures
 

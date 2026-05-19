@@ -1,0 +1,23 @@
+[package]
+name = "ctx-verify"
+version = "0.1.0"
+edition = "2021"
+description = "Token-frugal verification broker: runs the checks, returns one capped JSON report."
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ctx-verify"
+path = "src/main.rs"
+
+[lib]
+name = "ctx_verify"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"

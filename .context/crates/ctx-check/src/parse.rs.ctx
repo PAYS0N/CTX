@@ -1,0 +1,18 @@
+file: crates/ctx-check/src/parse.rs
+purpose: Converts raw stdout from rustc/clippy JSON, bash/python check scripts, and `cargo fmt --check` into deduplicated `Diagnostic` values.
+invariants:
+  - `parse_compiler_json` skips non-`compiler-message` JSON lines and drops exact duplicates (same file, line, lint, message).
+  - `parse_fmt` emits at most one diagnostic per file regardless of how many diff hunks appear.
+  - All parsers return an empty `Vec` on empty or fully non-matching input; they never panic.
+external_deps:
+  - serde_json: deserializes rustc `--message-format=json` lines into `Value` for field extraction.
+functions:
+  - name: parse_compiler_json
+    signature: pub fn parse_compiler_json(stdout: &str) -> Vec<Diagnostic>
+    purpose: Parses `cargo --message-format=json` stdout (clippy/rustdoc) into deduplicated error/warning diagnostics.
+  - name: parse_fail_lines
+    signature: pub fn parse_fail_lines(text: &str) -> Vec<Diagnostic>
+    purpose: Extracts `FAIL: <path:line> …` lines from bash/python script output into diagnostics with lint `"script"`.
+  - name: parse_fmt
+    signature: pub fn parse_fmt(stdout: &str) -> Vec<Diagnostic>
+    purpose: Converts `Diff in <path>:…` lines from `cargo fmt --check` into one per-file `"rustfmt"` diagnostic.

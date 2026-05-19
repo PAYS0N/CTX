@@ -1,0 +1,5 @@
+file: crates/ctx-check/src/lib.rs
+purpose: Re-exports the public module tree for ctx-check, a verification broker that runs cargo/clippy/script checks and returns a capped JSON report.
+invariants:
+external_deps:
+functions:

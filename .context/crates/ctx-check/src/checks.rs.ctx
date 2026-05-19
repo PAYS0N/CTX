@@ -1,0 +1,10 @@
+file: crates/ctx-check/src/checks.rs
+purpose: Defines the static set of checks (clippy, doc, fmt, rationale, workspace_lints, no_allow), runs each via a `Runner`, and assembles results into a `Report`.
+invariants:
+  - Report keys are sorted (BTreeMap).
+  - `ToolMissing` errors produce a skipped report; other errors produce a bare-failed report.
+external_deps:
+functions:
+  - name: run_selected
+    signature: pub fn run_selected<R: Runner>(runner: &R, max: usize, only: Option<&[String]>) -> Report
+    purpose: Runs all checks (or a named subset) and returns a Report with one CheckReport per selected spec.

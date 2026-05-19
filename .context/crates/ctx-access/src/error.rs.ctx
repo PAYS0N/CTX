@@ -1,0 +1,7 @@
+file: crates/ctx-access/src/error.rs
+purpose: Defines the exhaustive typed error enum `CtxError` for all ctx-access failure modes.
+invariants:
+  - Every variant carries enough context (path, task id, or detail string) to produce a human-readable message without additional state.
+external_deps:
+  - thiserror: derives `std::error::Error` and `Display` from `#[error(...)]` attributes.
+functions:

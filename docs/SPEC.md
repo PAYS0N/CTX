@@ -16,7 +16,7 @@ seconds (not RFC3339); `--shallow` serves through the leaf and stops
 before source; `write` evicts the path's leaf+source from `served_nodes`
 so the stale banner is reachable; `clippy.toml` gains
 `allow-unwrap/expect-in-tests` (the only mechanism for the spec's test
-exemption given `#[allow]` is banned). New component `ctx-check` (a
+exemption given `#[allow]` is banned). New component `ctx-verify` (a
 token-frugal verification broker) is sequenced BEFORE the reference
 project; see `docs/UNIMPLEMENTED.md`.
 
@@ -212,7 +212,12 @@ gitignored and uniquely keyed by task id. `init-task --force` reclaims one.
   source. `--shallow` serves the unserved chain nodes up to and including
   the target's leaf `<file>.ctx` but stops before source, for
   explore-without-edit. There is one tool call per `read`, not one per
-  chain node.
+  chain node. Context scaffolding is sparse by nature (`intent.md` is
+  owner-authored, not one-per-directory; a `rollup.ctx`/leaf may not
+  exist yet): a missing `rollup.ctx`/`intent.md`/leaf is served as an
+  explicit one-line `(absent: no <kind> at this level)` marker so every
+  chain level is still surfaced and counts as served. A missing **source**
+  file is the only hard error (`MissingNode`).
 - `ctx-access write <path> <content> --task-id <id>` — requires that a
   non-`--shallow` `read` of the same `<path>` succeeded earlier in the same
   task (i.e. its full chain incl. source is in `served_nodes`). Appends
@@ -340,4 +345,4 @@ Hard design constraints (these are what make it a valid system test):
   pure; expect the dependency policy (`cargo-deny` `multiple-versions`,
   license allowlist) to require deliberate widening — that signal is
   wanted, since `deny.toml` is otherwise untested.
-- Built and verified exclusively through `ctx-access` and `ctx-check`.
+- Built and verified exclusively through `ctx-access` and `ctx-verify`.

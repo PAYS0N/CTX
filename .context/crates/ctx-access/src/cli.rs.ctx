@@ -1,0 +1,10 @@
+file: crates/ctx-access/src/cli.rs
+purpose: Parses CLI arguments via clap and dispatches to `crate::enforce` calls, rendering results to an injected writer.
+invariants:
+  - Never writes to stdout directly; all output goes through the injected `W: Write` parameter.
+external_deps:
+  - clap: argument parsing and subcommand dispatch.
+functions:
+  - name: dispatch
+    signature: pub fn dispatch<E: Env, W: Write>(env: &E, cli: Cli, out: &mut W) -> Result<(), CtxError>
+    purpose: Routes a parsed `Cli` command to the appropriate enforce call and renders the result.

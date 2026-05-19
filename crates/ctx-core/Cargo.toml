@@ -1,0 +1,15 @@
+[package]
+name = "ctx-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared, dependency-free primitives. Single source of truth for the security-sensitive access gate (secret/binary/gitignored deny)."
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "ctx_core"
+path = "src/lib.rs"
+
+[dependencies]

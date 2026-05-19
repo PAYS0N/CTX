@@ -1,0 +1,7 @@
+file: crates/ctx-summarize/src/error.rs
+purpose: Defines the typed error enum for the summarization runner, covering path validation, prompt access, caching, agent execution, and I/O failures.
+invariants:
+  - All variants implement `std::error::Error` via `thiserror`.
+external_deps:
+  - thiserror: derive-based `Error` impl generation.
+functions:

@@ -1,0 +1,14 @@
+file: crates/ctx-summarize/src/runner.rs
+purpose: Orchestrates leaf-then-rollup summarization over an abstract `Fs` and `Agent`. Processes each target source file into a `.ctx` leaf, then walks affected directories deepest-first to produce `rollup.ctx` files.
+invariants:
+  - Rollup directories are ordered deepest-first, repo root last; root is always last when any target is present.
+  - `intent.md` is read as context but never written.
+external_deps:
+  - serde: serializes `Summary` for caller consumption.
+functions:
+  - name: load_prompts
+    signature: pub fn load_prompts<F: Fs>(fs: &F, prompts_dir: &str) -> Result<Prompts, SummError>
+    purpose: Reads `summarizer-leaf.md` and `summarizer-rollup.md` from `prompts_dir` into a `Prompts` struct.
+  - name: run
+    signature: pub fn run<F: Fs, A: Agent>(fs: &F, agent: &A, prompts_dir: &str, targets: &[String]) -> Result<Summary, SummError>
+    purpose: Executes the full summarization pass: leaf `.ctx` for each target, then `rollup.ctx` for each affected directory leaf-up.

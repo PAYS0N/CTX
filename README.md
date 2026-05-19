@@ -16,8 +16,13 @@ template/         # cargo workspace template — copy this to start a new projec
 prompts/          # agent prompts as plain files, decoupled from code
 scripts/          # CI and pre-commit scripts (bash, no Rust dep)
 docs/             # spec and unimplemented list
-reference-project/  # placeholder for the reference project (config validator)
+agents/           # model-specific agent adapters (CTX_AGENT_CMD targets)
 ```
+
+The reference project (a real consumer of the system) lives OUTSIDE this
+repo at `../meal-planning/` — a standalone template-instantiated workspace
+(the CLI meal planner), kept separate so the sandbox can cleanly isolate
+its source. See `../meal-planning/README.md`.
 
 ## Quickstart (once implemented)
 

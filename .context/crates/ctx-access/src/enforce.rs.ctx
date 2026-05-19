@@ -1,0 +1,24 @@
+file: crates/ctx-access/src/enforce.rs
+purpose: Pure enforcement core implementing init-task, read, write, list, and end-task operations over an injected Env. No I/O, process, or network access occurs here directly.
+invariants:
+  - write() requires the target source to have been served (non-shallow read) this task; returns WriteWithoutRead otherwise.
+  - list() requires the directory's rollup.ctx to have been served; returns ListWithoutRollup otherwise.
+  - Stale banner is prepended to non-Source nodes when the target path was written this task.
+external_deps:
+  - serde_json: serializes EndReport to pretty JSON for the report file.
+functions:
+  - name: init_task
+    signature: pub fn init_task<E: Env>(env: &E, task_id: &str, force: bool) -> Result<(), CtxError>
+    purpose: Creates a fresh TaskCache for the given task id, optionally overwriting an existing one.
+  - name: read
+    signature: pub fn read<E: Env>(env: &E, task_id: &str, target: &str, shallow: bool) -> Result<ReadResponse, CtxError>
+    purpose: Serves unserved nodes from target's chain, skipping Source nodes when shallow, prepending stale banners if target was already written this task.
+  - name: write
+    signature: pub fn write<E: Env>(env: &E, task_id: &str, target: &str, content: &[u8]) -> Result<(), CtxError>
+    purpose: Writes content to target, marks it written, and evicts its leaf/source ids from the served set.
+  - name: list
+    signature: pub fn list<E: Env>(env: &E, task_id: &str, dir: &str) -> Result<Vec<String>, CtxError>
+    purpose: Returns directory entries for dir after verifying its rollup.ctx was served this task.
+  - name: end_task
+    signature: pub fn end_task<E: Env, S: Summarizer>(env: &E, task_id: &str, summarizer: &S) -> Result<EndReport, CtxError>
+    purpose: Runs the summarizer audit, writes a JSON report, and deletes the task cache.

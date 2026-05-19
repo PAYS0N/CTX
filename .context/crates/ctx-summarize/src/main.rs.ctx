@@ -1,0 +1,17 @@
+file: crates/ctx-summarize/src/main.rs
+purpose: Binary entry point that wires together StdFs, SubprocessAgent, and CLI dispatch, routing output to stdout and errors to stderr.
+invariants:
+  - Exit code 2 for setup failures (cwd, agent init); exit code 1 for dispatch errors.
+external_deps:
+  - clap: CLI argument parsing via derived Parser.
+  - ctx_summarize: provides SubprocessAgent, StdFs, Cli, and dispatch.
+functions:
+  - name: emit
+    signature: fn emit<W: Write>(mut w: W, msg: &str)
+    purpose: Writes a line to the given writer, silently ignoring write errors.
+  - name: fail
+    signature: fn fail(msg: &str, code: u8) -> ExitCode
+    purpose: Emits an error message to stderr and returns the specified exit code.
+  - name: main
+    signature: fn main() -> ExitCode
+    purpose: Parses CLI args, constructs StdFs and SubprocessAgent, then runs dispatch with stdout as the output sink.

@@ -1,0 +1,18 @@
+directory: crates/ctx-access/src
+summary: Implements the ctx-access binary and library: a gated, audited access path through which agents read and write source files. The public contract is `enforce.rs`'s five operations (init-task, read, write, list, end-task), backed by a filesystem+clock seam (`Env`), a per-task cache, and a chain-ordering rule that determines which context nodes precede any source file.
+children:
+  - lib.rs: Crate root; establishes module visibility layering (cli → enforce → env).
+  - main.rs: Binary entry point; maps argv and cwd to library calls and process exit codes.
+  - cli.rs: Clap-based argument parsing and dispatch layer between the binary and enforce.
+  - enforce.rs: The five enforcement operations; all access-control and stale-banner logic lives here.
+  - env.rs: `Env` trait (filesystem+clock seam) and `StdEnv` (real implementation).
+  - cache.rs: Per-task served/written tracking, persisted to `.context/.cache/<task-id>.json`.
+  - chain.rs: Computes the ordered rollup→intent→leaf→source node sequence for a target file.
+  - repo_path.rs: Validated repo-relative path type; the trust boundary for all path inputs.
+  - error.rs: Exhaustive typed error enum covering all failure modes.
+  - report.rs: Audit report data model, `Summarizer` trait, and report-file path helper.
+key_invariants:
+  - No path can escape the repository root; `RepoPath::parse` is the sole entry point for untrusted path strings.
+  - write() is gated on a prior non-shallow read of the same target this task.
+  - list() is gated on the directory's rollup.ctx having been served this task.
+  - All output from the binary flows through injected writers; no direct stdout/stderr calls.

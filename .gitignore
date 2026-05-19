@@ -2,6 +2,10 @@ target/
 **/*.rs.bk
 Cargo.lock.bak
 
+# Secrets. `.env` holds ANTHROPIC_API_KEY for the agent adapter; never
+# commit it. `.env.example` is the committed, keyless template.
+.env
+
 # Per-task cache and reports. Generated context files (rollup.ctx, *.ctx,
 # intent.md) ARE committed.
 .context/.cache/

@@ -108,7 +108,7 @@ built at MVP is the `ctx-access` internal seam that makes the later broker
 split a transport swap rather than a rewrite.
 
 **Summarization-agent runner — DONE.** `crates/ctx-summarize` (lib+bin,
-dogfooded through `ctx-check`, 6 tests incl. real-subprocess agent):
+dogfooded through `ctx-verify`, 6 tests incl. real-subprocess agent):
 
 - `from-cache --task-id` reads `paths_written` from the task cache;
   `paths <p>...` takes explicit targets.
@@ -178,11 +178,18 @@ place to add this without a redesign.
 
 ### Reference project
 
-**The reference project itself (M).** `reference-project/` is a placeholder
-directory. The intent is a CLI config validator/pretty-printer for a
-non-trivial format (e.g., a TOML-superset with schema validation). Building
-it end-to-end under the lint rules is the main MVP smoke test and will
-surface what is intolerable in the rule set before broader use.
+**The reference project — DONE.** Relocated OUT of this repo to
+`../meal-planning/` (standalone, so the sandbox can isolate its source).
+A template-instantiated cargo workspace with `crates/mealplan` (a CLI meal
+planner; integer/fixed-point nutrition math, LLM behind a trait seam).
+Built end-to-end under the full regime: `ctx-verify` PASS on all six gates,
+13 hermetic tests, offline CLI verified (every day scores 0 — exact
+WHO/FAO band fit), and `ctx-summarize` generated the mirrored `.context`
+tree (loop closed). Findings — including the headline result that the
+`float_arithmetic` ban is *not* intolerable for a real numeric domain —
+are recorded in `../meal-planning/README.md` § Findings. Open items
+(real chain-read latency, summary usability) need a real-`CTX_AGENT_CMD`
+agent loop, not the build itself.
 
 ### Prompt deployment
 
@@ -206,8 +213,8 @@ across multiple real projects becomes painful.
 
 1. ~~Smoke-test the lint config~~ — DONE (Phase 0; toolchain 1.95.0).
 2. ~~Build `ctx-access` CLI~~ — DONE (Phase 1; dogfooded).
-3. ~~Build `ctx-check`~~ — DONE. Token-frugal verification broker
-   (`crates/ctx-check`): wraps clippy/doc/fmt/rationale/workspace_lints/
+3. ~~Build `ctx-verify`~~ — DONE. Token-frugal verification broker
+   (`crates/ctx-verify`): wraps clippy/doc/fmt/rationale/workspace_lints/
    no_allow via a `Runner` seam, parses structured + `FAIL:`-line output,
    returns one capped JSON report (audit-report schema family); missing
    tools => `skipped`, not `fail`. Dogfooded (full workspace verifies as
@@ -225,9 +232,9 @@ across multiple real projects becomes painful.
    tested; the live Anthropic HTTP call is exercised by the reference
    project (cannot be smoke-tested without billing). Hard prerequisite
    for step 5 — the reference-project loop needs a real agent.
-5. Build the reference project under the full toolchain via `ctx-access`,
-   verifying each step through `ctx-check`. Iterate on prompts and lint
-   thresholds as pain surfaces.
+5. ~~Build the reference project~~ — DONE (`../meal-planning/`,
+   `crates/mealplan`). ctx-verify PASS, 13 tests, loop closed; findings in
+   `../meal-planning/README.md` § Findings.
 6. Build `ctx-audit`.
 7. Custom dylint crate (rules in priority order from `DYLINT_RULES.md`).
 8. Deployment-layer sandbox.

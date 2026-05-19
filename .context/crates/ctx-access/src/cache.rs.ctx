@@ -1,0 +1,39 @@
+file: crates/ctx-access/src/cache.rs
+purpose: Defines the per-task cache document (`TaskCache`) stored at `.context/.cache/<task-id>.json`, tracking which context nodes and source paths have been served or written during a task.
+invariants:
+  - `served_nodes` and `paths_written` are order-stable, deduplicated lists; `mark_served`/`mark_written` are idempotent.
+  - `validate_task_id` rejects empty strings and any character outside `[A-Za-z0-9._-]`.
+external_deps:
+  - serde: JSON serialization of `TaskCache` to/from disk.
+  - serde_json: concrete JSON encode/decode for load/save.
+functions:
+  - name: validate_task_id
+    signature: pub fn validate_task_id(task_id: &str) -> Result<(), CtxError>
+    purpose: Rejects task IDs that are empty or contain characters outside `[A-Za-z0-9._-]`.
+  - name: cache_path
+    signature: pub fn cache_path(task_id: &str) -> RepoPath
+    purpose: Returns the repo-relative path for a given task's cache file.
+  - name: TaskCache::new
+    signature: pub const fn new(task_id: String, started_at: u64) -> Self
+    purpose: Constructs a fresh cache with empty served and written sets.
+  - name: TaskCache::has_served
+    signature: pub fn has_served(&self, id: &str) -> bool
+    purpose: Returns true if the node ID has already been served this task.
+  - name: TaskCache::mark_served
+    signature: pub fn mark_served(&mut self, id: String)
+    purpose: Adds a node ID to the served set if not already present.
+  - name: TaskCache::has_written
+    signature: pub fn has_written(&self, path: &str) -> bool
+    purpose: Returns true if the path was written this task.
+  - name: TaskCache::mark_written
+    signature: pub fn mark_written(&mut self, path: String)
+    purpose: Adds a path to the written set if not already present.
+  - name: TaskCache::evict
+    signature: pub fn evict(&mut self, ids: &[String])
+    purpose: Removes the given IDs from the served set, forcing them to be re-served on next read.
+  - name: TaskCache::load
+    signature: pub fn load<E: Env>(env: &E, task_id: &str) -> Result<Self, CtxError>
+    purpose: Reads and deserializes the cache file for the given task ID.
+  - name: TaskCache::save
+    signature: pub fn save<E: Env>(&self, env: &E) -> Result<(), CtxError>
+    purpose: Serializes and writes this cache to its canonical path.

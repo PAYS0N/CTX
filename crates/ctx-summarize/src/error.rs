@@ -20,6 +20,23 @@ pub enum SummError {
     /// The agent subprocess failed, exited non-zero, or produced nothing.
     #[error("agent failed: {0}")]
     Agent(String),
+    /// A target is secret, binary, or gitignored: outside the
+    /// deny-by-default accessible set, even if explicitly requested.
+    #[error("access denied: {path:?} is not summarizable ({reason})")]
+    AccessDenied {
+        /// The repo-relative path that was refused.
+        path: String,
+        /// Why (secret / binary / gitignored).
+        reason: String,
+    },
+    /// More targets than the scope gate allows without explicit approval.
+    #[error("scope too large: {count} targets (> {max}); pass --approve to proceed")]
+    ScopeTooLarge {
+        /// Number of resolved targets.
+        count: usize,
+        /// The unapproved ceiling.
+        max: usize,
+    },
     /// An underlying filesystem operation failed.
     #[error("io error on {path:?}: {detail}")]
     Io {

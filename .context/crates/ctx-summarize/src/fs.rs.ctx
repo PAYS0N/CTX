@@ -1,0 +1,15 @@
+file: crates/ctx-summarize/src/fs.rs
+purpose: Defines the `Fs` trait abstracting filesystem I/O and a `StdFs` implementation rooted at a base path, enabling the runner to be tested against an in-memory fake.
+invariants:
+  - `list_dir` returns an empty `Vec` (not an error) when the path does not exist or is not a directory.
+  - `list_dir` returns entries sorted lexicographically.
+  - `read` decodes bytes as UTF-8 lossy, never failing on non-UTF-8 content.
+  - All error returns use `SummError::Io` with the relative path and OS detail.
+external_deps:
+functions:
+  - name: StdFs::new
+    signature: pub const fn new(base: PathBuf) -> Self
+    purpose: Roots the filesystem at the given absolute path.
+  - name: StdFs::at
+    signature: fn at(&self, rel: &str) -> PathBuf
+    purpose: Resolves a relative path against the base; returns base itself when `rel` is empty.

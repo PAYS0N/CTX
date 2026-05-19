@@ -23,6 +23,10 @@ pub struct Cli {
     /// Directory holding the prompt files (repo-relative).
     #[arg(long, default_value = "prompts", global = true)]
     prompts: String,
+    /// Permit a run over more than `MAX_TARGETS` files (cost/blast-radius
+    /// guard; without this an over-large set is refused).
+    #[arg(long, global = true)]
+    approve: bool,
 }
 
 /// Target-selection mode.
@@ -56,6 +60,7 @@ pub fn dispatch<F: Fs, A: Agent, W: Write>(
         Command::FromCache { task_id } => paths_from_cache(fs, task_id)?,
         Command::Paths { paths } => paths.clone(),
     };
+    runner::scope_check(targets.len(), cli.approve)?;
     let summary = runner::run(fs, agent, &cli.prompts, &targets)?;
     serde_json::to_writer_pretty(&mut *out, &summary).map_err(|e| SummError::Io {
         path: "<stdout>".to_owned(),

@@ -103,23 +103,29 @@ name = "ctx-access"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ctx-core",
  "serde",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "ctx-check"
+name = "ctx-core"
 version = "0.1.0"
-dependencies = [
- "clap",
- "serde",
- "serde_json",
- "thiserror",
-]
 
 [[package]]
 name = "ctx-summarize"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ctx-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ctx-verify"
 version = "0.1.0"
 dependencies = [
  "clap",

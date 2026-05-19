@@ -1,0 +1,15 @@
+file: crates/ctx-check/src/main.rs
+purpose: Entry point for the ctx-check binary. Parses CLI args, delegates to `run` with a `ProcRunner`, and maps Ok(true)/Ok(false)/Err to exit codes 0/1/2.
+invariants:
+  - All output uses explicit writer handles; no direct println!/eprintln! calls.
+  - Write errors in `emit` are silently ignored.
+external_deps:
+  - clap: CLI argument parsing via derived `Parser`.
+  - ctx_check: provides `run`, `Cli`, and `ProcRunner`.
+functions:
+  - name: emit
+    signature: fn emit<W: Write>(mut w: W, msg: &str)
+    purpose: Writes a line to the given writer, silently discarding write errors.
+  - name: main
+    signature: fn main() -> ExitCode
+    purpose: Parses args, runs checks, and returns exit code 0 (pass), 1 (fail), or 2 (error).

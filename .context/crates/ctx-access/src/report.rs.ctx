@@ -1,0 +1,10 @@
+file: crates/ctx-access/src/report.rs
+purpose: Defines the audit report data model (`EndReport`, `Divergence`), the `Summarizer` trait, and the report-file path helper.
+invariants:
+  - `NoopSummarizer::run` always returns `Ok(Vec::new())` regardless of input.
+external_deps:
+  - serde: serialization of `Divergence` and `EndReport` to/from JSON report files.
+functions:
+  - name: report_path
+    signature: pub(crate) fn report_path(task_id: &str) -> RepoPath
+    purpose: Returns the canonical `.context/.reports/<task-id>.json` repo path for a given task id.

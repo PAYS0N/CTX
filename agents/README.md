@@ -33,6 +33,19 @@ ctx-summarize from-cache --task-id <uuid>
 `ctx-summarize` shells `$CTX_AGENT_CMD` via `sh -c`, so the value may
 include arguments or be any executable implementing the contract.
 
+### `.env` convenience
+
+Rather than exporting the key, put it in a gitignored `.env` (see
+`.env.example`) and have the command source it. This makes the key
+available regardless of which shell launches `ctx-summarize`:
+
+```
+export CTX_AGENT_CMD='sh -c "set -a; . /ABS/PATH/.env; set +a; exec python3 /ABS/PATH/agents/summarizer-claude.py"'
+```
+
+The adapter itself stays dependency-free and only reads the environment;
+the `.env` sourcing is purely in the wrapper.
+
 ## Reference adapter
 
 `summarizer-claude.py` — Anthropic Messages API, python3 stdlib only (no
