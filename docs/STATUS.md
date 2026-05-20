@@ -49,20 +49,51 @@ Last updated: 2026-05-19.
   `target/` churn (36 invocations, all clean) + detection intact.
 - **The cage (`sandbox/`) — DONE & proven** (Cage C/D below); `CAGE D
   PASS`, no spend, reference tree unmutated.
-- **Agent-run wiring — DONE & proven no-spend** (ADR-028):
-  `sandbox/agent-demo.sh` → `AGENT RUN PASS`. Generalized broker
-  `{ctx-access, ctx-verify}`, egress 1a, headless + PTY-isolated
-  interactive, `stub-claude.sh` closes the full loop. Only the billed
-  run remains (explicit go).
+- **Agent-run wiring — DONE & proven no-spend** (ADR-028/029/030):
+  `agent-demo.sh` → `AGENT RUN PASS`; `--preflight` → `PREFLIGHT PASS`
+  (real `--claude` env); `--check-onboarding` → `ONBOARDING CHECK PASS`
+  (no wizard/key prompt, subscription auto-detected). Generalized broker
+  `{ctx-access, ctx-verify}`, egress 1a, `--clearenv`+synthesized
+  `~/.claude.json`, headless + PTY-isolated interactive.
+- **MVP VALIDATED end-to-end** (ADR-031/032/033): summary tree
+  regenerated via `ctx-summarize` (18 leaves + 6 rollups) and
+  **committed** (`meal-planning bfc7280`); a re-run caged billed agent
+  built `profile edit` (77 insertions) with the chain served,
+  `ctx-verify mealplan` = `{"status":"pass"}`, audit 0 divergences.
+  Harness fixes landed (ADR-027/031). The agent's deliverable remains
+  uncommitted in meal-planning (keep or discard).
 
-## Active focus: the real billed run (explicit-go only)
+## MVP VALIDATED end-to-end — chain present, committed, used (ADR-031/032/033)
 
-The genuine MVP validation: a blinded agent extends the reference project
-through `ctx-access` only. **Validity is environmental, not behavioral**
-(ADR-016): an uncaged agent is never a valid subject; the builder cannot
-be the caged subject; the agent is a headless `claude -p` inside `bwrap`,
-`ctx-access` its only path to source. Tooling present: `bwrap` 0.8.0,
-`unshare`, unprivileged userns, `claude` CLI, uid 1000.
+**The full thesis now holds, on a committed reproducible baseline.**
+History: a first billed run proved the **access/cage** layer
+(cage/broker/deny-gate/write-requires-prior-read/lifecycle/blinding;
+ADR-031) but — caught by inspection (ADR-032) — ran with **no summary
+tree** (wiped on git-init, never committed), so the agent built from
+raw source and CTX's *core thesis* (the summarized chain is useful
+context) was unproven. Corrective executed (ADR-033): regenerated
+`.context` via `ctx-summarize` (billed; 18 leaves + 6 rollups),
+**committed** it (`meal-planning bfc7280` — closes the
+stated-but-unfollowed "`.ctx` ARE committed" doctrine), and re-ran the
+caged billed agent. Result: clean `profile edit` (77 insertions),
+`ctx-verify mealplan` → `{"status":"pass"}` (re-verified host-side),
+audit **0 divergences**. The chain reached the agent (committed
+non-absent tree + brokered sole source path, reproduced host-side;
+implementation honors summary-stated invariants). Honest caveat:
+headless `claude -p` shows narration not raw tool stdout, so proof is
+environmental+corroborating, not a verbatim capture (a stream-json run
+could capture bytes if ever wanted — judged unnecessary, ADR-033).
+
+Harness fixes also landed: `meal-planning/CLAUDE.md`,
+`--dangerously-skip-permissions`, and the ADR-027 scoped-revert +
+refuse-on-dirty guard (a blanket `git checkout crates` had destroyed a
+prior deliverable).
+
+**Open:** the agent's `profile edit` deliverable is uncommitted in
+meal-planning (validation output — keep or discard). Deferred:
+production `ctx`-uid/cache-owning broker, Layer 3 (`UNIMPLEMENTED.md`).
+
+The cage substrate (kept as the record):
 
 - **Cage A — DONE.** Reference project relocated to `../meal-planning/`;
   CTX doc refs fixed; tooling verified from the new location.
@@ -96,23 +127,25 @@ be the caged subject; the agent is a headless `claude -p` inside `bwrap`,
   real source (recovered via git); fixed + integrity net added (ADR-027;
   prereq: meal-planning is now a git repo, ADR-023/025).
 
-**The wiring is built and proven; one gated step remains.** The full
-agent loop runs end-to-end with **no spend** via `sandbox/agent-demo.sh`
-(`AGENT RUN PASS`): init-task → caged agent → brokered
-`ctx-access`+`ctx-verify` → shutdown → host acceptance. Decided &
-implemented (ADR-028): egress **1a** (caged `claude` calls the API
-directly, `--net`+key); `ctx-verify` brokered too (cage needs no
-toolchain/source); blinded brief; dual **headless** (validity-bearing)
-and **`--interactive`** (PTY-isolated, observation only) modes — both
-proven with the no-spend `stub-claude.sh`. The only thing not done is
-flipping the switch.
+**Result (ADR-031).** `CTX_CAGE_ALLOW_SPEND=1 sandbox/agent-demo.sh`
+ran a real billed `claude` in the cage; it used `ctx-access` for all
+source, hit and recovered from write-requires-prior-read, refactored to
+the length tiers (not `// rationale:`), and reached `ctx-verify
+mealplan` = `{"status":"pass"}`. The agent's deliverable is in
+`../meal-planning` (uncommitted): `cli/mod.rs`+`handlers.rs`,
+`ProfileEditArgs`/`ProfileCmd::Edit`/`apply_profile_edit`.
 
-**To do the real billed run:** `CTX_CAGE_ALLOW_SPEND=1
-ANTHROPIC_API_KEY=… sandbox/agent-demo.sh` (add `--interactive` to
-watch). Task: add a `profile edit` command to `mealplan` (reads
-`profile.rs`/`cli` via the chain, writes, keeps `ctx-verify` green).
-Spend boundaries: the agent loop (that env switch) and `end-task`
-(audit→summarize). **Requires explicit user go.**
+**Re-run (clean conditions):** `CTX_CAGE_ALLOW_SPEND=1
+sandbox/agent-demo.sh` (add `--interactive` to watch). No API key
+(subscription auto-bound); house rules auto-loaded from
+`/work/CLAUDE.md`; no manual permission accept. Spend boundaries: the
+agent loop (that env switch) and `end-task` (audit→summarize) — still
+explicit-go.
+
+**Next (post-MVP):** commit the validated artifact if desired; write
+`../meal-planning` findings; the deferred production broker
+(`ctx`-uid/cache-owning, SANDBOX.md) and Layer-3 work remain in
+`UNIMPLEMENTED.md`.
 
 ## Open decisions / risks
 

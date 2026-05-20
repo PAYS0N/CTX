@@ -3,7 +3,7 @@
 Doctrine is `.context/intent.md` (read it via ctx-access) and
 `docs/SPEC.md`; rationale is `docs/DECISIONS.md`; current focus + next
 step is `docs/STATUS.md`. This file is only the operating rules not in
-those. Reasons live in DECISIONS.mdtwo.
+those. Reasons live in DECISIONS.md.
 
 - Read/write source through `ctx-access` (`target/debug/ctx-access`) —
   not the editor's Read/Edit or `cat`. `read <path> --task-id` serves the

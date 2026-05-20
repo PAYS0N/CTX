@@ -337,6 +337,9 @@ decision): the real caged `claude` reaches the API directly (`--net` +
 `ANTHROPIC_API_KEY` in cage env); accepted residual under the
 *capable-but-lazy, not adversarial* threat model — the key is auth, not
 prompt content, and never committed/`.env`-sourced into a model.
+**Auth mechanism amended by [[ADR-029]]:** this host's `claude` is
+subscription/OAuth-authed (no API key); the credential is the bound
+`~/.claude/.credentials.json`, not an env key.
 **Two modes:** headless `claude -p` is the **validity-bearing** run
 (environmental *and* behavioral validity, ADR-016); `--interactive`
 relays a **dedicated** cage pty via `pty-relay.py` (the cage never gets
@@ -361,3 +364,190 @@ walk-based scripts; the brokered `ctx-verify` would race the agent's own
 meal-planning is a git repo, [[ADR-023]]). (3) `pty-relay.py` must not
 kill the child on local stdin EOF (non-interactive driver) — it stops
 forwarding input but relays output until the child exits.
+
+## ADR-029 — Agent auth = bound subscription credential; no-spend preflight
+**Decision:** the caged `claude` authenticates via the host user's
+existing **subscription/OAuth** credential — ONLY
+`~/.claude/.credentials.json`, bind-mounted **read-only** into the
+cage's `$HOME/.claude/` (nothing else from `~/.claude`, to preserve
+blinding). No `ANTHROPIC_API_KEY`, no `--bare` (mutually exclusive with
+OAuth: under `--bare`, claude reads strictly the env key). `cage-run.sh
+--claude` provisions the real runtime: the 237 MB `claude` ELF bound on
+PATH, DNS/TLS plumbing (`resolv.conf`, `/etc/hosts`, `/etc/ssl`, and a
+**deterministic minimal `nsswitch.conf`** — the host's pulls
+systemd-only NSS plugins whose sockets are absent in the cage), and the
+credential. Headless spend uses `claude -p --permission-mode
+bypassPermissions` (autonomous tool use; the flag's own "no-internet
+only" guidance is knowingly traded against the accepted 1a residual).
+**Context:** the first real launch died `execvp claude: No such file`
+— the binary was never bound (only the in-cage stub had run), and the
+`--net` branch additionally lacked DNS/TLS. `--pass-key` had assumed an
+API key the owner doesn't have. **Rationale:** the run needs *a*
+credential because the agent really calls the paid API (the dry-run
+stub never did — that is the only spend difference); the owner chose
+the subscription over a dedicated key, so the build follows it. A new
+**`claude-preflight.sh`** (`agent-demo.sh --preflight`) proves the
+entire real environment with **zero spend**: `claude --version` runs,
+the credential is present, DNS + a TLS *handshake* to
+api.anthropic.com:443 succeed (a handshake is not a billed request — no
+HTTP is sent), the source jail still holds under `--net --claude`, and
+the broker is reachable. **Residual:** a live OAuth token is visible to
+an autonomous networked agent while it runs — same residual class as
+1a, now concretely the owner's subscription, accepted by explicit owner
+choice. **Rejected:** dedicated API key + `--bare` (cleaner blinding,
+metered — offered, owner chose subscription); binding all of
+`~/.claude` (leaks projects/history/settings — would break blinding,
+ADR-016). Supersedes [[ADR-028]]'s auth clause; everything else in
+ADR-028 stands.
+
+## ADR-030 — Cage env is cleared; onboarding pre-satisfied from a synthesized config
+**Decision:** the cage launches with `bwrap --clearenv` and an
+explicit minimal env (`PATH HOME USER LANG TERM CTX_SOCK TASK`; in
+`--claude` also the synthesized config). For `--claude`, `cage-run.sh`
+synthesizes a **minimal `~/.claude.json`** — `hasCompletedOnboarding:
+true`, pre-trusted `/work`, and ONLY the host's `oauthAccount` object —
+bound rw but ephemeral (under the harness temp dir), alongside the RO
+`.credentials.json`. **Context:** the first real interactive launch hit
+Claude Code's first-run wizard (theme/login/trust) **and** a "use the
+detected `ANTHROPIC_API_KEY`?" prompt. Two root causes: (1) `bwrap`
+inherits the parent environment by default, so the host's
+`ANTHROPIC_API_KEY` (from CTX's `.env`) leaked into the cage — both the
+source of that prompt **and** a blinding leak ([[ADR-016]]); (2) the
+cage's fresh `HOME` had no `~/.claude.json` (separate from
+`~/.claude/`), so claude treated it as a first run. **Rationale:**
+`--clearenv` removes the leak (no key visible → no prompt; the bound
+OAuth credential is then used silently) and hardens blinding for
+*every* mode, not just `--claude`. The synthesized config skips
+onboarding deterministically and carries the account object so the
+credential auto-detects (no login prompt) — verified empirically
+against the host config's schema (`hasCompletedOnboarding`,
+per-project trust map). **Proven no-spend** by `agent-demo.sh
+--check-onboarding`: interactive claude, immediate `/exit`, capture
+ANSI-normalized (the TUI separates words with cursor-forward, not
+spaces) and asserted to show the authenticated returning-user UI with
+no wizard / no key prompt — reaching the TUI without submitting a
+message is not a billed call; the probe then times out and is killed,
+which is expected, not a failure. **Residual:** `oauthAccount`
+(account email/org metadata, not the token) enters the synthesized
+config so auth auto-detects — same accepted residual class as
+[[ADR-029]] (the owner's subscription identity is used by explicit
+choice); still nothing else from `~/.claude` (no projects/history), so
+blinding is otherwise intact. **Rejected:** `--bare` (would skip
+onboarding but forces API-key auth — incompatible with the chosen
+subscription path, [[ADR-029]]); binding the real `~/.claude.json`
+(leaks projects/history — breaks blinding). Extends [[ADR-029]];
+ADR-028/029 otherwise stand.
+
+## ADR-031 — MVP environmental-validity: PROVEN (billed run); two harness fixes
+**Result:** the MVP claim holds. A **blinded Sonnet agent** (different
+model, no CTX context), caged (no source on disk; only brokered
+`ctx-access`/`ctx-verify`; egress 1a), completed the real chosen task —
+a `profile edit` subcommand for `mealplan` — and `ctx-verify mealplan`
+returned `{"status":"pass"}`, **independently re-verified host-side**
+(77 insertions across `cli/mod.rs`+`handlers.rs`: `ProfileEditArgs`,
+`ProfileCmd::Edit`, `apply_profile_edit`). The cage, generalized broker,
+blinding, lifecycle, and spend gates all held under a real autonomous
+agent. **This closes the loop ([[ADR-016]]): validity is
+environmental, and the environment held.** **Observed friction (the
+point of the run):** the agent burned turns on `cat`/`wc` (returned
+empty — the jail working) before settling on re-`read`; assumed
+`ctx-verify --task-id …` (arg-shape divergence from `ctx-access`) and
+self-corrected to `ctx-verify <pkg>`; correctly hit and recovered from
+write-requires-prior-read (`write denied: source not read in task` →
+re-`read` → `write`); and **refactored** to satisfy the length tiers
+rather than reaching for `// rationale:` ([[ADR-021]] behaving as
+intended on an agent that never saw CLAUDE.md). **Fix 1 — provision the
+project's own house rules:** added `meal-planning/CLAUDE.md` (the
+caged-agent operating rules). `/work` is a read-only bind (only
+`src`/`tests`/`target` are tmpfs), and Claude Code auto-discovers
+`/work/CLAUDE.md` (we do **not** use `--bare`, [[ADR-029]]). This is
+legitimate context-provisioning, **not** a blinding breach: it is the
+documented onboarding a real teammate gets; the source jail is
+untouched; and the agent demonstrably *succeeded without it*, which is
+stronger evidence, not weaker. The brief shrinks to just the task.
+**Fix 2 — `--dangerously-skip-permissions`** replaces
+`--permission-mode bypassPermissions`: the latter triggers a one-time
+interactive "accept bypass mode" gate that blocked the autonomous run
+(the operator had to approve by hand). The cage is precisely the
+sandbox that flag asks for; its "no internet" guidance is the
+knowingly-accepted 1a residual ([[ADR-028]]/[[ADR-029]]). **Rejected:**
+setting an undocumented `bypassPermissionsModeAccepted` config key
+(version-coupled, fragile) — the explicit flag is self-documenting.
+**Verification:** both fixes proven no-spend — `agent-demo.sh
+--preflight` now also asserts `/work/CLAUDE.md` is present;
+`--check-onboarding` already proved the auth/env path. The fixes make
+the run reproducible and clean; they do not affect the (already
+achieved) validity result. Extends [[ADR-026]]/[[ADR-028]]/[[ADR-029]]/
+[[ADR-030]].
+
+## ADR-032 — Validation scope correction: the context chain was never served
+**Decision/Correction:** [[ADR-031]]'s "MVP validated — loop closed"
+**overclaimed** and is amended here. Investigation (prompted by the
+operator noticing "nothing in context"): meal-planning's `.context`
+summary tree **does not exist** — zero `*.ctx`, no `intent.md`, never
+committed (`.ctx tracked: 0`), unrecoverable. It was produced by an old
+billed `ctx-summarize`, never committed, and wiped during the project's
+git-init/clean. **The tools are exonerated:** planted dummy
+`rollup.ctx`/`intent.md`/`*.ctx` are served correctly and **survive**
+`init-task --force` and a full no-spend run; `(absent: …)` is the
+designed soft-marker ([[ADR-010]]) for a missing node, not a bug. **So
+what the billed run actually proved:** the cage, broker, deny-gate,
+write-requires-prior-read, lifecycle, blinding, and that a blinded
+agent can complete a real task through the constrained interface — all
+real, all stand. **What it did NOT prove:** CTX's central thesis, that
+a *summarized context chain* is sufficient/useful context. At run time
+the chain served only `intent.md` (+101 lines) and **no rollups, no
+leaf summaries**; the agent built from **raw source**. The
+chain-value claim is **unvalidated**. **Systemic cause:**
+meal-planning's `.gitignore` explicitly states "Generated context files
+(rollup.ctx, *.ctx, intent.md) ARE committed" — yet they never were;
+doctrine stated, not followed, so a routine clean erased the entire
+value layer silently and the gap was invisible until inspected.
+**Corrective (gated):** (1) regenerate the summary tree via
+`ctx-summarize` — a **billed** model operation, explicit-go only; (2)
+**commit** the regenerated tree (close the stated-but-unfollowed
+doctrine; a tracked tree cannot be silently cleaned and the deny-gate
+serves tracked files); (3) re-run the caged agent so it actually works
+from the chain — only then is the thesis end-to-end validated.
+**Process lesson:** "it passed" is not "it was exercised"; a green
+result whose key input was absent is a hollow pass. Validation harnesses
+must assert their preconditions (the summary tree present/non-empty)
+before claiming the thing they exist to prove — same family as
+[[ADR-024]]/[[ADR-027]]. Amends [[ADR-031]] (scope only; the
+access/cage results there stand).
+
+## ADR-033 — Thesis validated end-to-end: chain present, committed, used
+**Result:** with the corrective in [[ADR-032]] applied, the full MVP
+thesis is now validated. Sequence: (1) regenerated meal-planning's
+`.context` via `ctx-summarize` (billed; 18 leaf + 6 rollup nodes via
+the documented `.env`/`summarizer-claude.py` adapter); (2) **committed**
+the tree (`meal-planning bfc7280`) — closing the stated-but-unfollowed
+"`.ctx` ARE committed" doctrine so a clean can never silently erase the
+value layer again, and a tracked tree is what the deny-gate serves; (3)
+re-ran the caged billed agent. It produced a clean `profile edit`
+(`EditProfileArgs`, `ProfileCmd::Edit`, `apply_edit`, `run_profile`
+dispatch; 77 insertions), `ctx-verify mealplan` → `{"status":"pass"}`
+(independently re-verified host-side), end-task audit **0
+divergences**. **Evidence the chain reached the agent (vs. the
+raw-source-only first run):** the committed tree makes `ctx-access read`
+serve the full non-absent rollup→leaf prefix for every edited file
+(reproduced host-side verbatim: root rollup "integer-only; no
+floating-point… all public APIs return `Result<_, MealError>`", crate
+and dir rollups, leaf); the caged agent's *only* source path is that
+same brokered tool against that same committed tree, so it
+*necessarily* received the chain this run, where the first served
+`(absent)` everywhere; corroborated by the implementation honoring
+invariants stated in the **summaries** (re-validate via `Profile::new`,
+integer-only, `Result`/`MealError`) and the auditor's zero divergences.
+**Honest caveat:** headless `claude -p` emits its narration, not raw
+tool stdout, so this is environmental + corroborating proof, not a
+verbatim capture of the agent printing a rollup. A stricter artifact
+(an `--interactive`/`--output-format stream-json` run that records the
+served bytes the agent consumed) is available if ever wanted; it was
+judged unnecessary given the structural certainty (brokered sole path +
+committed non-absent tree) and the contrast with [[ADR-032]].
+**Status:** the access/cage claims ([[ADR-031]]) and the thesis claim
+(this ADR) now both hold, on a committed, reproducible baseline. The
+agent's `profile edit` deliverable remains uncommitted in meal-planning
+(validation output; the operator may keep or discard it). Deferred work
+(production `ctx`-uid broker, Layer 3) unchanged in `UNIMPLEMENTED.md`.

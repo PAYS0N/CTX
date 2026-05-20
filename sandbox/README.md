@@ -38,9 +38,19 @@ model (`../docs/SANDBOX.md`).
 - **default** — agent = `stub-claude.sh`, a no-spend stand-in walking
   verify→read→write→verify; no net, no key; probe write reverted, tree
   asserted clean.
-- **`CTX_CAGE_ALLOW_SPEND=1`** (+ `ANTHROPIC_API_KEY`) — agent = real
-  `claude` doing the task; `--net`+key; changes kept; `end-task`
-  (audit→summarize) runs. Two spend boundaries, both gated.
+- **`--preflight`** — no spend; agent = `claude-preflight.sh`. Proves
+  the *real* `--net --claude` env: claude runs, the subscription
+  credential is visible, DNS + a TLS handshake to api.anthropic.com
+  succeed (handshake ≠ billed request), jail still holds. (ADR-029).
+- **`--check-onboarding`** — no spend; interactive claude, immediate
+  `/exit`. Asserts the first-run wizard and the API-key prompt do NOT
+  appear and the authenticated returning-user UI does (subscription
+  auto-detected). `--clearenv` + a synthesized minimal `~/.claude.json`
+  make this work (ADR-030).
+- **`CTX_CAGE_ALLOW_SPEND=1`** — agent = real `claude` doing the task
+  (`--claude`: binary + DNS/TLS + bound subscription credential, no API
+  key); changes kept; `end-task` (audit→summarize) runs. Two spend
+  boundaries, both gated.
 - **`--interactive`** — the cage runs on its own pty, relayed to your
   terminal by `pty-relay.py`. The cage sees only that pty, so a
   TIOCSTI-style injection lands in the host-owned relay, never your real
@@ -54,19 +64,23 @@ model (`../docs/SANDBOX.md`).
 |---|---|---|
 | `agent-demo.sh` | host | the agent run (stub default; `claude` on go) |
 | `cage-demo.sh` | host | Cage C/D proof (reachability + adversary + integrity) |
-| `cage-run.sh` | host | bwrap launcher; `[--interactive] [--net] [--pass-key]` |
+| `cage-run.sh` | host | bwrap launcher; `[--interactive] [--net] [--claude]` |
 | `broker.sh` / `broker-handler.sh` | host | UNIX-socket transport, allowlist `{ctx-access, ctx-verify}` |
 | `pty-relay.py` | host | dedicated-pty pump for `--interactive` |
+| `cage-nsswitch.conf` | host→cage | deterministic minimal NSS for `--claude` DNS |
 | `tool-client.sh` | cage | forwarder, bound as both `ctx-access` and `ctx-verify` |
+| `claude-preflight.sh` | cage | no-spend proof of the real `--claude` env |
 | `stub-claude.sh` | cage | no-spend agent stand-in (loop wiring) |
 | `stub-agent.sh` / `cage-adversary.sh` | cage | Cage D reachability / enforcement probes |
 
 ## Run
 
-    ./cage-demo.sh        # the cage holds  → CAGE D PASS
-    ./agent-demo.sh       # the loop wires  → AGENT RUN PASS (no spend)
+    ./cage-demo.sh             # the cage holds  → CAGE D PASS
+    ./agent-demo.sh            # loop wires      → AGENT RUN PASS (no spend)
+    ./agent-demo.sh --preflight # real env, still no spend → PREFLIGHT PASS
+    ./agent-demo.sh --check-onboarding   # no spend → ONBOARDING CHECK PASS
     ./agent-demo.sh --interactive
-    CTX_CAGE_ALLOW_SPEND=1 ANTHROPIC_API_KEY=… ./agent-demo.sh   # real, billed
+    CTX_CAGE_ALLOW_SPEND=1 ./agent-demo.sh   # real, billed (subscription auth)
 
 ## Prerequisites / residuals
 
