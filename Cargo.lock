@@ -110,6 +110,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctx-cage"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ctx-core"
 version = "0.1.0"
 

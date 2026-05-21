@@ -1,92 +1,48 @@
-# The cage (MVP sandbox + agent run)
+# The cage (now a Rust crate)
 
-Makes Layer 2 **load-bearing**: the agent's filesystem has *no source*
-and *no toolchain*, so the only path to source **and** verification is
-the brokered tools. MVP realization of the client/broker transport seam
-in `../docs/SANDBOX.md` (ADR-026/028).
+The sandbox lives in **`crates/ctx-cage`** as of the Rust port
+(ADR-034). This directory is historical; the prototype Bash transport
+(`agent-demo.sh`, `cage-run.sh`, `broker.sh`, `broker-handler.sh`,
+`tool-client.sh`, `pty-relay.py`, `cage-demo.sh`, plus the in-cage
+probes `stub-agent.sh`, `cage-adversary.sh`, `claude-preflight.sh`,
+`stub-claude.sh`) has been retired. The Rust binary does what the
+Bash did, under CTX's own lint regime, with a real framed protocol
+replacing the base64+sentinel transport.
 
-## Topology
+## Quick run
 
-```
-┌─ cage (bwrap mount[+net] ns) ────────┐      ┌─ host ────────────────────┐
-│ /work = meal-planning, RO            │      │ broker.sh (socat LISTEN)  │
-│   crates/mealplan/src   → tmpfs ∅    │      │  → broker-handler.sh      │
-│   crates/mealplan/tests → tmpfs ∅    │      │    allowlist:             │
-│   target/               → tmpfs ∅    │      │      ctx-access  (source) │
-│ /cage/bin/ctx-access ─┐              │      │      ctx-verify  (verify) │
-│ /cage/bin/ctx-verify ─┴─ forwarder ──┼─UDS─▶│    in the real tree       │
-│ agent: stub | claude                 │      │ (model: 1a, direct egress)│
-└──────────────────────────────────────┘      └───────────────────────────┘
-```
+    # No-spend self-test (proves the orchestration end-to-end):
+    target/debug/ctx-cage <target-project-root> --self-test stub
 
-Every capability that crosses the boundary is a host-side broker call:
-read source, write source, **verify** (`ctx-verify` compiles/tests host
--side against the tree the agent's writes landed in — the cage needs no
-cargo/rustc/source). Model calls use **egress 1a**: the real `claude`
-in the cage talks to the API directly (`--net`, key in cage env);
-accepted residual under the *capable-but-lazy, not adversarial* threat
-model (`../docs/SANDBOX.md`).
+    # Billed headless task (subscription credential auto-bound):
+    CTX_CAGE_ALLOW_SPEND=1 target/debug/ctx-cage <target> --task "<brief>"
+    CTX_CAGE_ALLOW_SPEND=1 target/debug/ctx-cage <target> --task-file <path>
 
-## Two harnesses
+    # Billed interactive session (default, no task):
+    CTX_CAGE_ALLOW_SPEND=1 target/debug/ctx-cage <target>
 
-| harness | what it proves | spend |
-|---|---|---|
-| `cage-demo.sh` | Cage C/D: source unreachable except via the tool; enforcement intact through the transport; tree unmutated | none |
-| `agent-demo.sh` | the full agent loop: init-task → caged read/write/verify → shutdown → host acceptance | none by default |
+The target is required and has **no default**. Crates are auto-
+discovered under `<target>/crates/*/{src,tests}` — tmpfs overlays
+follow whatever the project's Cargo layout actually is.
 
-`agent-demo.sh [--interactive]`:
-- **default** — agent = `stub-claude.sh`, a no-spend stand-in walking
-  verify→read→write→verify; no net, no key; probe write reverted, tree
-  asserted clean.
-- **`--preflight`** — no spend; agent = `claude-preflight.sh`. Proves
-  the *real* `--net --claude` env: claude runs, the subscription
-  credential is visible, DNS + a TLS handshake to api.anthropic.com
-  succeed (handshake ≠ billed request), jail still holds. (ADR-029).
-- **`--check-onboarding`** — no spend; interactive claude, immediate
-  `/exit`. Asserts the first-run wizard and the API-key prompt do NOT
-  appear and the authenticated returning-user UI does (subscription
-  auto-detected). `--clearenv` + a synthesized minimal `~/.claude.json`
-  make this work (ADR-030).
-- **`CTX_CAGE_ALLOW_SPEND=1`** — agent = real `claude` doing the task
-  (`--claude`: binary + DNS/TLS + bound subscription credential, no API
-  key); changes kept; `end-task` (audit→summarize) runs. Two spend
-  boundaries, both gated.
-- **`--interactive`** — the cage runs on its own pty, relayed to your
-  terminal by `pty-relay.py`. The cage sees only that pty, so a
-  TIOCSTI-style injection lands in the host-owned relay, never your real
-  terminal (`--new-session` kept; sound even where
-  `dev.tty.legacy_tiocsti` ≠ 0). Interactive is for *observing*; the
-  validity-bearing run is **headless, unassisted** `claude -p`.
+## Where everything lives now
 
-## Files
+- Asset (always-injected caged-agent doctrine): `crates/ctx-cage/assets/cage-rules.md` (`include_str!`'d into the binary).
+- Asset (deterministic minimal nsswitch for `--claude`): `crates/ctx-cage/assets/cage-nsswitch.conf`.
+- Wire protocol: `crates/ctx-cage/src/protocol.rs`.
+- Broker (`UnixListener` + `Spawner`): `crates/ctx-cage/src/{broker,spawn}.rs`.
+- In-cage forwarder binary: `crates/ctx-cage/src/bin/ctx_cage_client.rs` (bound at `/cage/bin/{ctx-access,ctx-verify}`).
+- `bwrap` argv builder + auto-discovery: `crates/ctx-cage/src/bwrap/`.
+- CLI + spend gate: `crates/ctx-cage/src/cli.rs`.
+- Lifecycle (prepare → serve → teardown): `crates/ctx-cage/src/lifecycle/`.
+- `--claude` host runtime + synthesized config: `crates/ctx-cage/src/runtime.rs`.
+- Auto-summarize hooks (pre/post under spend gate): `crates/ctx-cage/src/summarize.rs`.
+- Integration tests: `crates/ctx-cage/tests/`.
 
-| file | side | role |
-|---|---|---|
-| `agent-demo.sh` | host | the agent run (stub default; `claude` on go) |
-| `cage-demo.sh` | host | Cage C/D proof (reachability + adversary + integrity) |
-| `cage-run.sh` | host | bwrap launcher; `[--interactive] [--net] [--claude]` |
-| `broker.sh` / `broker-handler.sh` | host | UNIX-socket transport, allowlist `{ctx-access, ctx-verify}` |
-| `pty-relay.py` | host | dedicated-pty pump for `--interactive` |
-| `cage-nsswitch.conf` | host→cage | deterministic minimal NSS for `--claude` DNS |
-| `tool-client.sh` | cage | forwarder, bound as both `ctx-access` and `ctx-verify` |
-| `claude-preflight.sh` | cage | no-spend proof of the real `--claude` env |
-| `stub-claude.sh` | cage | no-spend agent stand-in (loop wiring) |
-| `stub-agent.sh` / `cage-adversary.sh` | cage | Cage D reachability / enforcement probes |
+## Deferred
 
-## Run
-
-    ./cage-demo.sh             # the cage holds  → CAGE D PASS
-    ./agent-demo.sh            # loop wires      → AGENT RUN PASS (no spend)
-    ./agent-demo.sh --preflight # real env, still no spend → PREFLIGHT PASS
-    ./agent-demo.sh --check-onboarding   # no spend → ONBOARDING CHECK PASS
-    ./agent-demo.sh --interactive
-    CTX_CAGE_ALLOW_SPEND=1 ./agent-demo.sh   # real, billed (subscription auth)
-
-## Prerequisites / residuals
-
-- The reference project must be a git repo (`ctx-access` gate/manifest +
-  the static checks single-source on git: ADR-023/025). meal-planning's
-  `scripts/` are synced from `../template/scripts/` so the brokered
-  `ctx-verify` is deterministic there (ADR-025).
-- Same uid both sides; the production `ctx`-uid / cache-owning broker
-  (`../docs/SANDBOX.md`, `../docs/UNIMPLEMENTED.md`) stays deferred.
+- Dedicated-PTY isolation for `--interactive` (currently inherits the
+  parent's tty and drops `--new-session`; sound on kernels with
+  `dev.tty.legacy_tiocsti=0`, fine on this host). A `portable-pty`
+  hardening pass is tracked in STATUS.
+- Production `ctx`-uid / cache-owning broker (SANDBOX.md).

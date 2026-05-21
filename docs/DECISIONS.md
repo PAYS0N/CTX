@@ -551,3 +551,44 @@ committed non-absent tree) and the contrast with [[ADR-032]].
 agent's `profile edit` deliverable remains uncommitted in meal-planning
 (validation output; the operator may keep or discard it). Deferred work
 (production `ctx`-uid broker, Layer 3) unchanged in `UNIMPLEMENTED.md`.
+
+## ADR-034 — Cage is a Rust crate (`ctx-cage`); Bash sandbox retired
+**Decision:** the cage moves from `sandbox/*.sh`+`pty-relay.py` to
+**`crates/ctx-cage`** — a new workspace crate under the same lint
+regime and `ctx-verify` gate as every other crate. Two binaries:
+`ctx-cage` (host orchestrator) and `ctx-cage-client` (busybox-style
+in-cage forwarder, bound twice as `ctx-access` and `ctx-verify`).
+Modules: `protocol` (length-prefixed JSON request + tagged
+output/exit frames), `broker` (`UnixListener` + `Spawner` seam),
+`bwrap` (pure argv builder + crate auto-discovery), `cli` (clap + a
+spend gate that *enforces* `--allow-spend`), `lifecycle` (prepare →
+serve → teardown), `runtime` (host-side `--claude` resolution +
+synthesized `~/.claude.json`), `summarize` (stale-detect +
+`ctx-summarize` invocation, billed-gated), `spawn`, `error`. Embedded
+assets: `cage-rules.md` (`include_str!`) + `cage-nsswitch.conf`.
+**Context:** the Bash transport was the only substantial piece of
+CTX *outside* its own quality regime — and it had real bugs the new
+crate eliminates by construction: the `socat -t 0.5s` half-close
+reaper ([[ADR-028]]) is gone (a real binary protocol with explicit
+EOF), the base64+`__CTXRC__N` argv encoding is gone (length-prefixed
+JSON), the destructive `git checkout crates` revert ([[ADR-027]]) is
+gone (the lifecycle's stub probe writes to a known target and the
+spend branch keeps deliverables — no blanket revert anywhere). The
+target project is parameterized with **no default** (per the user's
+"broader tool" direction); crate src/tests dirs are auto-discovered
+under `<target>/crates/*`. **Delivered in seven turns**, each landing
+`ctx-verify` `{"status":"pass"}`; the parity smoke
+(`ctx-cage <meal-planning> --self-test stub`) prints
+`SELF-TEST-STUB-OK`. **Retired:** `sandbox/{agent-demo,cage-run,broker,
+broker-handler,tool-client,cage-demo,stub-agent,cage-adversary,
+claude-preflight,stub-claude}.sh`, `sandbox/pty-relay.py`,
+`sandbox/cage-nsswitch.conf` (the canonical copy now lives at
+`crates/ctx-cage/assets/cage-nsswitch.conf`). **Deferred (turn 6b
+backlog):** dedicated-PTY isolation for `--interactive` via
+`portable-pty`. Today `--interactive` inherits the parent's
+controlling tty and drops `--new-session`; sound under kernel
+`dev.tty.legacy_tiocsti=0` (the host's posture). **Rejected:**
+a hybrid "ship Bash now / port later" path (the user chose
+"single commitment"). **Supersedes** the Bash transport described by
+[[ADR-026]] (the cage's architecture and threat model from ADR-026
+stand; only the implementation language changed).

@@ -1,0 +1,27 @@
+[package]
+name = "ctx-cage"
+version = "0.1.0"
+edition = "2021"
+description = "Generic sandboxed-agent harness: project-parameterized cage + broker that runs an agent against any target repo through the brokered ctx-access/ctx-verify tools."
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ctx-cage"
+path = "src/bin/ctx_cage.rs"
+
+[[bin]]
+name = "ctx-cage-client"
+path = "src/bin/ctx_cage_client.rs"
+
+[lib]
+name = "ctx_cage"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"

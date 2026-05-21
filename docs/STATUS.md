@@ -62,6 +62,16 @@ Last updated: 2026-05-19.
   `ctx-verify mealplan` = `{"status":"pass"}`, audit 0 divergences.
   Harness fixes landed (ADR-027/031). The agent's deliverable remains
   uncommitted in meal-planning (keep or discard).
+- **Cage promoted to Rust** (ADR-034): new `crates/ctx-cage` (lib + 2
+  bins) supersedes the Bash sandbox. Parameterized target (no default),
+  auto-discovered crate dirs, embedded cage-rules + nsswitch, real
+  framed UNIX-socket protocol, spend gate enforced. Delivered in 7
+  turns; each `ctx-verify` `{"status":"pass"}`. Parity smoke against
+  meal-planning: `ctx-cage --self-test stub` → `SELF-TEST-STUB-OK`.
+  All `sandbox/*.sh` + `pty-relay.py` retired (the README is now a
+  pointer). Dedicated-PTY isolation for `--interactive` deferred
+  (turn 6b backlog; current mode inherits parent tty, sound under
+  `legacy_tiocsti=0`).
 
 ## MVP VALIDATED end-to-end — chain present, committed, used (ADR-031/032/033)
 
