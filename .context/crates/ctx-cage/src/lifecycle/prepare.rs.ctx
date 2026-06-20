@@ -1,0 +1,14 @@
+file: crates/ctx-cage/src/lifecycle/prepare.rs
+purpose: Lifecycle phase 1 setup: creates a per-run temp directory, writes the embedded cage-rules.md, optionally resolves Claude runtime binds, and runs `ctx-access init-task`.
+invariants:
+  - Socket basename is always `"ctx.sock"`.
+  - `sockdir` is named `ctxcage-{task_id}-{pid}` under `TMPDIR`; any pre-existing directory at that path is removed before creation.
+external_deps:
+  - crate::bwrap::ClaudeBinds: holds host paths for `--claude` bwrap mounts
+  - crate::runtime::resolve_claude_binds: resolves Claude-specific filesystem paths into `ClaudeBinds`
+  - crate::CAGE_RULES_MD: embedded markdown written verbatim to disk
+functions:
+  - name: prepare_run
+    signature: pub fn prepare_run(r: &Resolved) -> Result<Prep, CageError>
+    purpose: Orchestrates all phase-1 setup and returns a `Prep` holding the resources needed for the run.
+    notes: Returns `CageError::Protocol` if `init-task` exits non-zero or Claude runtime resolution fails.

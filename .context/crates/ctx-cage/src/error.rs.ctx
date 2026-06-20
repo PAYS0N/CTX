@@ -1,0 +1,7 @@
+file: crates/ctx-cage/src/error.rs
+purpose: Defines the single public error enum for the `ctx-cage` crate, covering I/O, JSON, protocol, and broker-allowlist failures.
+invariants:
+  - `Io` and `Json` variants are constructed via `From` conversions; all others require explicit construction.
+external_deps:
+  - thiserror: derive-based `Display`/`Error` impl generation.
+functions:

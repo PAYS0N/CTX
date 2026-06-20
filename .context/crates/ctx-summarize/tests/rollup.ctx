@@ -1,0 +1,8 @@
+directory: crates/ctx-summarize/tests
+summary: Integration test suite for the ctx-summarize runner. Covers the full summarization pipeline (leaf-then-rollup ordering, agent call inputs, output content) using an in-memory `FakeFs` and `RecordingAgent`, plus real subprocess `Agent` behavior via `sh` with no network access. Security and scope-gate invariants are also exercised here.
+children:
+  - summarize.rs: All integration tests — pipeline correctness, error paths, subprocess agent contract, access-denial gates, and scope-check approval logic.
+key_invariants:
+  - Intent files are never overwritten by the runner.
+  - Security gates (`PathEscape`, `AccessDenied`, scope overflow) are enforced at the runner boundary, not inside individual summarizers.
+intent_divergence: No intent.md present; cannot assess divergence.

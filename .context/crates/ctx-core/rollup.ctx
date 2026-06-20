@@ -1,0 +1,7 @@
+directory: crates/ctx-core
+summary: Provides the single, shared access-control primitive for all CTX tooling: a deny-by-default gate that classifies paths as secret, binary, or gitignored and exposes `is_secret`, `is_binary`, `deny_reason`, and `accessible_set` as the crate's entire public surface.
+children:
+  - src: Houses the access gate implementation and the crate root that re-exports it.
+key_invariants:
+  - All three checks (secret / binary / gitignored) must pass for a path to be accessible; no caller may bypass any check.
+  - One canonical denylist copy; per-crate duplication is structurally prevented.

@@ -1,0 +1,8 @@
+directory: crates/ctx-cage/src/bin
+summary: Two binary entry points for the ctx-cage system. The host-side binary (`ctx_cage`) parses CLI args and drives the cage lifecycle; the in-cage client binary (`ctx_cage_client`) forwards tool calls to the host broker over a Unix socket using busybox-style argv[0] dispatch.
+children:
+  - ctx_cage.rs: Host-side orchestrator: CLI parsing, config resolution, and lifecycle delegation.
+  - ctx_cage_client.rs: In-cage tool proxy: argv[0]-based dispatch, socket framing, and response streaming.
+key_invariants:
+  - Both binaries truncate exit codes to `u8`; host/protocol errors always exit 1.
+  - Environment variables (`CTX_CAGE_ALLOW_SPEND`, per-binary path overrides, `CTX_SOCK`) are the extension points for both binaries.

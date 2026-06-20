@@ -1,0 +1,8 @@
+file: crates/ctx-verify/tests/checks.rs
+purpose: Behavioral tests for ctx-verify parsers and orchestration logic using a fake Runner. No real processes are spawned; all tool output is canned strings.
+invariants:
+  - FakeRunner returns ToolMissing for any key absent from by_first_arg.
+external_deps:
+  - ctx_verify: crate under test (checks, error, model, parse, runner modules).
+  - serde_json: verifies serialization shape of CheckReport/Report.
+functions:

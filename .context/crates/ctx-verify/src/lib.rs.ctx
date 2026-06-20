@@ -1,0 +1,5 @@
+file: crates/ctx-verify/src/lib.rs
+purpose: Root of the ctx-verify crate; re-exports the six submodules that together run cargo/clippy/script checks and return a capped JSON verification report.
+invariants:
+external_deps:
+functions:

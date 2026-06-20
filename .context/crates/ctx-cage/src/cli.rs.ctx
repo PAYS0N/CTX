@@ -1,0 +1,16 @@
+file: crates/ctx-cage/src/cli.rs
+purpose: Parses argv for `ctx-cage` via clap and resolves the parsed flags into a `Mode` enum, enforcing mutual-exclusion rules and a spend gate before returning to the caller.
+invariants:
+  - `--self-test` is mutually exclusive with `--task`, `--task-file`, and `--interactive`.
+  - `--task` and `--task-file` are mutually exclusive with each other and with `--interactive`.
+  - Any `Mode` where `mode_is_billed` returns `true` requires `allow_spend == true` or `ResolveError::NotAllowed` is returned.
+external_deps:
+  - clap: argv parsing with `Parser`, `Args`, `ValueEnum` derives.
+  - thiserror: `ResolveError` derive.
+functions:
+  - name: mode_is_billed
+    signature: pub const fn mode_is_billed(mode: &Mode) -> bool
+    purpose: Returns whether a given `Mode` incurs billing; `SelfTestStub` is free, `Task` and `Interactive` are billed.
+  - name: resolve_mode
+    signature: pub fn resolve_mode(cli: &Cli, allow_spend: bool) -> Result<Mode, ResolveError>
+    purpose: Validates flag combinations, reads `--task-file` from disk if needed, enforces the spend gate, and returns the resolved `Mode`.

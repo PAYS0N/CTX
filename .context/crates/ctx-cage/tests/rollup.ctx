@@ -1,0 +1,13 @@
+directory: crates/ctx-cage/tests
+summary: Integration and unit test suite for ctx-cage. Covers the broker over real Unix sockets, bwrap argv construction and crate discovery, wire protocol round-trips, CLI mode resolution, and summarize path/staleness logic. The `common` subdirectory supplies shared fixtures and argv predicates consumed across the bwrap tests.
+children:
+  - broker_loopback.rs: Full client-server broker exercise over real UnixListener/UnixStream pairs.
+  - bwrap_build.rs: Argv-shape assertions for `build_bwrap_args`; pure, no subprocess.
+  - bwrap_discover.rs: Filesystem-backed tests for `discover_crate_dirs` correctness and error handling.
+  - cli.rs: Pure tests for `resolve_mode`, spend-gate blocking, and flag-conflict detection.
+  - protocol.rs: In-memory wire-protocol round-trip and malformed-frame tests.
+  - summarize.rs: Unit tests for `expected_leaf_path` and `compute_stale`.
+  - common/: Shared fixtures (`BwrapConfig`, `ClaudeBinds`) and argv predicates for bwrap tests.
+key_invariants:
+  - Socket-based tests use pid + atomic counter for unique paths, preventing parallel-test collisions.
+  - Tests that touch the filesystem create and remove their own tempdirs/tempfiles; no shared mutable state.

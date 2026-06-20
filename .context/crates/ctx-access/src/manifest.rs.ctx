@@ -1,0 +1,13 @@
+file: crates/ctx-access/src/manifest.rs
+purpose: Builds and materializes the deny-by-default manifest at `.context/.manifest`, listing every git-tracked accessible source path with its `ctx-access read` invocation.
+invariants:
+  - Only paths in the intersection of git-tracked and accessible files appear; secrets, binaries, and gitignored paths are absent.
+  - Manifest is always written to `.context/.manifest` before `build` returns Ok.
+external_deps:
+functions:
+  - name: path
+    signature: pub fn path() -> RepoPath
+    purpose: Returns the canonical manifest file path `.context/.manifest`.
+  - name: build
+    signature: pub fn build<E: Env>(env: &E, task_id: &str) -> Result<String, CtxError>
+    purpose: Validates the task ID, computes the accessible file set, renders the manifest, writes it to disk, and returns the rendered text.

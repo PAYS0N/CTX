@@ -1,0 +1,11 @@
+file: crates/ctx-cage/src/bwrap/build.rs
+purpose: Builds a deterministic bwrap argv (`Vec<OsString>`) from a `BwrapConfig`, composing namespace isolation, bind mounts, env vars, and optional Claude binds.
+invariants:
+  - Output always starts with `"bwrap"` as argv[0].
+  - Returns `CageError::Protocol` if `claude` is `Some` and `allow_net` is `false`.
+  - `--clearenv` is always emitted; only explicitly set env vars exist inside the cage.
+external_deps:
+functions:
+  - name: build_bwrap_args
+    signature: pub fn build_bwrap_args(c: &BwrapConfig) -> Result<Vec<OsString>, CageError>
+    purpose: Assembles the complete bwrap argv from the config, validating the claude+net constraint before building.

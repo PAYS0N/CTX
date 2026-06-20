@@ -1,0 +1,6 @@
+file: crates/ctx-core/src/lib.rs
+purpose: Root of the shared primitives crate; re-exports the `access` module as the single authoritative source of the secret-denylist gate used by all CTX tooling.
+invariants:
+  - The denylist lives only here; no per-crate copies exist, preventing silent divergence between consumers.
+external_deps:
+functions:

@@ -1,0 +1,7 @@
+directory: crates/ctx-access/tests
+summary: Integration test suite for `ctx-access` enforcement logic. All coverage runs against `FakeEnv`, an in-memory stand-in for the real filesystem, exercising the full enforcement surface: chain ordering, prefix caching, shallow reads, write-needs-read, list-needs-rollup, stale banners, lifecycle, path escapes, and secret gating.
+children:
+  - enforce.rs: Hermetic behavioral tests for the enforcement core; sole consumer of `FakeEnv::seeded`.
+key_invariants:
+  - No test touches the real filesystem; all state lives in `FakeEnv`.
+  - `FakeEnv` time is fixed at `1_700_000_000` and `is_ignored` always returns `false`, making test outcomes deterministic.

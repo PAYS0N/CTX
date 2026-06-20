@@ -1,9 +1,14 @@
 directory: crates
-summary: The workspace root for three agent-facing binaries and their backing libraries: `ctx-access` (gated file I/O for agents), `ctx-check` (workspace verification and reporting), and `ctx-summarize` (LLM-driven `.ctx` generation). Together they form the full toolchain surface that agents interact with during a task lifecycle.
+summary: The workspace root for all CTX tooling crates. Together they form a layered system: `ctx-core` supplies the shared access-control primitive; `ctx-access` enforces it at the file I/O boundary; `ctx-cage` sandboxes agent subprocesses; `ctx-summarize` drives LLM-based `.ctx` generation; and `ctx-check`/`ctx-verify` run and report on code-quality checks.
 children:
-  - ctx-access: Enforced, audited read/write gateway — the only sanctioned path for agents to touch source files.
-  - ctx-check: Verification broker that runs cargo/clippy/fmt/script checks and emits a structured JSON `Report`.
-  - ctx-summarize: Orchestrates LLM calls to produce and update `.ctx` leaf and rollup summaries across the repo.
+  - ctx-core: Shared deny-by-default access gate; the single canonical denylist consumed by all other crates.
+  - ctx-access: Enforced file I/O binary for agents — reads, writes, and listings gated by ctx-core rules.
+  - ctx-cage: bwrap sandbox host/proxy with a binary wire protocol; isolates agent tool invocations at the OS level.
+  - ctx-summarize: LLM-driven `.ctx` and `rollup.ctx` generation pipeline with injectable Fs/Agent seams.
+  - ctx-check: Standalone cargo/clippy/fmt/script check runner that emits a capped JSON diagnostic report.
+  - ctx-verify: Alternate check-and-report pipeline with a `Runner` seam, strict exit codes, and synthesized hints.
 key_invariants:
-  - Each crate ships both a library and a binary; public library surfaces are kept narrow and testable via injected seams.
-  - No crate directly depends on another within this workspace (each is independently deployable).
+  - `ctx-core` is the sole source of access-control logic; no crate duplicates or bypasses its denylist.
+  - All agent file I/O must flow through `ctx-access`; no crate performs direct filesystem access on behalf of agents.
+  - Sandbox enforcement (`ctx-cage`) and access enforcement (`ctx-access`) are independent layers with no shared state.
+intent_divergence: `ctx-check` and `ctx-verify` appear to duplicate the check-and-report responsibility; no intent.md clarifies which is canonical.

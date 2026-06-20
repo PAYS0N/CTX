@@ -1,0 +1,24 @@
+file: crates/ctx-cage/src/protocol.rs
+purpose: Implements the binary wire protocol between the in-cage client and host-side broker: length-prefixed JSON requests and tagged, length-prefixed response frames (Output/Exit).
+invariants:
+  - All payloads are rejected with CageError::Protocol if they exceed MAX_FRAME_LEN (1 MiB).
+  - The Exit frame payload is always exactly 4 bytes; any other length yields CageError::Protocol.
+  - Mid-stream EOF is surfaced as CageError::UnexpectedEof, distinct from other I/O errors.
+external_deps:
+  - serde/serde_json: Request serialization over the wire.
+functions:
+  - name: write_request
+    signature: pub fn write_request<W: Write>(mut w: W, req: &Request) -> Result<(), CageError>
+    purpose: Encodes a Request as a u32-length-prefixed JSON body and writes it to w.
+  - name: read_request
+    signature: pub fn read_request<R: Read>(mut r: R) -> Result<Request, CageError>
+    purpose: Reads and decodes a length-prefixed JSON Request from r.
+  - name: write_output
+    signature: pub fn write_output<W: Write>(mut w: W, bytes: &[u8]) -> Result<(), CageError>
+    purpose: Writes a single Output frame (tag + u32 length + payload) to w.
+  - name: write_exit
+    signature: pub fn write_exit<W: Write>(mut w: W, code: u32) -> Result<(), CageError>
+    purpose: Writes the terminating Exit frame carrying the tool's exit code.
+  - name: read_response_frame
+    signature: pub fn read_response_frame<R: Read>(mut r: R) -> Result<ResponseFrame, CageError>
+    purpose: Reads one response frame from r and returns it as Output or Exit.

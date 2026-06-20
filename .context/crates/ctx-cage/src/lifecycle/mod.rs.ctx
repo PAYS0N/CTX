@@ -1,0 +1,19 @@
+file: crates/ctx-cage/src/lifecycle/mod.rs
+purpose: Orchestrates the three-phase cage lifecycle (prepare → serve → teardown) and conditionally runs pre/post auto-summarize when spend is allowed and the mode is billed.
+invariants:
+  - teardown always runs even if serve fails; teardown errors are swallowed.
+  - Summarize hooks are skipped unless both `r.allow_spend` is true and `mode_is_billed(&r.mode)`.
+  - A post_summarize failure only surfaces as an error if serve itself succeeded.
+external_deps:
+  - crate::summarize: stale-leaf detection and ctx-summarize invocation.
+  - crate::cli::mode_is_billed: determines whether the selected mode incurs spend.
+functions:
+  - name: execute
+    signature: pub fn execute(r: &Resolved) -> Result<i32, CageError>
+    purpose: Runs prepare, optional pre-summarize, serve, optional post-summarize, and teardown; returns the cage's exit code.
+  - name: pre_summarize
+    signature: fn pre_summarize(r: &Resolved) -> Result<(), CageError>
+    purpose: Computes stale context leaves and feeds them to ctx-summarize before the cage runs.
+  - name: post_summarize
+    signature: fn post_summarize(r: &Resolved) -> Result<(), CageError>
+    purpose: Refreshes context leaves for files written by the agent during the run.

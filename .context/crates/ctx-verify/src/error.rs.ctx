@@ -1,0 +1,6 @@
+file: crates/ctx-verify/src/error.rs
+purpose: Defines the `CheckError` enum covering all failure modes for the ctx-verify crate.
+invariants:
+external_deps:
+  - thiserror: derive-based `Display`/`Error` impl generation.
+functions:

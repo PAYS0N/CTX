@@ -1,0 +1,9 @@
+directory: crates/ctx-core/src
+summary: Exposes the deny-by-default access gate as the sole shared primitive for all CTX tooling. Callers get `is_secret`, `is_binary`, `deny_reason`, and `accessible_set` through the `access` module re-exported from `lib.rs`; no other logic lives here.
+children:
+  - lib.rs: Crate root; re-exports `access` as the single denylist authority.
+  - access.rs: Implements the three-check gate (secret / binary / gitignored) and the `accessible_set` bulk filter.
+key_invariants:
+  - All three checks must pass for a path to be accessible; no caller may bypass any check.
+  - `accessible_set` assumes its input is already non-ignored, so it skips the gitignore check.
+  - One canonical copy of the denylist; per-crate copies are structurally prevented.

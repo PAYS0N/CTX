@@ -1,0 +1,11 @@
+file: crates/ctx-cage/src/bwrap/discover.rs
+purpose: Walks `<target_root>/crates/*` to collect each crate's `src` and `tests` directories into a `DiscoveredCrates` value for tmpfs overlay configuration.
+invariants:
+  - Returns `CageError::Protocol` if `<target_root>/crates/` does not exist.
+  - `found.srcs` and `found.tests` are sorted before return.
+  - Paths stored in `DiscoveredCrates` are relative (e.g. `crates/<name>/src`), not absolute.
+external_deps:
+functions:
+  - name: discover_crate_dirs
+    signature: pub fn discover_crate_dirs(target_root: &Path) -> Result<DiscoveredCrates, CageError>
+    purpose: Enumerates subdirectories of `crates/` and returns sorted lists of existing `src` and `tests` paths.

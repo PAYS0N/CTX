@@ -1,0 +1,31 @@
+file: crates/ctx-summarize/tests/summarize.rs
+purpose: Integration tests for the ctx-summarize runner using an in-memory `FakeFs` and a recording `Agent`, plus real subprocess `Agent` tests via `sh` with no network.
+invariants:
+  - `FakeFs` is seeded with leaf prompt, rollup prompt, one source file, and one intent file.
+  - `RecordingAgent` always returns `"SUMMARY[{system}]"` and records every `(system, user)` pair.
+external_deps:
+functions:
+  - name: leaf_then_rollups_leaf_up_and_intent_never_written
+    signature: fn leaf_then_rollups_leaf_up_and_intent_never_written()
+    purpose: Verifies runner writes leaf ctx, three rollup ctxs in bottom-up order, correct content, and correct agent call inputs; asserts intent.md is never overwritten.
+  - name: missing_prompt_is_an_error
+    signature: fn missing_prompt_is_an_error()
+    purpose: Asserts runner returns `SummError::MissingPrompt` when prompt files are absent.
+  - name: path_escape_is_rejected
+    signature: fn path_escape_is_rejected()
+    purpose: Asserts runner returns `SummError::PathEscape` for paths containing `..`.
+  - name: subprocess_agent_round_trips_stdin_to_stdout
+    signature: fn subprocess_agent_round_trips_stdin_to_stdout()
+    purpose: Verifies `SubprocessAgent` spawns a process, writes JSON to stdin, and captures stdout by using `cat`.
+  - name: subprocess_agent_nonzero_exit_is_error
+    signature: fn subprocess_agent_nonzero_exit_is_error()
+    purpose: Asserts `SubprocessAgent` returns `SummError::Agent` when the subprocess exits non-zero.
+  - name: subprocess_agent_empty_output_is_error
+    signature: fn subprocess_agent_empty_output_is_error()
+    purpose: Asserts `SubprocessAgent` returns `SummError::Agent` when the subprocess produces no output.
+  - name: gate_refuses_a_secret_target
+    signature: fn gate_refuses_a_secret_target()
+    purpose: Asserts runner returns `SummError::AccessDenied` for paths matching secret-file patterns (e.g. `.env`).
+  - name: scope_check_gates_oversize_runs_unless_approved
+    signature: fn scope_check_gates_oversize_runs_unless_approved()
+    purpose: Verifies `runner::scope_check` allows runs up to `MAX_TARGETS`, rejects larger runs without approval, and allows them with approval.

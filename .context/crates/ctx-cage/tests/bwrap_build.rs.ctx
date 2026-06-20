@@ -1,0 +1,8 @@
+file: crates/ctx-cage/tests/bwrap_build.rs
+purpose: Argv-shape tests for `build_bwrap_args`. Verifies flag presence, bind mounts, env vars, and command placement without invoking `bwrap`.
+invariants:
+  - All tests are pure; no subprocess is spawned.
+external_deps:
+  - ctx_cage::bwrap: module under test, plus its path constants
+  - common: test helpers (`has_pair`, `has_ro_bind`, `has_setenv`, `has_tmpfs`, `sample_claude_binds`, `sample_config`)
+functions:

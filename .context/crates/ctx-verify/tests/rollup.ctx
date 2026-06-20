@@ -1,0 +1,7 @@
+directory: crates/ctx-verify/tests
+summary: Integration-level behavioral tests for ctx-verify, covering parsers and orchestration via a canned FakeRunner. No real processes are spawned; all tool output is injected strings, making the suite hermetic and fast.
+children:
+  - checks.rs: Exercises the full check/parse/report pipeline against injected tool output without spawning real processes.
+key_invariants:
+  - FakeRunner returns ToolMissing for any key absent from its by_first_arg map, ensuring missing-tool paths are always exercised.
+  - No real subprocesses are spawned in any test.

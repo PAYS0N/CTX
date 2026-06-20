@@ -1,0 +1,11 @@
+file: crates/ctx-access/tests/enforce.rs
+purpose: Behavioral integration tests for the enforcement core using an in-memory `FakeEnv`. Covers chain ordering, prefix caching, shallow reads, write-needs-read, list-needs-rollup, stale banners, lifecycle, path escapes, and secret gating.
+invariants:
+  - All tests are hermetic; no real filesystem is touched.
+  - `FakeEnv::now_unix` always returns `1_700_000_000`; `is_ignored` always returns `false`.
+external_deps:
+  - ctx_access: crate under test (enforce, cache, env, error, repo_path).
+functions:
+  - name: FakeEnv::seeded
+    signature: fn seeded() -> Self
+    purpose: Constructs a `FakeEnv` pre-populated with a three-level `.context/` tree and two sibling source files.

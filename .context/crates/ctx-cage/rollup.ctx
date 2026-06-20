@@ -1,0 +1,10 @@
+directory: crates/ctx-cage
+summary: The `ctx-cage` crate delivers a bwrap-based sandbox for running Claude with controlled tool access. It exposes a host orchestrator binary, an in-cage proxy binary, a Unix-socket broker, a binary wire protocol, and a three-phase lifecycle API. The `tests/` tree validates all major subsystems against real sockets and filesystems.
+children:
+  - src/: Full implementation — binaries, sandbox construction, broker, protocol, lifecycle, and summarization.
+  - tests/: Integration and unit coverage for broker, bwrap, protocol, CLI, and summarize subsystems.
+key_invariants:
+  - All host↔cage communication is exclusively through the length-prefixed binary protocol; no other channel exists.
+  - The broker allowlist is the sole enforcement point for tool invocation from inside the cage.
+  - `--clearenv` is always present in bwrap construction; no host environment leaks into the cage.
+  - Teardown always executes regardless of serve outcome and its errors never propagate.

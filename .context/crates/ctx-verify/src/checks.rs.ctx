@@ -1,0 +1,23 @@
+file: crates/ctx-verify/src/checks.rs
+purpose: Orchestrates the fixed check suite (fmt, clippy, doc, test, rationale, workspace_lints, no_allow) by running each tool via a Runner, parsing output into Diagnostics, and assembling a Report.
+invariants:
+  - fmt runs before all other checks because it mutates source files.
+  - A failed check with no parsed diagnostics always receives a synthesized hint Diagnostic; the fail result is never empty.
+  - ToolMissing errors produce a skipped report rather than an error report.
+external_deps:
+functions:
+  - name: run_selected
+    signature: pub fn run_selected<R: Runner>(runner: &R, max: usize, only: Option<&[String]>, package: Option<&str>) -> Report
+    purpose: Runs the filtered subset of SPECS and assembles results into a Report, scoping cargo checks to a package when provided.
+  - name: effective_args
+    signature: fn effective_args(spec: &Spec, package: Option<&str>) -> Vec<String>
+    purpose: Inserts `-p <package>` after the cargo subcommand for cargo-based specs; leaves non-cargo specs unchanged.
+  - name: run_spec
+    signature: fn run_spec<R: Runner>(runner: &R, spec: &Spec, max: usize, package: Option<&str>) -> CheckReport
+    purpose: Executes one Spec, parses its output, synthesizes a hint if needed, and returns a capped CheckReport.
+  - name: wanted
+    signature: fn wanted(spec: &Spec, only: Option<&[String]>) -> bool
+    purpose: Returns true when no name filter is set or the spec's name matches an entry in the filter list.
+  - name: failure_hint
+    signature: fn failure_hint(o: &CommandOutcome) -> Diagnostic
+    purpose: Extracts the last non-empty trimmed line from stderr (falling back to stdout) as a fallback Diagnostic for silent failures.

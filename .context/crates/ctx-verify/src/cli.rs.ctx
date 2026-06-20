@@ -1,0 +1,11 @@
+file: crates/ctx-verify/src/cli.rs
+purpose: Defines the `clap`-parsed CLI struct and the `run` function that executes checks and writes a JSON report.
+invariants:
+  - Returns `Ok(true)` iff `report.status == Status::Pass`.
+external_deps:
+  - clap: CLI argument parsing via derive macro.
+  - serde_json: serializes the report to pretty JSON.
+functions:
+  - name: run
+    signature: pub fn run<R: Runner, W: Write>(runner: &R, cli: &Cli, out: &mut W) -> Result<bool, CheckError>
+    purpose: Executes the selected checks and writes the JSON report to `out`, returning whether all checks passed.

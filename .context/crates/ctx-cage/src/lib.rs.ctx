@@ -1,0 +1,6 @@
+file: crates/ctx-cage/src/lib.rs
+purpose: Root of the ctx-cage crate; re-exports all submodules and embeds the caged-agent rules as a compile-time constant.
+invariants:
+  - CAGE_RULES_MD is always the exact content of assets/cage-rules.md at compile time; no runtime file loading occurs.
+external_deps:
+functions:

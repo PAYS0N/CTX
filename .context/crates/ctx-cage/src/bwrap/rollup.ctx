@@ -1,0 +1,12 @@
+directory: crates/ctx-cage/src/bwrap
+summary: Provides the complete bwrap sandbox construction layer: config types, crate-directory discovery, and argv assembly. Callers get `build_bwrap_args` to produce a ready-to-exec `Vec<OsString>` and `discover_crate_dirs` to enumerate workspace crate paths for tmpfs overlay mounts.
+children:
+  - mod.rs: Public re-export surface; documents the cage mount layout contract.
+  - config.rs: Cage-internal path constants and per-launch configuration structs.
+  - discover.rs: Workspace crate enumeration feeding tmpfs overlay configuration.
+  - build.rs: Argv assembly from config, enforcing the claude+net constraint.
+key_invariants:
+  - `build_bwrap_args` always emits `--clearenv`; no host env vars leak into the cage.
+  - Claude binds require `allow_net = true`; violation yields `CageError::Protocol`.
+  - All paths in `DiscoveredCrates` are relative, not absolute.
+  - Filesystem access is confined to `discover_crate_dirs`; all other functions are pure.

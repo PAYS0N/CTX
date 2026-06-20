@@ -1,0 +1,12 @@
+directory: crates/ctx-cage/src/lifecycle
+summary: Implements the three-phase cage run: prepare (temp dir, socket, init-task), serve (broker thread + bwrap exec), and teardown (sockdir removal). The public entry point is `execute`, which sequences these phases, wraps them with optional ctx-summarize hooks when spend is permitted, and guarantees teardown runs regardless of serve outcome.
+children:
+  - mod.rs: Top-level sequencer; owns the summarize-hook logic and phase-error policy.
+  - prepare.rs: Phase 1 — produces the `Prep` struct consumed by serve and teardown.
+  - serve.rs: Phase 2 — runs the bwrap sandbox with a brokered Unix-socket tool interface.
+  - teardown.rs: Phase 3 — discards the sockdir; errors are intentionally swallowed here.
+key_invariants:
+  - Teardown always executes; its errors never propagate.
+  - Summarize hooks fire only when both `allow_spend` and `mode_is_billed` are true.
+  - The broker allowlist restricts tool access to `ctx-access` and `ctx-verify` only.
+  - Socket path is always `<sockdir>/ctx.sock`; sockdir is cleaned before creation and after exit.

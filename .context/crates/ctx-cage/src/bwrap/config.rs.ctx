@@ -1,0 +1,6 @@
+file: crates/ctx-cage/src/bwrap/config.rs
+purpose: Defines cage-internal path constants and configuration structs for a single bwrap sandbox launch.
+invariants:
+  - All `pub const` paths are cage-internal (not host) paths.
+external_deps:
+functions:

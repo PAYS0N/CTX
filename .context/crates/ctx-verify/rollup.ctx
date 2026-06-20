@@ -1,0 +1,12 @@
+directory: crates/ctx-verify
+summary: The `ctx-verify` crate is a binary and library that runs cargo/clippy/fmt/script checks, parses tool output into diagnostics, and emits a JSON report with exit codes 0/1/2. It exposes an injectable `Runner` seam so the full pipeline is exercisable without spawning real processes.
+children:
+  - src: Binary entry point, orchestration, check suite, parsing, reporting, and error types.
+  - tests: Hermetic integration tests covering the full pipeline via a canned `FakeRunner`.
+key_invariants:
+  - Exit codes are strictly 0 (pass), 1 (fail), or 2 (error); no other values are emitted.
+  - `fmt` always runs before other checks because it mutates source files.
+  - A failed check with no parsed diagnostics always receives a synthesized hint.
+  - `ToolMissing` produces a skipped report, not an error report.
+  - Overall status precedence: `Errored` > `Fail` > `Pass`; `Skipped` is ignored in aggregation.
+  - Diagnostic counts are capped to `max` before serialization; truncation is flagged.

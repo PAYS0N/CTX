@@ -1,0 +1,21 @@
+file: crates/ctx-verify/src/model.rs
+purpose: Defines the JSON report model for a verification run: a top-level `Report` with per-check `CheckReport` entries, each capped to a fixed diagnostic budget. Serialization is token-frugal, emitting detail only for failing or errored outcomes.
+invariants:
+  - `Report::new` sets status to `Errored` over `Fail` over `Pass`; `Skipped` checks are ignored.
+  - `CheckReport` serializes only `status` for `Pass`/`Skipped`; emits `count`, `diagnostics`, `truncated` only for `Fail`/`Errored`.
+  - `CheckReport::errored` always produces exactly one diagnostic with `file="<runner>"` and `lint="exec"`.
+external_deps:
+  - serde: custom `Serialize` impls use `SerializeStruct` to conditionally omit fields.
+functions:
+  - name: CheckReport::skipped
+    signature: pub const fn skipped() -> Self
+    purpose: Returns a zero-diagnostic `CheckReport` with `Status::Skipped`.
+  - name: CheckReport::errored
+    signature: pub fn errored(detail: String) -> Self
+    purpose: Returns a `CheckReport` with `Status::Errored` and the error message wrapped as a single diagnostic.
+  - name: CheckReport::build
+    signature: pub fn build(cmd_ok: bool, mut diagnostics: Vec<Diagnostic>, max: usize) -> Self
+    purpose: Constructs a `CheckReport` from tool output, capping diagnostics to `max` and setting status based on count and exit success.
+  - name: Report::new
+    signature: pub fn new(checks: BTreeMap<String, CheckReport>) -> Self
+    purpose: Assembles the top-level `Report`, deriving overall status from the per-check map with `Errored` taking precedence over `Fail`.

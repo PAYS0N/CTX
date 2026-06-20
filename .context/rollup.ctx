@@ -1,7 +1,12 @@
 directory: .
-summary: Root of the agent-toolchain workspace. Exposes three independently deployable binaries — `ctx-access`, `ctx-check`, and `ctx-summarize` — backed by narrow library crates. This is the top-level composition point; all agent-facing contracts originate here.
+summary: The CTX workspace root. It delivers three agent-facing binaries (`ctx-access`, `ctx-summarize`, `ctx-verify`/`ctx-check`) backed by shared crates, a prompt library for decoupled agent contracts, and enforcement infrastructure (lint regime, deny lists) that makes policy violations unrepresentable rather than merely discouraged. The public surface is the `crates/` binaries and the `agents/` file-contract prompts; everything else is implementation or documentation.
 children:
-  - crates: Houses all three crate pairs (binary + library) that constitute the full agent toolchain.
+  - crates: All CTX tooling crates — access control, sandboxing, summarization, and check/verify pipelines.
+  - agents: Decoupled prompt files that define the `{system,user}`→stdout contracts for each agent role.
+  - docs: Frozen spec, ADR log, and current status; authoritative for design decisions and active plan.
 key_invariants:
-  - All agent interaction with source files, verification, and summarization flows through the binaries defined in this workspace.
-  - No cross-crate dependencies within the workspace; each crate is independently deployable.
+  - No `unsafe`, no `#[allow]`, no `Box<dyn Error>` in libraries; these are enforced by the workspace lint regime the project dogfoods.
+  - Every binary is a thin CLI over a pure core with injected `Env`/`Fs`/`Agent`/`Runner`/clock boundaries; no core has argv, process, or network dependencies.
+  - Prompts are files in `agents/`, never embedded in code.
+  - Secrets (`.env`) are never read by a model nor committed.
+intent_divergence: `ctx-check` and `ctx-verify` both occupy the check-and-report role; intent.md names only `ctx-verify` as the canonical verification broker.

@@ -1,0 +1,13 @@
+file: crates/ctx-verify/src/runner.rs
+purpose: Defines the `Runner` trait and `ProcRunner` implementation for executing external tools, providing a seam for injecting canned output in tests.
+invariants:
+  - `ToolMissing` is returned only when the OS reports `NotFound`; all other spawn failures yield `Spawn`.
+  - `CommandOutcome::ok()` returns true iff `code == Some(0)`.
+external_deps:
+functions:
+  - name: ok
+    signature: pub fn ok(&self) -> bool
+    purpose: Reports whether the process exited with code zero.
+  - name: run (ProcRunner)
+    signature: fn run(&self, tool: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<CommandOutcome, CheckError>
+    purpose: Spawns `tool` with `args` and environment `envs`, capturing stdout/stderr and exit code.

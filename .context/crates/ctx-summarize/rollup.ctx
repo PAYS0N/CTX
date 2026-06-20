@@ -1,8 +1,10 @@
 directory: crates/ctx-summarize
-summary: The `ctx-summarize` crate generates `.ctx` leaf summaries and `rollup.ctx` directory summaries for a repo by invoking an external LLM agent. It exposes `run()` for programmatic use and `dispatch()` for CLI use, both parameterized over `Fs` and `Agent` traits. The binary entry point wires standard filesystem and subprocess agent implementations.
+summary: The `ctx-summarize` crate generates `.ctx` leaf summaries and `rollup.ctx` directory summaries for a repo by driving an external LLM agent subprocess. It exposes `run()` and `dispatch()` as its public API, parameterized over `Fs` and `Agent` traits, and is exercised by an integration suite using in-memory fakes and real subprocess invocations.
 children:
-  - src: Full implementation of the binary and library, including orchestration, LLM agent dispatch, filesystem abstraction, path validation, and error types.
+  - src: Core binary, library, and orchestration logic — the crate's entire implementation surface.
+  - tests: Integration coverage for pipeline ordering, security gates, and subprocess agent contract.
 key_invariants:
-  - Rollup directories are processed deepest-first; repo root is always last.
-  - `intent.md` is read as prompt context but never written.
-  - Prompt content is loaded from `prompts/` at runtime.
+  - `intent.md` files are read as prompt context and never written by any code path.
+  - Rollup directories are always processed deepest-first, repo root last.
+  - Security gates (path escape, access denial, scope overflow) are enforced at the runner boundary.
+intent_divergence: No intent.md present; cannot assess divergence.

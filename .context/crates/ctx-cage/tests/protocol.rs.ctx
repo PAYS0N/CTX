@@ -1,0 +1,6 @@
+file: crates/ctx-cage/tests/protocol.rs
+purpose: Integration tests for the ctx-cage wire protocol using in-memory byte buffers. Covers round-trips, error paths, and malformed-frame rejection without any I/O.
+invariants:
+  - All transports are `Vec<u8>`/`&[u8]`; no sockets or processes are involved.
+external_deps:
+functions:

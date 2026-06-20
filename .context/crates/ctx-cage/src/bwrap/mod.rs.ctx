@@ -1,0 +1,6 @@
+file: crates/ctx-cage/src/bwrap/mod.rs
+purpose: Re-exports the bwrap argv builder, config types, and crate auto-discovery from submodules. Documents the mount layout produced inside the cage.
+invariants:
+  - No I/O or filesystem access occurs except in `discover_crate_dirs`.
+external_deps:
+functions:

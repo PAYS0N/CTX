@@ -1,0 +1,16 @@
+directory: crates/ctx-verify/src
+summary: Implements the `ctx-verify` binary and library: runs a fixed suite of cargo/clippy/fmt/script checks via an injectable `Runner`, parses tool output into `Diagnostic` values, caps results to a diagnostic budget, and serializes a `Report` as JSON with exit codes 0/1/2. The public surface is the six re-exported modules plus the `run` entry point consumed by `main.rs`.
+children:
+  - main.rs: Binary entry point; maps `run` results to exit codes 0/1/2.
+  - cli.rs: CLI argument parsing and top-level orchestration of checks-to-JSON-output.
+  - checks.rs: Drives the ordered check suite, scopes cargo commands to a package, and synthesizes fallback diagnostics on silent failures.
+  - model.rs: JSON report types with token-frugal serialization and precedence-ordered status aggregation.
+  - parse.rs: Converts raw tool stdout/stderr into deduplicated `Diagnostic` values.
+  - runner.rs: `Runner` trait and `ProcRunner` implementation; injection seam for tests.
+  - error.rs: Typed error enum covering all crate failure modes.
+key_invariants:
+  - `fmt` always runs before other checks because it mutates source files.
+  - A failed check with no parsed diagnostics always receives a synthesized hint; no fail result is ever empty.
+  - `ToolMissing` produces a skipped report, not an error report.
+  - Overall `Report` status precedence: `Errored` > `Fail` > `Pass`; `Skipped` is ignored.
+  - Diagnostic counts are capped to `max` before serialization; truncation is flagged in the report.

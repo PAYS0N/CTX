@@ -1,0 +1,9 @@
+file: crates/ctx-cage/src/lifecycle/teardown.rs
+purpose: Lifecycle phase 3 cleanup: removes the per-run sockdir after serving completes. Failures are silently ignored.
+invariants:
+  - Only removes `prep.sockdir`; never touches paths outside it.
+external_deps:
+functions:
+  - name: teardown_run
+    signature: pub fn teardown_run(prep: &Prep)
+    purpose: Deletes the per-run sockdir (rules file and socket); errors are discarded.

@@ -1,0 +1,12 @@
+file: crates/ctx-cage/tests/cli.rs
+purpose: Integration tests for `ctx_cage::cli::resolve_mode`, covering mode resolution, spend-gate blocking, and flag-conflict detection.
+invariants:
+  - All tests are pure except `task_file_is_read_from_disk`, which writes to a unique tempfile and cleans up after itself.
+external_deps:
+functions:
+  - name: fresh_tempfile
+    signature: fn fresh_tempfile(label: &str) -> PathBuf
+    purpose: Returns a unique temp path per call using a process-global atomic counter; caller owns cleanup.
+  - name: base
+    signature: fn base(target: &str) -> Cli
+    purpose: Constructs a minimal `Cli` with all optional flags at their defaults for use as a test starting point.
