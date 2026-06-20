@@ -1,0 +1,23 @@
+[package]
+name = "ctx-scan"
+version = "0.1.0"
+edition = "2021"
+description = "Self-contained directory scanner: walks any directory and writes a .context/ summary tree."
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ctx-scan"
+path = "src/main.rs"
+
+[lib]
+name = "ctx_scan"
+path = "src/lib.rs"
+
+[dependencies]
+ctx-core = { path = "../ctx-core" }
+ctx-summarize = { path = "../ctx-summarize" }
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
