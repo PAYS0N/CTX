@@ -51,7 +51,7 @@ fn visit(
     let name = entry.file_name().to_string_lossy().into_owned();
     let path = entry.path();
     if path.is_dir() {
-        if name != ".context" {
+        if name != ".context" && name != ".git" {
             stack.push(path);
         }
         return Ok(());

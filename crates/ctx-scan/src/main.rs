@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use ctx_summarize::agent::SubprocessAgent;
 
-use ctx_scan::cli::{dispatch, Cli};
+use ctx_scan::cli::{dispatch, list_targets, Cli};
 
 /// Write `msg` to `w`, ignoring a broken write channel.
 fn emit<W: Write>(mut w: W, msg: &str) {
@@ -25,11 +25,17 @@ fn fail(msg: &str, code: u8) -> ExitCode {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let mut out = std::io::stdout().lock();
+    if cli.dry_run() {
+        return match list_targets(&cli, &mut out) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => fail(&format!("ctx-scan: {e}"), 1),
+        };
+    }
     let agent = match SubprocessAgent::from_env() {
         Ok(a) => a,
         Err(e) => return fail(&format!("ctx-scan: {e}"), 2),
     };
-    let mut out = std::io::stdout().lock();
     match dispatch(&agent, &cli, &mut out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => fail(&format!("ctx-scan: {e}"), 1),
