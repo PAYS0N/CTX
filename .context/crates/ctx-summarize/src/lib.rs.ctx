@@ -1,7 +1,9 @@
 file: crates/ctx-summarize/src/lib.rs
-purpose: Root of the ctx-summarize crate; declares public submodules for the leaf-up context-tree summarization runner.
-invariants:
-  - `intent.md` is never written by this crate.
-  - Prompt content is loaded from `prompts/` at runtime, not embedded.
-external_deps:
+behavior: Crate root for ctx-summarize, the leaf-up context-tree summarization runner; declares the module layering and re-exports nothing beyond the modules themselves.
+edit_notes:
+  - Prompt text lives in external `prompts/` files loaded at runtime by runner/agent, not embedded in source; do not add prompt strings here.
+  - Layering is cli (argv/io) -> runner (pure orchestration) -> fs/agent (seams); new code must respect this direction, e.g. runner must not depend on cli.
+  - `intent.md` is deliberately never written by this crate; do not add that behavior without updating this doc comment.
 functions:
+invariants:
+external_deps:

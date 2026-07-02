@@ -1,6 +1,12 @@
 file: crates/ctx-cage/src/bwrap/config.rs
-purpose: Defines cage-internal path constants and configuration structs for a single bwrap sandbox launch.
-invariants:
-  - All `pub const` paths are cage-internal (not host) paths.
-external_deps:
+behavior: Defines cage-internal path constants and the `BwrapConfig` struct that fully describes one bubblewrap cage launch (mounts, binds, env, command).
+edit_notes:
+  - Constants (WORK_DIR, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR, API_SOCK_NAME, CAGE_CLAUDE_CONFIG, CAGE_CLAUDE_CRED, CAGE_LOCAL_CLAUDE) are cage-side path literals consumed by the bwrap invocation builder elsewhere in this module tree; renaming any requires updating that builder in lockstep.
+  - mask_file must point to an empty regular file, not /dev/null — bwrap binds are nodev, so a masked device node returns EACCES and breaks readers (e.g. git reading masked .git/config).
+  - env plus --clearenv means BwrapConfig.env is the entire cage environment; nothing is inherited from the host.
+  - new_session defaults false via #[derive(Default)] but callers should set true for non-interactive runs (blocks TIOCSTI injection) and false only for interactive Claude Code TUI sessions.
 functions:
+invariants:
+  - CAGE_CLAUDE_CRED and CAGE_LOCAL_CLAUDE are rooted under /tmp because the cage HOME is /tmp.
+  - API_SOCK_NAME is a basename, always joined under CAGE_RUN_DIR, not a standalone path.
+external_deps:

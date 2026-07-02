@@ -1,0 +1,11 @@
+directory: agents
+domain: Reference implementation and contract definition for the model-adapter seam that bridges ctx-summarize's Rust core to a concrete LLM provider via stdin/stdout JSON over `sh -c $CTX_AGENT_CMD`. Anything implementing this contract can replace the default adapter; the Rust core never talks to a provider API directly.
+edit_notes:
+  - Adapters are thin transports only: no added instructions, reformatting, or prompt wrapping — prompt content lives entirely in prompts/summarizer-leaf.md and prompts/summarizer-rollup.md, passed verbatim as the "system" field.
+  - Directory is outside the Rust lint regime, same as prompts/; changes here are plain scripts, not lint-checked.
+  - Any new provider adapter must replicate summarizer-claude.py's stdin/stdout/exit contract exactly for CTX_AGENT_CMD to remain swappable.
+children:
+  - README.md: Defines the stdin/stdout/exit contract all adapters must satisfy.
+  - summarizer-claude.py: Default adapter implementation, calls Anthropic Messages API with cached system prompt.
+invariants:
+  - Adapter stdout is exactly the model's completion text; exit code 0 only on success, non-zero with stderr message on any failure (empty stdout counts as failure).

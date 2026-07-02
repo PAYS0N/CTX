@@ -1,0 +1,11 @@
+file: scripts/cycle_check.sh
+behavior: Stub CI/dev script intended to detect circular module dependencies within a crate; currently only verifies that `cargo modules dependencies` runs successfully and does not actually detect cycles.
+edit_notes:
+  - Real cycle detection is deferred to dylint rule 4 (see docs/DYLINT_RULES.md); this script is explicitly a placeholder, not a functioning check.
+  - Requires the external `cargo-modules` subcommand; script fails fast with an install hint if it is missing.
+  - Exit code reflects only whether `cargo modules dependencies` ran without error, not whether cycles exist — callers must not treat success as "no cycles."
+functions:
+invariants:
+  - Exits non-zero only if cargo-modules is missing or the cargo modules command itself fails; never fails due to detected cycles (no cycle parsing implemented).
+external_deps:
+  - cargo-modules (external cargo subcommand, not a Rust crate dep): must be separately installed via `cargo install cargo-modules`; script checks for it via `command -v`.

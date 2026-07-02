@@ -1,0 +1,10 @@
+file: docs/STATUS.md
+behavior: Living status doc tracking current project shape, completed pivot work (ADR-035..043), open next-steps, and deferred items for the ctx-* tool suite (context/cage/scan/verify/run). Serves as the canonical "what's true now and what's next" reference alongside frozen SPEC.md, backlog UNIMPLEMENTED.md, and rationale log DECISIONS.md.
+edit_notes:
+  - Must be updated whenever active focus changes; is the one doc expected to go stale on purpose between updates (has explicit "Last updated" date).
+  - SPEC.md is frozen design (currently revision 4); do not fold design decisions here, only current-state/plan summary and pointers to ADR numbers.
+  - References this repo's own `.context/` tree as currently STALE (pre-pivot content) until `ctx-scan . --update --approve` is rerun — that statement itself will go stale once step 2 under "Open / next" is completed.
+  - Ordering under "Done and verified" and "Open / next" reflects actual dependency/sequencing of work, not arbitrary listing.
+functions:
+invariants:
+external_deps:

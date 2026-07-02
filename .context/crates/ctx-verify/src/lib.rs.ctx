@@ -1,5 +1,8 @@
 file: crates/ctx-verify/src/lib.rs
-purpose: Root of the ctx-verify crate; re-exports the six submodules that together run cargo/clippy/script checks and return a capped JSON verification report.
+behavior: Crate root for ctx-verify, a broker that runs cargo/clippy/script checks and emits one capped JSON verification report so checking a change has bounded, deterministic token cost.
+edit_notes:
+  - Layering mirrors ctx-access: cli (argv/io) sits over checks (pure orchestration) sits over runner (process boundary); keep new code in the matching layer.
+  - Report schema is described as part of the same family as the spec's audit report; changes to model.rs should stay schema-compatible with that.
+functions:
 invariants:
 external_deps:
-functions:

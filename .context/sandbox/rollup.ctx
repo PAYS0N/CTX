@@ -1,0 +1,9 @@
+directory: sandbox
+domain: Retired prototype directory. Formerly held a Bash-based sandbox/cage implementation for isolating agent tool execution; that functionality has been fully superseded by the Rust crate `crates/ctx-cage`. The only remaining content is documentation of the retirement and a file-by-file mapping to the new implementation.
+edit_notes:
+  - Do not add or modify behavior here; this directory is documentation-only. Real work happens in crates/ctx-cage/{src,tests,assets}.
+  - If old Bash scripts are removed or new equivalents added in crates/ctx-cage, update README.md's mapping list accordingly.
+children:
+  - README.md: Retirement notice and file-mapping record; the only content in this directory.
+invariants:
+  - No live code executes from this directory; all functional invariants (spend gating, project-root discovery) now belong to crates/ctx-cage.

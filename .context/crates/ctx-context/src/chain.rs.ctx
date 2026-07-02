@@ -1,0 +1,21 @@
+file: crates/ctx-context/src/chain.rs
+behavior: Computes the ordered list of context-node paths (per-directory rollup.ctx + intent.md, top-down, plus a target file's leaf `<file>.ctx`) that an agent must read before touching a file or directory, mapping each repo path to its `.context`-mirrored location.
+edit_notes:
+  - Chain order is a protocol: top-down dir rollup+intent pairs, then leaf for file targets. Consumers (e.g. serving/reading code) rely on this exact order and on `NodeKind::label()` values ("rollup"/"intent"/"leaf") for headers/markers.
+  - Leaf path is built as `context_dir(parent).child("<filename>.ctx")`, i.e. sibling of the file's own `.context` dir, not nested under a dir named after the file.
+  - Depends on `RepoPath::dir_chain()` returning ancestor directories top-down (excluding the target itself for `for_file`, and for `for_dir` the target is appended manually unless it is root).
+functions:
+  - name: context_dir
+    signature: pub fn context_dir(dir: &RepoPath) -> RepoPath
+    purpose: Maps a repo directory to its mirrored `.context` directory.
+  - name: for_file
+    signature: pub fn for_file(target: &RepoPath) -> Result<Vec<ChainNode>, CtxError>
+    purpose: Builds the full chain (ancestor rollups/intents + target's leaf) for a file target.
+    notes: Errors with CtxError::PathEscape if target has no file-name component.
+  - name: for_dir
+    signature: pub fn for_dir(target: &RepoPath) -> Vec<ChainNode>
+    purpose: Builds the chain (ancestor rollups/intents through the target directory itself) for a directory target.
+invariants:
+  - Chain never includes source file bytes, only rollup.ctx/intent.md/leaf .ctx paths.
+  - for_file's returned chain always ends with exactly one NodeKind::Leaf node; for_dir never produces a Leaf node.
+external_deps:

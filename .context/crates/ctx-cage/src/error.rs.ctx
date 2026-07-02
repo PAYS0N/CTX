@@ -1,7 +1,10 @@
 file: crates/ctx-cage/src/error.rs
-purpose: Defines the single public error enum for the `ctx-cage` crate, covering I/O, JSON, protocol, and broker-allowlist failures.
-invariants:
-  - `Io` and `Json` variants are constructed via `From` conversions; all others require explicit construction.
-external_deps:
-  - thiserror: derive-based `Display`/`Error` impl generation.
+behavior: Defines the single error type returned by ctx-cage's public API surface, covering I/O failures, JSON (de)serialization failures, and a catch-all protocol/precondition violation.
+edit_notes:
+  - Protocol variant is a free-form String; new distinct boundary failures should get their own variant only if callers need to match on them, otherwise reuse Protocol with a descriptive message.
+  - Richer, module-specific error detail is expected to live on that module's own Result type, not be added here.
 functions:
+invariants:
+  - Io and Json variants are constructed only via #[from] (std::io::Error and serde_json::Error respectively); no manual construction path exists.
+external_deps:
+  - thiserror: derives Display/Error impls and the #[from] conversions.

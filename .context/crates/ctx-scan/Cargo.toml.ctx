@@ -1,0 +1,11 @@
+file: crates/ctx-scan/Cargo.toml
+behavior: Defines the ctx-scan crate: a binary and library that walks a directory tree and writes a `.context/` summary tree, built on ctx-core and ctx-summarize.
+edit_notes:
+  - Ships both a bin (src/main.rs) and lib (src/lib.rs) target named ctx_scan; keep both in sync when restructuring the crate.
+  - Depends on workspace-local crates ctx-core and ctx-summarize via path; version bumps there don't require Cargo.toml changes here.
+functions:
+invariants:
+external_deps:
+  - ignore: gitignore-aware directory walking, used for the directory scan.
+  - sha2: content hashing for the summary tree entries.
+  - ctx-core / ctx-summarize: workspace path dependencies providing core types and summarization logic consumed by this crate.

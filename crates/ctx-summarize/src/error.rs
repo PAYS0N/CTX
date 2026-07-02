@@ -14,19 +14,20 @@ pub enum SummError {
     /// The task cache could not be read or parsed.
     #[error("cannot read task cache for {0:?}")]
     CacheRead(String),
-    /// No agent command was configured (env var unset/empty).
-    #[error("no agent command configured (set CTX_AGENT_CMD)")]
+    /// No agent command was configured (env var unset/empty and no
+    /// `.env` entry).
+    #[error("no agent command configured (set CTX_AGENT_CMD, or put it in the target's .env)")]
     NoAgentCommand,
     /// The agent subprocess failed, exited non-zero, or produced nothing.
     #[error("agent failed: {0}")]
     Agent(String),
-    /// A target is secret, binary, or gitignored: outside the
+    /// A target is secret, binary, or ignored: outside the
     /// deny-by-default accessible set, even if explicitly requested.
     #[error("access denied: {path:?} is not summarizable ({reason})")]
     AccessDenied {
         /// The repo-relative path that was refused.
         path: String,
-        /// Why (secret / binary / gitignored).
+        /// Why (secret / binary / ignored).
         reason: String,
     },
     /// More targets than the scope gate allows without explicit approval.

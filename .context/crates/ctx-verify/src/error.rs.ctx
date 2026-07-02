@@ -1,6 +1,9 @@
 file: crates/ctx-verify/src/error.rs
-purpose: Defines the `CheckError` enum covering all failure modes for the ctx-verify crate.
-invariants:
-external_deps:
-  - thiserror: derive-based `Display`/`Error` impl generation.
+behavior: Defines the CheckError enum, the single error taxonomy used across ctx-verify for tool-invocation and report-output failures.
+edit_notes:
+  - Variant set is consumed by report-encoding and tool-runner call sites elsewhere in the crate; adding/renaming variants requires updating those match sites.
 functions:
+invariants:
+  - Each variant carries only String-based context (tool name/detail), no source error chaining via #[from] or #[source].
+external_deps:
+  - thiserror: derives Display/Error impls from the #[error(...)] format strings.

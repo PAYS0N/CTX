@@ -1,0 +1,8 @@
+{
+  "hash": "3c5684ec6073216546ff93af3b1ac7e9dc7da23949f391b9ba4152ae39449cbc",
+  "children": {
+    "Cargo.toml": "f:9e4bb14b25c839ce4ba2e393f87d71d0e9495a05536424a162f9501b1e219ba5",
+    "src": "d:5877f4a0a3a97353622588d4a7eda579bc32d651edbcc7c6eec412778732eeb9",
+    "tests": "d:068f1677e0db5cec2d173ccac3be64280fe181e05a641d63306aa9ee52b9c86f"
+  }
+}

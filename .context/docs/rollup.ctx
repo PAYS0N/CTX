@@ -1,0 +1,13 @@
+directory: docs
+domain: Project documentation set for the ctx-* agentic-coding tooling: a sealed specification (SPEC.md), living status tracker (STATUS.md), append-only decision log (DECISIONS.md), forward-looking backlog (UNIMPLEMENTED.md), and two design docs (DYLINT_RULES.md unimplemented, SANDBOX.md retired). Together these are the authoritative source of truth an editor must consult before changing enforcement layers, the context-tree protocol, or the lint regime; code and templates elsewhere are expected to conform to what's recorded here, not the other way around.
+edit_notes:
+  - Read order for any cross-cutting change: SPEC.md (frozen contract, rev 4) → STATUS.md (current state/plan) → DECISIONS.md (why) → UNIMPLEMENTED.md (what's left); SANDBOX.md and DYLINT_RULES.md are historical/future-only and should not be treated as current behavior.
+  - SPEC.md is sealed and only changes via explicit owner-authorized re-spec recorded as both a dated SPEC.md revision note and a new DECISIONS.md ADR (per ADR-001) — never edit SPEC.md body prose ad hoc.
+  - SPEC.md's rollup.ctx line budget (15/40) must stay numerically identical to prompts/summarizer-rollup.md; a change to one requires the other.
+  - DECISIONS.md is append-only: corrections/supersessions are new ADR entries referencing the old number, never edits to past ADR text.
+  - STATUS.md and UNIMPLEMENTED.md status markers must track real crate state (e.g. `crates/ctx-access`, `ctx-summarize`, `ctx-verify`) — do not mark items pending/done without checking the actual crates.
+  - DYLINT_RULES.md rules 1 and 4 have partial mechanical equivalents already in scripts/ (rationale_check.py, cycle_check.sh); keep both in sync until the dylint rules are actually implemented, at which point scripts/ versions are meant to be superseded.
+children:
+invariants:
+  - Only SPEC.md is sealed; all other docs here are living and expected to be edited as the project evolves, but STATUS.md/UNIMPLEMENTED.md edits must reflect verified crate state, not aspiration.
+  - SANDBOX.md's broker/enforcement design and DYLINT_RULES.md's nine rules are non-authoritative for current behavior — both are superseded/deferred per STATUS.md and DECISIONS.md ADRs (035/040/041 for sandbox).

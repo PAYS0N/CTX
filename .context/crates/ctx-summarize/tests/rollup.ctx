@@ -1,8 +1,10 @@
 directory: crates/ctx-summarize/tests
-summary: Integration test suite for the ctx-summarize runner. Covers the full summarization pipeline (leaf-then-rollup ordering, agent call inputs, output content) using an in-memory `FakeFs` and `RecordingAgent`, plus real subprocess `Agent` behavior via `sh` with no network access. Security and scope-gate invariants are also exercised here.
+domain: Integration test suite for the ctx-summarize crate's runner, verifying end-to-end summarization ordering, safety gating (path/scope/prompt/secret checks), and the Fs/Agent trait contracts against both fake and real (subprocess) implementations.
+edit_notes:
+  - Single file (summarize.rs); when ctx_summarize::fs::Fs or ctx_summarize::agent::Agent trait signatures change, FakeFs and RecordingAgent test doubles here must be updated in lockstep.
+  - Subprocess-based tests require `sh` on PATH; no network access needed or used.
 children:
-  - summarize.rs: All integration tests — pipeline correctness, error paths, subprocess agent contract, access-denial gates, and scope-check approval logic.
-key_invariants:
-  - Intent files are never overwritten by the runner.
-  - Security gates (`PathEscape`, `AccessDenied`, scope overflow) are enforced at the runner boundary, not inside individual summarizers.
-intent_divergence: No intent.md present; cannot assess divergence.
+  - summarize.rs: Full integration test suite — runner ordering, error gating, Fs/Agent contract checks.
+invariants:
+  - runner::run never writes or modifies intent.md, only .ctx files, and always writes leaves before rollups in leaf-to-root order.
+  - Path traversal (".."), missing prompts, oversized unapproved scope, and secret-like target paths are all rejected with distinct SummError variants.

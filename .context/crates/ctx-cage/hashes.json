@@ -1,0 +1,9 @@
+{
+  "hash": "10bd210dafc67d8902b53c2934f17d0a6d7bee05efef5275728a46a0c82cbdc3",
+  "children": {
+    "Cargo.toml": "f:68235f9a1a541ddf27947e3ac0a87638a994e84557ead96d17e890ff65e970b2",
+    "assets": "d:9c4c21dec441a27b3cb6722490b50d09b9155cad1d534adf4c8ca3c89f6962e5",
+    "src": "d:2c1e6354b06e1cfd1c7a3cd0d0cd425f6bcf11a4c06125c5730ac785f4e14148",
+    "tests": "d:24ad3b5e6f408e7c9087fe3effa6b8b915a557023cf1aef9c2db9ac057b82a90"
+  }
+}

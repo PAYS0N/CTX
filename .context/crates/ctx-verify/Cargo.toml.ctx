@@ -1,0 +1,12 @@
+file: crates/ctx-verify/Cargo.toml
+behavior: Cargo manifest for ctx-verify, a token-frugal verification broker that runs checks and emits one capped JSON report; builds both a `ctx-verify` binary and a `ctx_verify` library from the same crate.
+edit_notes:
+  - Binary entry is src/main.rs, library entry is src/lib.rs; adding new modules must be wired into lib.rs to be shared with main.rs.
+  - lints = workspace, so lint config lives in the workspace root Cargo.toml, not here.
+  - publish = false: not intended for crates.io distribution.
+functions:
+invariants:
+external_deps:
+  - clap (derive): CLI argument parsing for the binary.
+  - serde/serde_json: capped JSON report is serialized/deserialized via these.
+  - thiserror: structured error types for verification failures.

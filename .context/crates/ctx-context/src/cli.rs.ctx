@@ -1,0 +1,18 @@
+file: crates/ctx-context/src/cli.rs
+behavior: Parses argv (path arg or --hook flag) via clap and dispatches to serve::chain_for/render for path mode, or hook::run for Claude Code PostToolUse hook mode, rendering output to an injected writer.
+edit_notes:
+  - Never uses println!/print! (clippy::print_stdout enforced); all output goes through the injected `out: &mut W`.
+  - Hook mode is fail-open: hook::run errors are swallowed and an empty result yields Ok(()) with no output, by design.
+functions:
+  - name: hook_mode
+    signature: pub const fn hook_mode(&self) -> bool
+    purpose: Reports whether stdin must be consumed before dispatch.
+  - name: dispatch
+    signature: pub fn dispatch<E: Env, W: Write>(env: &E, base: &Path, cli: Cli, stdin: &str, out: &mut W) -> Result<(), CtxError>
+    purpose: Routes parsed CLI arguments to hook or path-based chain rendering.
+    notes: Returns CtxError::Usage if neither a path nor --hook is given; only writer I/O failures propagate in hook mode.
+invariants:
+  - Hook mode never returns an Err except from a broken writer.
+  - Path mode requires cli.path to be Some; absence is a Usage error, not a panic.
+external_deps:
+  - clap: Cli struct derives argv parsing (Parser).

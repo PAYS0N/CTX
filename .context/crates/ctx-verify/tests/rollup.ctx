@@ -1,7 +1,10 @@
 directory: crates/ctx-verify/tests
-summary: Integration-level behavioral tests for ctx-verify, covering parsers and orchestration via a canned FakeRunner. No real processes are spawned; all tool output is injected strings, making the suite hermetic and fast.
+domain: Integration-level test suite for ctx-verify's diagnostic parsers and check-orchestration logic, exercised end-to-end through a fake command Runner instead of real subprocesses. Verifies serde output shapes and status-rollup precedence that other crates may rely on when consuming CheckReport JSON.
+edit_notes:
+  - FakeRunner keys canned outcomes by first arg via by_first_arg: BTreeMap<String, Option<CommandOutcome>>; unmatched or None keys simulate CheckError::ToolMissing.
+  - Tests assert exact JSON string shapes for CheckReport; any change to its Serialize impl or field names must update these tests in lockstep.
 children:
-  - checks.rs: Exercises the full check/parse/report pipeline against injected tool output without spawning real processes.
-key_invariants:
-  - FakeRunner returns ToolMissing for any key absent from its by_first_arg map, ensuring missing-tool paths are always exercised.
-  - No real subprocesses are spawned in any test.
+  - checks.rs: sole test file, covering parser correctness and orchestration status/diagnostic-capping behavior.
+invariants:
+  - Status::Errored outranks Status::Fail in overall rollup; skipped-only reports yield Status::Pass.
+  - Non-zero exit with unparseable output still yields Status::Fail with a synthesized diagnostic, never an empty diagnostics list.

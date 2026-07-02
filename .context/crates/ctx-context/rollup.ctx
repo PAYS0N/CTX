@@ -1,0 +1,13 @@
+directory: crates/ctx-context
+domain: A binary+library crate that computes the "context chain" (ancestor rollup.ctx/intent.md plus a leaf file's .ctx) for a repo path and injects the unseen portion of that chain into Claude Code sessions via a PostToolUse hook. Consumers get a CLI (path → rendered chain text) and a hook entry point (stdin event JSON → additionalContext), both built on a filesystem-abstracting Env trait.
+edit_notes:
+  - All logic (chain traversal, rendering, session dedup, hook orchestration) lives in src/ and is validated against an in-memory FakeEnv in tests/, not real disk I/O; changing Env's contract or chain traversal requires updating tests/chain_serve.rs's FakeEnv and its ordering assertions in lockstep.
+  - Literal strings owned by src/ (absent-node markers, render() format, session file path under .context/.cache/hook-<id>.json) are asserted verbatim in tests/; changing them requires grepping tests for matches, not just updating source.
+  - Hook mode is uniformly fail-open end to end (src/hook.rs and tests/ both encode this): corrupt session state, missing files, or invalid paths degrade to empty/marker output rather than erroring.
+children:
+  - Cargo.toml: manifest wiring the clap-based CLI binary and thiserror-based lib together.
+  - src/: implementation — path validation, chain computation, rendering, Env abstraction, hook/session logic, CLI dispatch.
+  - tests/: integration suite exercising the full crate contract against a fake filesystem.
+invariants:
+  - CtxError is the only error type crossing crate boundaries; no Box<dyn Error>/anyhow.
+  - No I/O outside Env (or injected writers in cli.rs/main.rs); this boundary is what makes tests/'s FakeEnv-based testing possible.

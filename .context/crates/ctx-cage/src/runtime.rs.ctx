@@ -1,26 +1,24 @@
 file: crates/ctx-cage/src/runtime.rs
-purpose: Resolves all host-side paths and ephemeral files needed for the cage's `--claude` mode: the real `claude` binary, host credentials, `/etc/resolv.conf`, a minimal `nsswitch.conf`, and a synthesized `~/.claude.json` that satisfies Claude Code onboarding while preserving blinding.
-invariants:
-  - Synthesized `claude.json` contains only `oauthAccount` from the host; no projects/history are copied.
-  - `anonymousId` is a fresh 32-hex-char value per invocation, sourced from `/dev/urandom`.
-external_deps:
-  - serde_json: builds and serializes the synthesized claude.json config value.
+behavior: Resolves the host's Claude Code binary and OAuth subscription credential, and synthesizes a minimal `~/.claude.json` written into the cage rundir so claude auto-detects the bound credential without a login prompt.
+edit_notes:
+  - Blinding-preserving design: only `.credentials.json` is bound from `~/.claude` (never the whole directory), and the synthesized config carries only `oauthAccount` plus onboarding pre-completion — no host projects/history enter the cage. Any change must preserve this minimality.
+  - API traffic depends on `CAGE_BASE_URL` (127.0.0.1:8080) being the in-cage `ANTHROPIC_BASE_URL`, routed through a host proxy relay that passes through the `Authorization` header; this file only prepares credentials/config, it does not configure the relay itself.
+  - `synth_claude_config` hardcodes onboarding metadata fields (version, timestamps, counts) that mimic a real Claude Code config; if claude's expected config shape changes, these literals need updating.
 functions:
-  - name: resolve_claude_binds
-    signature: pub fn resolve_claude_binds(sockdir: &Path) -> Result<ClaudeBinds, CageError>
-    purpose: Resolves all host paths and writes ephemeral files into `sockdir`, returning the complete `ClaudeBinds` struct.
+  - name: resolve_claude_runtime
+    signature: pub fn resolve_claude_runtime(rundir: &Path) -> Result<ClaudeRuntime, CageError>
+    purpose: Top-level entry point resolving claude binary, host credentials path, and synthesized config, for a billed cage launch.
   - name: which_claude_realpath
     signature: fn which_claude_realpath() -> Result<PathBuf, CageError>
-    purpose: Resolves the real `claude` binary path via `readlink -f $(command -v claude)`, following all symlinks.
+    purpose: Finds and fully resolves (symlinks) the `claude` binary via `command -v` + `readlink -f`.
   - name: home_credentials_path
     signature: fn home_credentials_path() -> Result<PathBuf, CageError>
-    purpose: Returns `$HOME/.claude/.credentials.json`, erroring if `HOME` is unset or the file is absent.
-  - name: write_nsswitch
-    signature: fn write_nsswitch(sockdir: &Path) -> Result<PathBuf, CageError>
-    purpose: Writes the embedded `CAGE_NSSWITCH_CONF` asset to `<sockdir>/cage-nsswitch.conf`.
+    purpose: Locates `$HOME/.claude/.credentials.json`, erroring if the operator hasn't logged in on the host.
   - name: synth_claude_config
-    signature: fn synth_claude_config(sockdir: &Path) -> Result<PathBuf, CageError>
-    purpose: Builds and writes a minimal `claude.json` to `<sockdir>/claude.json`, copying only `oauthAccount` from the host config.
-  - name: build_synth_config
-    signature: fn build_synth_config(oauth: &serde_json::Value) -> serde_json::Value
-    purpose: Constructs the synthesized config JSON with fixed onboarding fields and a fresh anonymous id.
+    signature: fn synth_claude_config(rundir: &Path) -> Result<PathBuf, CageError>
+    purpose: Builds the minimal `~/.claude.json` replacement and writes it to `<rundir>/claude.json`.
+invariants:
+  - Only the `oauthAccount` field is carried from the host's real `~/.claude.json`; all other host config/project/history data is excluded.
+  - Requires `HOME` to be set and `claude` to be on `PATH`; returns `CageError::Protocol` otherwise rather than panicking.
+external_deps:
+  - serde_json: used both for host config parsing and for hand-building the synthesized config via the `json!` macro.

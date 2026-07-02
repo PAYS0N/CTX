@@ -1,8 +1,18 @@
+```
 file: crates/ctx-verify/tests/checks.rs
-purpose: Behavioral tests for ctx-verify parsers and orchestration logic using a fake Runner. No real processes are spawned; all tool output is canned strings.
-invariants:
-  - FakeRunner returns ToolMissing for any key absent from by_first_arg.
-external_deps:
-  - ctx_verify: crate under test (checks, error, model, parse, runner modules).
-  - serde_json: verifies serialization shape of CheckReport/Report.
+behavior: Hermetic behavioral tests for ctx-verify's output parsers (compiler JSON, FAIL-line, fmt diff) and for check orchestration (skipping missing tools, capping/counting diagnostics, overall status rollup) via a fake Runner; no real subprocess is spawned.
+edit_notes:
+  - FakeRunner dispatches canned CommandOutcome by the first element of the args slice, keyed in by_first_arg: BTreeMap<String, Option<CommandOutcome>>; None or missing key yields CheckError::ToolMissing.
+  - Asserts exact serde_json output shapes for CheckReport (pass/skipped/fail with count+diagnostics) and for errored reports; changing CheckReport's Serialize impl or field names breaks these string-equality checks.
+  - Encodes status precedence: Errored outranks Fail in Report::new's overall status.
+  - Encodes contract that a non-zero exit with no parseable diagnostics still yields Fail with a synthesized diagnostic containing stderr text ("aborting due to previous error"), never an empty diagnostics list.
 functions:
+invariants:
+  - parse_compiler_json collapses byte-identical repeated messages into one diagnostic.
+  - parse_fail_lines defaults line to 0 and file to the whole message when no "path:line" prefix is present.
+  - parse_fmt dedups multiple "Diff in <path>:" lines to one diagnostic per file.
+  - run_selected reports Status::Skipped (not Fail) for tools FakeRunner has no entry for, and a report of only skipped checks yields overall Status::Pass.
+  - run_selected caps diagnostics to the given max and sets `truncated` to the remainder while `count` reflects the true total.
+  - compiler-message entries with code: null still parse with lint == "".
+external_deps:
+```

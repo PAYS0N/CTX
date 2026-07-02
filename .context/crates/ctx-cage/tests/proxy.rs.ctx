@@ -1,0 +1,17 @@
+file: crates/ctx-cage/tests/proxy.rs
+behavior: Tests header rewriting (`rewrite_head`) for both key-injection and OAuth-passthrough proxy postures, and one end-to-end test driving `serve_conn` over Unix socketpairs against a fake upstream.
+edit_notes:
+  - Depends on ctx_cage::proxy's ProxyConfig/Upstream/UpstreamIo/serve_conn/rewrite_head API; changes to header-rewriting rules (owned headers, Connection: close, Host override) must be reflected in both rewrite tests.
+  - FakeUpstream simulates connect() by handing back one end of a UnixStream::pair() and stashing the other end in a Mutex<Option<UnixStream>>, polled via take_server_end with up to 1s of retry sleeps; flaky if serve_conn's connect timing changes drastically.
+functions:
+  - name: cfg
+    signature: fn cfg() -> ProxyConfig
+    purpose: Builds a key-injection ProxyConfig (api_key set) targeting api.anthropic.com for tests.
+  - name: take_server_end
+    signature: fn take_server_end(up: &FakeUpstream) -> Option<UnixStream>
+    purpose: Polls up to 1s for FakeUpstream::connect to have deposited its server-side socket.
+invariants:
+  - rewrite_head always strips client-supplied Host, x-api-key, Authorization (in key-injection mode), and Connection headers, replacing them with the config's values and forcing Connection: close.
+  - In passthrough mode (api_key: None), client's Authorization header is preserved unchanged and no x-api-key header is added.
+external_deps:
+  - std::os::unix::net::UnixStream: used as an in-memory duplex byte pipe for both the client<->proxy and proxy<->fake-upstream legs, avoiding real sockets/network in tests.

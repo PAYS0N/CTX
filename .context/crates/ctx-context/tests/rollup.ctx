@@ -1,0 +1,9 @@
+directory: crates/ctx-context/tests
+domain: Integration test suite for the `ctx_context` crate, exercising `serve::chain_for`/`render`, `hook::run`, and `session` state against an in-memory fake filesystem rather than real disk I/O. Verifies the end-to-end contract: chain traversal ordering, path-escape rejection, absent-node rendering, hook dedup by session, and fail-open behavior on corrupt session state.
+edit_notes:
+  - FakeEnv (defined in chain_serve.rs) implements ctx_context::env::Env with a flat path->bytes map, inferring directories from "<path>/" key prefixes; any change to Env's contract or to serve::chain_for's traversal algorithm requires updating FakeEnv and the ordering/id assertions here in lockstep.
+  - Tests assert exact literal strings owned by the source crate (absent-node markers, render() format, session file path convention under .context/.cache/hook-<id>.json); changing those literals in serve.rs, hook.rs, or session.rs breaks these tests silently unless greped for.
+children:
+invariants:
+  - Path escape (absolute, "..", "//") must surface as CtxError::PathEscape from serve::chain_for.
+  - hook::run is fail-open: corrupt/unparseable session state or out-of-repo/.context/.git targets never error, only yield empty results or empty-session treatment.

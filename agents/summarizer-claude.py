@@ -39,7 +39,6 @@ import urllib.request
 
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_MAX_TOKENS = 2048
-DEFAULT_TEMPERATURE = 0.0
 API_VERSION = "2023-06-01"
 
 
@@ -68,12 +67,10 @@ def read_request() -> "tuple[str, str]":
 def build_body(system: str, user: str) -> "dict":
     """Assemble the Messages API request body (verbatim; no extra text)."""
     max_tokens = int(os.environ.get("CTX_AGENT_MAX_TOKENS", DEFAULT_MAX_TOKENS))
-    temperature = float(os.environ.get("CTX_AGENT_TEMPERATURE", DEFAULT_TEMPERATURE))
     model = os.environ.get("CTX_AGENT_MODEL", DEFAULT_MODEL)
     return {
         "model": model,
         "max_tokens": max_tokens,
-        "temperature": temperature,
         # List form with cache_control so the identical per-task system
         # prompt is cached across many leaf/rollup calls.
         "system": [

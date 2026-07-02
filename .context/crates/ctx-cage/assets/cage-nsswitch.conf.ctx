@@ -1,0 +1,9 @@
+file: crates/ctx-cage/assets/cage-nsswitch.conf
+behavior: Static NSS switch configuration bind-mounted as /etc/nsswitch.conf inside the ctx-cage sandbox, restricting name resolution to `files` and `dns` sources so hostname lookups (e.g. api.anthropic.com) work without host-only systemd NSS plugins.
+edit_notes:
+  - Deliberately omits systemd-backed sources (mymachines, mdns, resolve) present in typical host nsswitch.conf, because their runtime sockets are not present inside the cage; adding them back would break or hang lookups.
+  - Consumed by --claude mode's cage setup; must stay minimal/deterministic since it's mounted read-only over the container's /etc/nsswitch.conf.
+functions:
+invariants:
+  - hosts line must retain both `files` and `dns` for the cage to resolve external hostnames.
+external_deps:

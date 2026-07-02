@@ -194,12 +194,15 @@ fn embedded_prompts_are_served_by_scan_fs() {
 }
 
 #[test]
-fn is_ignored_returns_false_outside_git() {
-    let base = test_dir("notgit");
+fn is_ignored_follows_ctxignore_and_needs_no_git() {
+    let base = test_dir("scopefs");
+    drop(std::fs::remove_dir_all(&base));
     std::fs::create_dir_all(&base).expect("mkdir");
+    std::fs::write(base.join(".ctxignore"), "gen/\n").expect("write ctxignore");
     let fs = ScanFs::new(base.clone());
-    let result = fs.is_ignored("any.rs").expect("is_ignored");
-    assert!(!result);
+    assert!(!fs.is_ignored("any.rs").expect("in scope"));
+    assert!(fs.is_ignored("gen/out.rs").expect("scoped out"));
+    assert!(fs.is_ignored("target/debug/x.rs").expect("builtin default"));
     drop(std::fs::remove_dir_all(&base));
 }
 
@@ -238,6 +241,33 @@ fn walk_collects_files_and_excludes_context_and_binaries() {
     assert!(
         !files.iter().any(|f| f.starts_with(".context")),
         ".context excluded"
+    );
+    drop(std::fs::remove_dir_all(&base));
+}
+
+#[test]
+fn walk_seeds_ctxignore_from_gitignore_once_then_decouples() {
+    let base = test_dir("seed");
+    drop(std::fs::remove_dir_all(&base));
+    std::fs::create_dir_all(base.join("gen")).expect("mkdir gen");
+    std::fs::create_dir_all(base.join("src")).expect("mkdir src");
+    std::fs::write(base.join("src/main.rs"), "fn main() {}").expect("write src");
+    std::fs::write(base.join("gen/out.rs"), "generated").expect("write gen");
+    std::fs::write(base.join(".gitignore"), "gen/\n").expect("write gitignore");
+
+    let first = walk_dir(&base).expect("first walk");
+    assert!(base.join(".ctxignore").is_file(), "seeded on first contact");
+    assert!(
+        !first.iter().any(|f| f.starts_with("gen/")),
+        "seed inherited gen/"
+    );
+
+    // .gitignore is dead after the hand-off: new entries there change nothing.
+    std::fs::write(base.join(".gitignore"), "gen/\nsrc/\n").expect("grow gitignore");
+    let second = walk_dir(&base).expect("second walk");
+    assert!(
+        second.contains(&"src/main.rs".to_owned()),
+        ".gitignore must not be consulted after seeding"
     );
     drop(std::fs::remove_dir_all(&base));
 }

@@ -1,9 +1,13 @@
 Doctrine: `.context/intent.md` + `docs/SPEC.md`. Rationale:
 `docs/DECISIONS.md`. Current focus: `docs/STATUS.md`.
 
+Call `target/debug/ctx-context .`. Do not skip this. 
+
 - Source: native Read/Edit/Grep. The context chain is hook-injected on
-  read; on demand: `target/debug/ctx-context <path>` (dir or `.`). 
+  read. To use on demand: `target/debug/ctx-context <path>` (dir or `.`). 
   Use the tool on a directory when you want to know more about a directories contents.
+  When gathering information before doing code changes, use the tool to retrieve 
+  compacted context instead of reading the raw files. Only go as deep into a directory as needed.
   Never hand-edit `.context/`.
 - `ctx-scan <dir> --check` shows what context is stale.
 - Checkpoint: `target/debug/ctx-verify [crate]` — formats, builds,

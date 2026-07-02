@@ -1,0 +1,13 @@
+file: scripts/workspace_lints_check.sh
+behavior: CI check script asserting every real (non-virtual-root) crate manifest in the repo declares `[lints]\nworkspace = true`, so it inherits the workspace's restriction lint table; fails with exit 1 and prints offending manifests otherwise.
+edit_notes:
+  - Enforces the workspace.lints contract described in docs/SPEC.md (Compiler section); that table is the single source of truth for lint config and only binds to crates with `[lints]\nworkspace = true`.
+  - Manifests enumerated via `git ls-files -z --cached --others --exclude-standard` (not filesystem walk) to avoid racing a concurrent `target/` writer; same rationale as no_allow_check.sh, keep both scripts consistent if changed.
+  - Heuristic is manifest-only: presence of `[package]` distinguishes a real crate from the virtual workspace root; a manifest without `[package]` is skipped unconditionally.
+  - awk state machine tracks entry/exit of the `[lints]` table via `^\[` lines; a `workspace = true` line outside `[lints]` (e.g. under `[workspace]`) does not satisfy the check.
+functions:
+invariants:
+  - Exits 0 only if every Cargo.toml containing a `[package]` table also has a `[lints]` table containing a `workspace = true` line.
+  - Exits 1 if `$ROOT` is not inside a git work tree, or if any qualifying manifest fails the check.
+external_deps:
+  - git: source of truth for file enumeration instead of filesystem glob, to avoid races with build artifacts.

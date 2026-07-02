@@ -1,0 +1,14 @@
+```
+file: template/scripts/workspace_lints_check.sh
+behavior: CI check that every git-tracked member-crate Cargo.toml (any manifest with a [package] table) declares a [lints] table with `workspace = true`, so the workspace's central lint set actually applies to it.
+edit_notes:
+  - Enumerates manifests via `git ls-files -z --cached --others --exclude-standard` (not a filesystem walk), matching the rationale in no_allow_check.sh; keep both scripts consistent if the enumeration strategy changes.
+  - Virtual workspace root Cargo.toml (no [package] table) is intentionally skipped.
+  - Detection is a manual awk state machine, not a TOML parser: it tracks entry into `[lints]` and exit on any other `[...]` header, then looks for a `workspace = true` line inside that span. A `[lints]` table with unconventional formatting (e.g. inline table `lints.workspace = true` or workspace=true on same line as header) will not match.
+functions:
+invariants:
+  - Exits non-zero if any tracked Cargo.toml with a [package] table lacks a [lints] table containing `workspace = true`.
+  - Only files under git (tracked or untracked-but-not-ignored) named Cargo.toml or */Cargo.toml are checked.
+external_deps:
+  - git: source of truth for which manifests exist, to stay independent of build artifacts/target dirs.
+```

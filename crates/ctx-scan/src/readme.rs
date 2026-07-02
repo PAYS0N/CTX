@@ -19,10 +19,10 @@ context about a codebase without reading every source file in full.
 Each directory also carries a `hashes.json` (content hashes of its
 children); `ctx-scan <dir> --check` diffs them against the source with no
 model call, and `ctx-scan <dir> --update` regenerates only what changed.
-Scope is defined by `.ctxignore` (gitignore syntax; falls back to
-`.gitignore`); secrets and binaries are always excluded and cannot be
-un-ignored. If the tree ever drifts beyond repair, delete `.context/` and
-run a full `ctx-scan <dir>`.
+Scope is defined by `.ctxignore` alone (gitignore syntax; seeded once
+from `.gitignore` on first scan, then independent of it); secrets and
+binaries are always excluded and cannot be un-ignored. If the tree ever
+drifts beyond repair, delete `.context/` and run a full `ctx-scan <dir>`.
 
 Do not edit `.ctx`, `rollup.ctx`, or `hashes.json` files by hand — they
 will be overwritten on the next scan.

@@ -1,0 +1,10 @@
+file: .gitignore
+behavior: Excludes build artifacts, secrets, and per-task cache/report scratch from git tracking, while explicitly allowing generated context files to be committed.
+edit_notes:
+  - .context/.cache/ and .context/.reports/ are ignored, but rollup.ctx, *.ctx, and intent.md under .context/ are intentionally NOT ignored and must remain committed; do not broaden the ignore pattern to catch them.
+  - .env is ignored (holds ANTHROPIC_API_KEY); .env.example is the committed keyless template and must stay untracked-ignore-exempt.
+functions:
+invariants:
+  - Generated *.ctx, rollup.ctx, and intent.md files are always tracked, never matched by an ignore rule here.
+  - .env is never committed; only .env.example is.
+external_deps:

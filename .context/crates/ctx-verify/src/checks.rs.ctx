@@ -1,23 +1,29 @@
 file: crates/ctx-verify/src/checks.rs
-purpose: Orchestrates the fixed check suite (fmt, clippy, doc, test, rationale, workspace_lints, no_allow) by running each tool via a Runner, parsing output into Diagnostics, and assembling a Report.
-invariants:
-  - fmt runs before all other checks because it mutates source files.
-  - A failed check with no parsed diagnostics always receives a synthesized hint Diagnostic; the fail result is never empty.
-  - ToolMissing errors produce a skipped report rather than an error report.
-external_deps:
+behavior: Defines the fixed set of wrapped tool checks (fmt, clippy, doc, test, rationale, workspace_lints, no_allow), runs each through a `Runner`, parses/caps its output, and assembles them into a `Report`.
+edit_notes:
+  - SPECS order matters: `fmt` must stay first because it is the only check that mutates (applies `cargo fmt`); everything after is read-only/report-only.
+  - Adding a Spec requires choosing/writing a Parser (compiler_parser for clippy/rustdoc JSON, script_parser for `FAIL:`-line scripts, test_parser for cargo test, noop_parser for mutating tools) and deciding whether it is cargo-based (gets `-p <package>` scoping) or a repo-wide script (ignores package).
+  - `-p <package>` is spliced in as the 2nd argument (index 1), assuming args[0] is the cargo subcommand (e.g. "clippy", "fmt"); breaks if a cargo Spec's args list is empty or restructured.
 functions:
   - name: run_selected
     signature: pub fn run_selected<R: Runner>(runner: &R, max: usize, only: Option<&[String]>, package: Option<&str>) -> Report
-    purpose: Runs the filtered subset of SPECS and assembles results into a Report, scoping cargo checks to a package when provided.
-  - name: effective_args
-    signature: fn effective_args(spec: &Spec, package: Option<&str>) -> Vec<String>
-    purpose: Inserts `-p <package>` after the cargo subcommand for cargo-based specs; leaves non-cargo specs unchanged.
+    purpose: Runs all SPECS matching the `only` filter, scoped by `package`, and builds the final Report.
   - name: run_spec
     signature: fn run_spec<R: Runner>(runner: &R, spec: &Spec, max: usize, package: Option<&str>) -> CheckReport
-    purpose: Executes one Spec, parses its output, synthesizes a hint if needed, and returns a capped CheckReport.
-  - name: wanted
-    signature: fn wanted(spec: &Spec, only: Option<&[String]>) -> bool
-    purpose: Returns true when no name filter is set or the spec's name matches an entry in the filter list.
+    purpose: Executes one Spec via the Runner and converts its outcome into a CheckReport.
+    notes: Distinguishes ToolMissing (-> skipped) from other spawn errors (-> errored) from ran-but-diagnostic-less failures (-> synthesized failure_hint).
+  - name: effective_args
+    signature: fn effective_args(spec: &Spec, package: Option<&str>) -> Vec<String>
+    purpose: Builds the argument list for a spec, inserting `-p <package>` for cargo-based checks when a package is given.
   - name: failure_hint
     signature: fn failure_hint(o: &CommandOutcome) -> Diagnostic
-    purpose: Extracts the last non-empty trimmed line from stderr (falling back to stdout) as a fallback Diagnostic for silent failures.
+    purpose: Synthesizes a single Diagnostic from the last non-empty output line when a failing check yields no parsed diagnostics.
+  - name: wanted
+    signature: fn wanted(spec: &Spec, only: Option<&[String]>) -> bool
+    purpose: Determines whether a spec is included given an optional name filter.
+invariants:
+  - A check that fails to spawn (other than ToolMissing) always becomes `errored`, never a silent `fail`.
+  - A check that ran, exited non-zero, and produced no parsed diagnostics always gets exactly one synthesized Diagnostic via failure_hint.
+  - `fmt`'s parser (noop_parser) never reports diagnostics from output; only its exit status can mark it failed.
+external_deps:
+  - crate::runner::Runner: trait abstraction over process execution, allowing checks.rs to be tested without spawning real subprocesses.

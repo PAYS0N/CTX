@@ -1,0 +1,16 @@
+file: crates/ctx-scan/src/readme.rs
+behavior: Provides the fixed explanatory README content written into `.context/README.md` describing the context tree to human readers.
+edit_notes:
+  - README text is a hard-coded const documenting the `.ctx`/`rollup.ctx`/`hashes.json` conventions and `.ctxignore` behavior; if those conventions change elsewhere in ctx-scan, update this text too since it is the user-facing description of them.
+functions:
+  - name: readme_text
+    signature: pub const fn readme_text() -> &'static str
+    purpose: Exposes the README constant for callers needing the text without writing it.
+  - name: write_readme
+    signature: pub fn write_readme<F: Fs>(fs: &F) -> Result<(), ScanError>
+    purpose: Writes the README content to `.context/README.md` using the provided Fs abstraction.
+    notes: Wraps underlying write errors as ScanError::Io with path ".context/README.md".
+invariants:
+  - Written content is always exactly the `README` constant; no templating or parameters.
+external_deps:
+  - ctx_summarize::fs::Fs: injected filesystem trait enabling testable/mockable writes.

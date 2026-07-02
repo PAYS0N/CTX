@@ -1,19 +1,15 @@
 file: crates/ctx-cage/src/lifecycle/mod.rs
-purpose: Orchestrates the three-phase cage lifecycle (prepare → serve → teardown) and conditionally runs pre/post auto-summarize when spend is allowed and the mode is billed.
-invariants:
-  - teardown always runs even if serve fails; teardown errors are swallowed.
-  - Summarize hooks are skipped unless both `r.allow_spend` is true and `mode_is_billed(&r.mode)`.
-  - A post_summarize failure only surfaces as an error if serve itself succeeded.
-external_deps:
-  - crate::summarize: stale-leaf detection and ctx-summarize invocation.
-  - crate::cli::mode_is_billed: determines whether the selected mode incurs spend.
+behavior: Orchestrates one cage run end-to-end in three phases — prepare (gate billed modes, mint run dir, materialize cage-rules, resolve runtime), run (start API proxy, exec cage via bwrap, stop proxy), teardown (best-effort run-dir cleanup) — delegating each phase to a private submodule.
+edit_notes:
+  - Phase logic lives in prepare.rs, run.rs, teardown.rs; this file only sequences them and defines the shared Resolved input struct.
+  - teardown::teardown_run always runs after run::run_until_exit, even on failure, so run dirs are not stranded on cage/proxy crash; do not add early returns between run and teardown.
+  - Submodule split is driven by a workspace file-length-tier policy, not by logical boundaries alone.
 functions:
   - name: execute
     signature: pub fn execute(r: &Resolved) -> Result<i32, CageError>
-    purpose: Runs prepare, optional pre-summarize, serve, optional post-summarize, and teardown; returns the cage's exit code.
-  - name: pre_summarize
-    signature: fn pre_summarize(r: &Resolved) -> Result<(), CageError>
-    purpose: Computes stale context leaves and feeds them to ctx-summarize before the cage runs.
-  - name: post_summarize
-    signature: fn post_summarize(r: &Resolved) -> Result<(), CageError>
-    purpose: Refreshes context leaves for files written by the agent during the run.
+    purpose: Runs prepare, then run, then teardown, returning the cage's exit code.
+    notes: Teardown errors are swallowed; only prepare/run errors propagate.
+invariants:
+  - teardown::teardown_run is always invoked after run::run_until_exit regardless of its Result.
+  - Billed modes require a clean tree unless allow_dirty is set, and require an API key (enforced in prepare, not here).
+external_deps:

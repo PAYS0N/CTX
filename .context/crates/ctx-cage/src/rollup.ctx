@@ -1,19 +1,2 @@
 directory: crates/ctx-cage/src
-summary: The complete implementation of the ctx-cage sandbox system. Callers get two binaries (host orchestrator and in-cage tool proxy), a binary wire protocol, a bwrap sandbox construction layer, a Unix-socket broker, a three-phase lifecycle sequencer, Claude runtime path resolution, tool spawning, and post-run summarization hooks.
-children:
-  - bin/: Host and in-cage binary entry points that drive the cage lifecycle and proxy tool calls.
-  - bwrap/: Sandbox argv construction and workspace discovery; produces the exec-ready bwrap invocation.
-  - lifecycle/: Three-phase sequencer (prepare/serve/teardown) that is the primary integration point for callers.
-  - broker.rs: Unix-socket server that gates and dispatches tool requests from the cage.
-  - cli.rs: CLI parsing and mode resolution with spend-gate enforcement.
-  - error.rs: Shared error enum covering all failure modes across the crate.
-  - lib.rs: Crate root; re-exports all submodules and embeds cage-rules at compile time.
-  - protocol.rs: Binary framing layer between in-cage client and host broker.
-  - runtime.rs: Host-side Claude credential and path resolution for `--claude` mode.
-  - spawn.rs: `Spawner` trait and subprocess execution for allowlisted tools.
-  - summarize.rs: Stale-ctx detection and `ctx-summarize` invocation for post-run summarization.
-key_invariants:
-  - All cross-boundary communication (host↔cage) goes through the length-prefixed binary protocol in `protocol.rs`; no other channel exists.
-  - The broker allowlist is the sole enforcement point for which tools the cage may invoke.
-  - Teardown always executes regardless of serve outcome; its errors never propagate.
-  - `--clearenv` is always emitted by bwrap construction; no host environment leaks into the cage.
+dom

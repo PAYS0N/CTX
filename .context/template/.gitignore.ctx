@@ -1,0 +1,9 @@
+file: template/.gitignore
+behavior: Excludes Rust build artifacts and per-task context-cache/report directories from version control while allowing generated context files (rollup.ctx, *.ctx, intent.md) to be committed.
+edit_notes:
+  - Part of a project template; changes here propagate only to newly scaffolded projects, not existing ones.
+  - Must keep .context/.cache/ and .context/.reports/ ignored while leaving other .context/* files (rollup.ctx, *.ctx, intent.md) tracked; do not add a blanket .context/ ignore.
+functions:
+invariants:
+  - Generated context files under .context/ (rollup.ctx, *.ctx, intent.md) remain trackable; only .cache/ and .reports/ subpaths are excluded.
+external_deps:

@@ -1,9 +1,14 @@
 file: crates/ctx-cage/src/lifecycle/teardown.rs
-purpose: Lifecycle phase 3 cleanup: removes the per-run sockdir after serving completes. Failures are silently ignored.
-invariants:
-  - Only removes `prep.sockdir`; never touches paths outside it.
-external_deps:
+behavior: Best-effort deletion of a cage run's per-run directory (rules file, proxy socket, synthesized claude config) after the run completes.
+edit_notes:
+  - Per ADR-027 hygiene, must only ever remove prep.rundir — never widen scope to other paths.
+  - Runs after `run` has already determined the cage's exit code; errors here must not affect or override that exit code.
 functions:
   - name: teardown_run
     signature: pub fn teardown_run(prep: &Prep)
-    purpose: Deletes the per-run sockdir (rules file and socket); errors are discarded.
+    purpose: Removes the per-run directory tree, ignoring any error.
+    notes: Failures are silently discarded; not observable to caller.
+invariants:
+  - Never deletes anything outside prep.rundir.
+  - Never panics or propagates errors, regardless of filesystem state.
+external_deps:

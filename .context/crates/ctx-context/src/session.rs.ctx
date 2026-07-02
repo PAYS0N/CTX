@@ -1,0 +1,21 @@
+file: crates/ctx-context/src/session.rs
+behavior: Tracks which context node ids have already been injected into a Claude session, persisted as one JSON file per session under `.context/.cache/`, so the hook can skip re-injecting nodes already served.
+edit_notes:
+  - Session ids are sanitized to [A-Za-z0-9._-] before being used in the filename; non-matching chars become '_', so distinct raw ids could collide on the same state file.
+  - load() treats any failure (missing file, unreadable, bad JSON) as "nothing served yet" rather than propagating an error — intentional fail-open behavior for the hook caller.
+  - State files live under .context/.cache/, expected to be gitignored; path layout must stay consistent with whatever hook code constructs session ids.
+functions:
+  - name: state_path
+    signature: fn state_path(session: &str) -> RepoPath
+    purpose: Builds the sanitized per-session state file path under .context/.cache/hook-{safe}.json.
+  - name: load
+    signature: pub fn load<E: Env>(env: &E, session: &str) -> BTreeSet<String>
+    purpose: Reads the set of node ids already served for this session.
+    notes: Never errors; missing/corrupt state silently yields an empty set.
+  - name: save
+    signature: pub fn save<E: Env>(env: &E, session: &str, served: &BTreeSet<String>) -> Result<(), CtxError>
+    purpose: Persists the full served-node set for this session as JSON.
+invariants:
+  - load() never panics or returns Err; worst case on corruption/missing file is an empty BTreeSet, causing re-injection rather than a block.
+external_deps:
+  - serde_json: (de)serializes the BTreeSet<String> state file.

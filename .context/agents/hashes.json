@@ -1,0 +1,7 @@
+{
+  "hash": "3c2d4176a2a9a86715fefcd6afdc6f7cfeaa8fb16d1d34b2797f3be1c0b2e3af",
+  "children": {
+    "README.md": "f:a2cc139ed68ababcf5b37befa4396b9460c3f6478908cddcbf1d6e845e1dba5d",
+    "summarizer-claude.py": "f:c7b16f016f2d8d787bb4a4c02a25c66d2ff93207b85d4ffb0a412c5eab52c34e"
+  }
+}

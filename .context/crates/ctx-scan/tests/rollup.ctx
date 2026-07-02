@@ -1,0 +1,10 @@
+directory: crates/ctx-scan/tests
+domain: Integration test suite for the ctx-scan crate, exercising its public entry points (summarize, check_run, update_run, walk_dir, stop_hook) end-to-end against both fake and real filesystem fixtures. Verifies contract behavior with ctx_summarize (the underlying runner/trait crate) and with Claude Code's Stop-hook integration.
+edit_notes:
+  - Both files share the tmpdir-per-label fixture pattern (std::env::temp_dir()/ctx-scan-test-<label>, manual remove_dir_all before/after); no shared harness enforces isolation, and same-label concurrent runs across the two files could collide.
+  - Fakes (FakeFs/RecordingAgent in scan.rs, StubAgent in stop_hook.rs) satisfy ctx_summarize's Fs/Agent traits, not ctx-scan's own types — ctx-scan's summarize()/stop_hook() bridge to that crate's runner.
+  - Call-count and string-format assertions are brittle couplings: scan.rs counts exact agent-call totals per staleness scenario, stop_hook.rs matches literal substrings ("systemMessage", "stale", "--update --approve") and MAX_TARGETS from ctx_summarize::runner — changes to hint text or staleness propagation must update both.
+children:
+invariants:
+  - stop_hook is report-only: never calls update_run, never changes freshness state; regeneration happens only via ctx-run post-session.
+  - .gitignore-to-.ctxignore seeding, target/ and .context/ exclusion, and fake-vs-real ignore behavior are asserted only against real filesystem fixtures, not FakeFs.

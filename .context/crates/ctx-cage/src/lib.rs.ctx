@@ -1,6 +1,12 @@
 file: crates/ctx-cage/src/lib.rs
-purpose: Root of the ctx-cage crate; re-exports all submodules and embeds the caged-agent rules as a compile-time constant.
-invariants:
-  - CAGE_RULES_MD is always the exact content of assets/cage-rules.md at compile time; no runtime file loading occurs.
-external_deps:
+behavior: Crate root for ctx-cage, a sandboxing boundary that confines an autonomous agent's filesystem, namespace, and network access (via bwrap) while a host-side proxy brokers the only network egress and injects the real API key.
+edit_notes:
+  - Post-pivot design: the cage no longer masks source or brokers tools (that moved to ctx-context/hooks); it only bounds blast radius (fs/host/network), so new responsibilities belonging to "context leading" or "tool brokering" do not belong here.
+  - CAGE_RULES_MD is embedded via include_str! from ../assets/cage-rules.md so the doctrine ships inside the binary; changing agent rules requires editing that asset file, not this one.
+  - Network egress model depends on a bind-mounted UNIX socket to the host-side proxy module; changing socket path/protocol must stay in sync with proxy.rs and bwrap.rs mount setup.
 functions:
+invariants:
+  - Raw API key never enters the cage; only the proxy holds it and originates TLS.
+  - Cage is fully offline except the single bind-mounted proxy socket (--unshare-net).
+  - Only the target workspace (/work) is writable; toolchain is read-only; $HOME is never mounted; .env and .git/config are masked even within the writable workspace.
+external_deps:

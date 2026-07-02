@@ -1,0 +1,8 @@
+{
+  "hash": "24ad3b5e6f408e7c9087fe3effa6b8b915a557023cf1aef9c2db9ac057b82a90",
+  "children": {
+    "bwrap_build.rs": "f:c57a1bab7dbc277c62d4ecd4268697afd09e5c9d53575dae0fede082d879c01e",
+    "cli.rs": "f:179e9066c22fc73c055b0fb44354dd1105fba9ff9d540257c1cb7af5bf3d8bb0",
+    "proxy.rs": "f:bc86f3a11be99ce0a8909813b8efd289edc74ee02790b3c1263e2f21feaff2f8"
+  }
+}

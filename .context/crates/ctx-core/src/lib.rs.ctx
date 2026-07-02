@@ -1,6 +1,9 @@
 file: crates/ctx-core/src/lib.rs
-purpose: Root of the shared primitives crate; re-exports the `access` module as the single authoritative source of the secret-denylist gate used by all CTX tooling.
-invariants:
-  - The denylist lives only here; no per-crate copies exist, preventing silent divergence between consumers.
-external_deps:
+behavior: Crate root that re-exports the shared access-gate module as the single dependency-free source of truth for secret-denylist logic across CTX crates.
+edit_notes:
+  - Access gate logic must not be duplicated in ctx-access or ctx-summarize; a divergent denylist is treated as a security bug (DECISIONS ADR-023).
+  - Each consumer crate maps the neutral deny reason from access into its own typed error; do not add crate-specific error types here.
 functions:
+invariants:
+  - Crate has no dependencies; logic here must remain dependency-free.
+external_deps:

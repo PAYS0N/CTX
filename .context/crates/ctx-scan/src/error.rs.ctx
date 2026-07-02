@@ -1,0 +1,11 @@
+file: crates/ctx-scan/src/error.rs
+behavior: Defines the ScanError enum, the unified error type returned by scan-runner operations (directory validation, filesystem walking, summarization, and ancillary I/O).
+edit_notes:
+  - Summarize variant wraps ctx_summarize::error::SummError via #[from], so any SummError propagates automatically with `?`; keep this conversion in sync if SummError's shape changes.
+  - Walk and Io variants store path/detail as plain Strings rather than PathBuf/std::io::Error, so callers must stringify errors before constructing these variants.
+functions:
+invariants:
+  - DirNotFound holds the offending PathBuf; Walk and Io hold stringified path and detail rather than structured error types.
+external_deps:
+  - thiserror: derives Display/Error impls for the enum via #[error(...)] attributes.
+  - ctx_summarize::error::SummError: upstream summarizer error type folded into ScanError via #[from].

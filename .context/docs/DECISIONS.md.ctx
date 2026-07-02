@@ -1,0 +1,13 @@
+file: docs/DECISIONS.md
+behavior: Append-only ADR log recording non-obvious architectural decisions and rejected alternatives for the CTX project (context-tree tooling, sandbox/cage, lint regime); the authoritative rationale source that `intent.md` files point to rather than restate.
+edit_notes:
+  - Append-only: never rewrite or delete a past ADR's content; supersede/amend by adding a new ADR that references the old one (e.g. "Amends ADR-024", "Supersedes ADR-011").
+  - Outcomes/current behavior live in SPEC.md and the code itself; this file holds only rationale and rejected alternatives, which are otherwise undiscoverable from source.
+  - ADR-001 governs this file's own legitimacy: SPEC.md is "sealed" but the owner may authorize re-specs, which must be recorded both as a dated SPEC.md revision note and an ADR here.
+  - Numbering is sequential and monotonic (currently through ADR-045); a superseding ADR keeps the old number's text intact and adds a new-numbered entry.
+  - Cross-references use `[[ADR-NNN]]` wiki-link style in later entries.
+functions:
+invariants:
+  - Every non-obvious project decision has exactly one ADR; rejected alternatives are recorded alongside the chosen option, not omitted.
+  - No ADR text is ever edited after later ADRs reference it; corrections take the form of a new ADR (e.g. ADR-032 corrects ADR-031 without altering ADR-031's text).
+external_deps:

@@ -1,14 +1,19 @@
 directory: crates
-summary: The workspace root for all CTX tooling crates. Together they form a layered system: `ctx-core` supplies the shared access-control primitive; `ctx-access` enforces it at the file I/O boundary; `ctx-cage` sandboxes agent subprocesses; `ctx-summarize` drives LLM-based `.ctx` generation; and `ctx-check`/`ctx-verify` run and report on code-quality checks.
+domain: Workspace of nine crates implementing the CTX system: agent sandboxing (ctx-cage), gated file access for agents (ctx-access), the canonical access-gate rules (ctx-core), context-chain generation and injection into Claude Code sessions (ctx-context, ctx-scan, ctx-summarize), and independent build/lint verification reporting (ctx-check, ctx-verify). Consumers depend on individual crate binaries/libraries; there is no shared workspace-level API beyond the `.context/` on-disk convention and the ctx-core access gate.
+edit_notes:
+  - ctx-core's access.rs is the sole authority for secret/binary/gitignored deny decisions; ctx-access and ctx-scan both consume it and must not reimplement or diverge from it (ADR-023).
+  - The `.context/<src>.ctx` / `.context/<dir>/rollup.ctx` on-disk layout is independently duplicated in ctx-access and ctx-summarize (pending planned ctx-core unification) and is also relied on by ctx-context and ctx-scan; changing the layout in one place requires auditing all four.
+  - ctx-check and ctx-verify each independently implement a cargo/clippy/script-check runner emitting a capped JSON report; they do not share a runner or report model — schema/behavior changes must be made in each separately.
+  - ctx-summarize depends on ctx-core via relative path "../ctx-core"; all crates assume the current workspace member layout.
 children:
-  - ctx-core: Shared deny-by-default access gate; the single canonical denylist consumed by all other crates.
-  - ctx-access: Enforced file I/O binary for agents — reads, writes, and listings gated by ctx-core rules.
-  - ctx-cage: bwrap sandbox host/proxy with a binary wire protocol; isolates agent tool invocations at the OS level.
-  - ctx-summarize: LLM-driven `.ctx` and `rollup.ctx` generation pipeline with injectable Fs/Agent seams.
-  - ctx-check: Standalone cargo/clippy/fmt/script check runner that emits a capped JSON diagnostic report.
-  - ctx-verify: Alternate check-and-report pipeline with a `Runner` seam, strict exit codes, and synthesized hints.
-key_invariants:
-  - `ctx-core` is the sole source of access-control logic; no crate duplicates or bypasses its denylist.
-  - All agent file I/O must flow through `ctx-access`; no crate performs direct filesystem access on behalf of agents.
-  - Sandbox enforcement (`ctx-cage`) and access enforcement (`ctx-access`) are independent layers with no shared state.
-intent_divergence: `ctx-check` and `ctx-verify` appear to duplicate the check-and-report responsibility; no intent.md clarifies which is canonical.
+  - ctx-access: Gated read/write/list surface agents use to touch source files, enforcing ctx-core's rules plus its own read-before-write and chain-delivery ordering.
+  - ctx-cage: Sandbox launcher (bwrap) that runs agent sessions with a proxy-only network egress path; orchestrates but does not itself implement the access/context/check logic.
+  - ctx-check: Standalone check-and-report binary (cargo/clippy/fmt/script → JSON), independent of ctx-verify.
+  - ctx-context: Computes and injects context chains (rollup.ctx/intent.md/.ctx ancestry) into Claude Code sessions via a hook.
+  - ctx-core: Zero-dependency access-gate library; foundational rule source for ctx-access and ctx-scan.
+  - ctx-scan: Builds/maintains the `.context/` Merkle-hash summary tree that ctx-context and ctx-access read from.
+  - ctx-summarize: Generates leaf `.ctx` and rollup `.ctx` content via pluggable LLM Agent; the writer side of the `.context/` tree ctx-scan/ctx-access/ctx-context read.
+  - ctx-verify: Standalone check-and-report binary matching the workspace's audit-report JSON schema, independent of ctx-check.
+invariants:
+  - All crates route filesystem/process/clock I/O through an injected seam (Env/Fs/Runner/Agent) rather than touching the OS directly, enabling fake-backed integration tests throughout.
+  - Fallible operations across these crates return typed error enums (never bare panics or `Box<dyn Error>`) crossing their public boundaries.

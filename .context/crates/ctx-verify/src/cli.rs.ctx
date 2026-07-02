@@ -1,11 +1,17 @@
 file: crates/ctx-verify/src/cli.rs
-purpose: Defines the `clap`-parsed CLI struct and the `run` function that executes checks and writes a JSON report.
-invariants:
-  - Returns `Ok(true)` iff `report.status == Status::Pass`.
-external_deps:
-  - clap: CLI argument parsing via derive macro.
-  - serde_json: serializes the report to pretty JSON.
+behavior: Defines the CLI argument schema and drives a single verification run, writing one capped JSON report to a writer and signaling pass/fail via return value.
+edit_notes:
+  - Couples to checks::run_selected's parameter order (runner, max_diagnostics, only, package); changing that function's signature requires updating this call site.
+  - JSON output contract (`{"status":"pass"}` on all-pass, trailing newline) is likely relied on by callers/tests parsing stdout; preserve pretty-printing plus trailing newline.
+  - `--checks` empty means "run full default gate", not "run nothing" — encoded via `only = None` when `cli.checks.is_empty()`.
 functions:
   - name: run
     signature: pub fn run<R: Runner, W: Write>(runner: &R, cli: &Cli, out: &mut W) -> Result<bool, CheckError>
-    purpose: Executes the selected checks and writes the JSON report to `out`, returning whether all checks passed.
+    purpose: Executes the selected checks via checks::run_selected and serializes the resulting report as pretty JSON to out.
+    notes: Returns Ok(true) iff report.status == Status::Pass; encode/write failures map to CheckError::Encode/Write respectively.
+invariants:
+  - Output is always valid pretty-printed JSON followed by exactly one trailing newline, on success.
+  - package scoping maps to cargo's `-p` flag; there is no per-module scoping.
+external_deps:
+  - clap: Cli struct derives argv parsing (Parser) with `--checks` using comma delimiter for multi-value.
+  - serde_json: to_writer_pretty used for report serialization directly to the output writer.

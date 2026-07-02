@@ -1,7 +1,10 @@
 file: crates/ctx-summarize/src/error.rs
-purpose: Defines the typed error enum for the summarization runner, covering path validation, prompt access, caching, agent execution, and I/O failures.
-invariants:
-  - All variants implement `std::error::Error` via `thiserror`.
-external_deps:
-  - thiserror: derive-based `Error` impl generation.
+behavior: Defines the unified error enum returned by the summarization runner's fallible operations, covering path validation, prompt/cache access, agent subprocess failures, and access-control/scope gating.
+edit_notes:
+  - Variants map to specific runner-side checks (path escape guard, deny-by-default access set, scope-approval gate); adding a new failure mode elsewhere in ctx-summarize likely means adding a variant here rather than reusing an existing one.
+  - All fields are Strings (paths/details pre-formatted by callers), not PathBuf or source errors, so no error chaining via #[from]/source() is available.
 functions:
+invariants:
+  - AccessDenied and ScopeTooLarge are the only variants carrying structured fields (path+reason, count+max respectively); all others carry a single String.
+external_deps:
+  - thiserror: derives Display/Error impls from the #[error("...")] format strings.

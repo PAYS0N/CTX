@@ -1,17 +1,23 @@
 directory: crates/ctx-summarize/src
-summary: Implements the `ctx-summarize` binary and library: given a set of repo-relative source paths (from CLI args or a task cache), it generates `.ctx` leaf summaries and `rollup.ctx` directory summaries by invoking an external LLM agent subprocess. The public contract is `run()` for programmatic use and `dispatch()` for CLI-driven use, both parameterized over abstract `Fs` and `Agent` traits to allow in-process testing.
+domain: Implements the `ctx-summarize` runner: turns leaf source files into `.ctx` summaries and rolls them up bottom-up into `rollup.ctx`, using a pluggable Agent (LLM completion) and Fs (filesystem) seam so the pipeline is testable against fakes. Exposes a CLI (`main.rs`/`cli.rs`) that resolves targets either from a ctx-access task cache or an explicit path list, then delegates to `runner::run`.
+edit_notes:
+  - Layering is fixed: cli (argv/io) -> runner (pure orchestration) -> fs/agent (seams). runner must never depend on cli; new features extend this direction.
+  - cpath.rs defines the `.context/<src>.ctx`, `.context/<dir>/rollup.ctx`, `.context/<dir>/intent.md` path conventions; runner.rs and cache.rs consume these paths directly, so any layout change in cpath must be propagated to runner's rollup-input assembly and to ctx-access (which duplicates the same mapping logic pending a planned `ctx-core` unification).
+  - fs.rs's scope_matcher (`.ctxignore` + built-in `target/`) is the single scope definition shared with ctx-scan's walker; runner's per-target access gating and the walker must stay in sync with it.
+  - agent.rs's SubprocessAgent wire contract (stdin JSON `{system,user}`, raw stdout) is the model-agnostic boundary any CTX_AGENT_CMD script must implement; runner is agnostic to what's behind it.
+  - `intent.md` is read-only across the whole crate — runner reads it for rollup context, cache.rs/cpath.rs never touch it, and nothing here ever writes it.
 children:
-  - main.rs: Binary entry point wiring StdFs, SubprocessAgent, and CLI dispatch with exit-code conventions.
-  - cli.rs: Argument parsing and top-level dispatch; bridges CLI inputs to `runner::run`.
-  - runner.rs: Core orchestration — leaf `.ctx` then deepest-first `rollup.ctx` generation.
-  - agent.rs: LLM agent abstraction; `SubprocessAgent` drives an external command via stdin/stdout JSON.
-  - fs.rs: Filesystem abstraction; `StdFs` roots I/O at a base path for testability.
-  - cache.rs: Resolves target paths from a per-task JSON cache file.
-  - cpath.rs: Path validation and `.context`-mirror path computation used throughout the crate.
-  - error.rs: Typed error enum covering all failure modes across the subtree.
-  - lib.rs: Crate root; declares submodules and documents top-level invariants.
-key_invariants:
-  - `intent.md` is read as prompt context but never written by any code path.
-  - All filesystem errors surface as `SummError::Io`; all agent failures as `SummError::Agent`.
-  - Rollup directories are always processed deepest-first, repo root last.
-  - Prompt content is loaded from `prompts/` at runtime, not compiled in.
+  - agent.rs: Agent trait + subprocess LLM adapter that runner calls for both leaf and rollup completions.
+  - cache.rs: Read-only source of `FromCache` targets, pulled from ctx-access's task cache by cli.rs.
+  - cli.rs: Argv surface; resolves targets (cache or explicit paths) and calls runner::run, gated by runner::scope_check.
+  - cpath.rs: Shared path-mapping utility consumed by runner to locate/write ctx artifacts and by cache.rs's `.context` layout assumptions.
+  - error.rs: Crate-wide error enum consumed by every other module's Result type.
+  - fs.rs: Fs trait + StdFs + scope_matcher; the filesystem/scope seam runner and cli are generic over.
+  - lib.rs: Module declarations only; documents the layering and no-intent-write rule enforced elsewhere.
+  - main.rs: Process entry point; wires StdFs + SubprocessAgent and calls cli::dispatch.
+  - runner.rs: Core orchestration — leaf summarization, bottom-up rollup, and the MAX_TARGETS approval gate.
+invariants:
+  - `intent.md` is never written anywhere in this crate, only read as rollup input.
+  - All fallible operations return SummError variants (error.rs); no panics on malformed input, missing files, or bad task ids.
+  - scope_check blocks runs over 50 targets unless explicitly approved; cli's `--approve` is the only bypass.
+  - Path validation (cpath::validate_rel) rejects absolute/empty/`.`/`..`/null-byte paths before any file is touched.

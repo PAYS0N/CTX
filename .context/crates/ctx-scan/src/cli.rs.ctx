@@ -1,0 +1,31 @@
+file: crates/ctx-scan/src/cli.rs
+behavior: Defines the `ctx-scan` CLI surface (clap arg parsing, mutually exclusive run modes) and dispatches to full scan, dry-run listing, check-only staleness reporting, update (check→rebuild), or Claude Code Stop-hook reporting.
+edit_notes:
+  - Mode flags (`dry_run`, `check`, `update`, `stop_hook`) are mutually exclusive via clap's `conflicts_with_all`; adding a new mode requires updating those attributes on all existing flags too.
+  - `stop_hook` never calls the agent by design (Stop event fires per-turn, not per-session); regeneration is deferred to `--update`, mirrored in `staleness_message`'s suggested command.
+  - `staleness_message` reads `ctx_summarize::runner::MAX_TARGETS` to decide whether to hint `--approve`; keep in sync with the actual gate enforced in `runner::update_run`/`scan_run`.
+  - Output formats (`render`, `render_staleness`, `stop_hook`'s JSON payload) are plain text/JSON lines consumed by scripts/hooks; changing line prefixes (`stale-dir:`, `stale-leaf:`, `orphan-leaf:`, `fresh`) is a breaking format change.
+functions:
+  - name: validate_dir
+    signature: fn validate_dir(dir: &std::path::Path) -> Result<std::path::PathBuf, ScanError>
+    purpose: Confirms `dir` exists and canonicalizes it before any scan/check/update operation.
+  - name: list_targets
+    signature: pub fn list_targets<W: Write>(cli: &Cli, out: &mut W) -> Result<(), ScanError>
+    purpose: Prints the file list a scan would summarize, without invoking the agent.
+    notes: Does not require CTX_AGENT_CMD to be set.
+  - name: check
+    signature: pub fn check<W: Write>(cli: &Cli, out: &mut W) -> Result<(), ScanError>
+    purpose: Recomputes hashes and prints a staleness report without calling the agent.
+  - name: stop_hook
+    signature: pub fn stop_hook<W: Write>(dir: &std::path::Path, out: &mut W) -> Result<(), ScanError>
+    purpose: Emits a Claude Code `systemMessage` JSON line reporting staleness; silent when the tree is fresh.
+    notes: Caller (the binary) must treat any Err as fail-open (say nothing), per doc comment.
+  - name: dispatch
+    signature: pub fn dispatch<A: Agent, W: Write>(agent: &A, cli: &Cli, out: &mut W) -> Result<(), ScanError>
+    purpose: Runs full scan or, if `--update` is set, the selective check→rebuild, writing a summary to `out`.
+invariants:
+  - stop_hook writes nothing to `out` when the tree is fresh.
+  - render_staleness writes exactly one line per stale-dir/changed-file/orphan-leaf, or "fresh" if none.
+external_deps:
+  - clap: derives Cli/Mode structs including flag conflict enforcement, not just simple parsing.
+  - ctx_summarize::agent::Agent: generic trait bound for `dispatch`, decoupling this crate from the concrete agent implementation.

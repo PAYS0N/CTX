@@ -1,0 +1,19 @@
+file: crates/ctx-scan/src/walker.rs
+behavior: Recursively walks a directory tree, returning sorted dir-relative paths of files eligible for summarization, after seeding and applying `.ctxignore` scope rules.
+edit_notes:
+  - `.ctxignore` is the sole scope source; on first call (no existing `.ctxignore`) it is created from `.gitignore` verbatim under `SCOPE_HEADER`, then `.gitignore` is never read again — changing this seeding logic changes one-time repo migration behavior.
+  - `.context/` and `.git/` subtrees are always excluded regardless of `.ctxignore` contents; secrets/binaries via `ctx_core::access` are always denied and cannot be un-ignored by scope rules.
+  - Directory-level ignore matching (`matched(rel, true)`) happens before recursing, so an ignored directory's contents are never scanned even if a file inside would otherwise match `is_allowed`.
+functions:
+  - name: walk_dir
+    signature: pub fn walk_dir(base: &Path) -> Result<Vec<String>, ScanError>
+    purpose: Ensures `.ctxignore` exists (seeding if needed), builds the scope matcher, and walks `base` for summarizable files.
+    notes: Errors as ScanError::Walk if scope file seeding/parsing or directory reads fail.
+invariants:
+  - Returned paths are always sorted and relative to `base`.
+  - Files matched by ctx_core::access::is_secret or is_binary are never included, independent of `.ctxignore` contents.
+  - `.gitignore` is only ever read once, during the first walk when `.ctxignore` does not yet exist.
+external_deps:
+  - ctx_summarize::fs::scope_matcher: builds the Gitignore matcher from `.ctxignore`, shared with the summarizer to keep scope rules consistent across tools.
+  - ignore::gitignore::Gitignore: gitignore-syntax matching engine used for scope filtering.
+  - ctx_core::access: centralizes secret/binary detection rules shared crate-wide.

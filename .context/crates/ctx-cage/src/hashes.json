@@ -1,0 +1,13 @@
+{
+  "hash": "2c1e6354b06e1cfd1c7a3cd0d0cd425f6bcf11a4c06125c5730ac785f4e14148",
+  "children": {
+    "bin": "d:912f2d6b51ebcc08f7ded3d20cbd12d805964ccc7cc52bd65696439489ed8501",
+    "bwrap": "d:7c5fcc8bff86ef56aafa0501fc3a730cba0330c67f72064cea60362bd5504573",
+    "cli.rs": "f:786d796cdb303c74f56279b35ca9f3bbeee459f2510467ec70115d1b5ffeaaf4",
+    "error.rs": "f:19015b5335f90e5392685eaaf90835cd5a6a2d6c95b795272ef22980c6b102da",
+    "lib.rs": "f:13e28754a93e5bc8866c9e073ac950f1b8e416d7a7f83a61e529c0311de6d2da",
+    "lifecycle": "d:5a03b0c9b8f8bf60cd2680ac7ebf69ec1853093dd8563cba5b914722b8a49d8c",
+    "proxy.rs": "f:289b7008e60fd5e4c66889f1a869bdc0b11c4c4cfd5dfd795d2477952d5dba6f",
+    "runtime.rs": "f:a2d284fc64075c213af502678d1ffce2a3c8b73368ba3b816d7112b1fcb838aa"
+  }
+}

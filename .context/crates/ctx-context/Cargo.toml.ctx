@@ -1,0 +1,11 @@
+file: crates/ctx-context/Cargo.toml
+behavior: Cargo manifest for ctx-context, defining a binary and lib crate that print the rollup+intent chain for a path and support a Claude Code hook mode that injects context fail-open.
+edit_notes:
+  - Binary entry is src/main.rs, library entry is src/lib.rs; both must exist and stay in sync with this manifest.
+  - Uses workspace lints ([lints] workspace = true); lint config lives at workspace root, not here.
+functions:
+invariants:
+  - publish = false; not intended for crates.io distribution.
+external_deps:
+  - clap: CLI argument parsing with derive macros for the binary.
+  - thiserror: structured error types for library-level failures.

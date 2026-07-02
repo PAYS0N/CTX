@@ -1,17 +1,20 @@
 file: crates/ctx-summarize/src/main.rs
-purpose: Binary entry point that wires together StdFs, SubprocessAgent, and CLI dispatch, routing output to stdout and errors to stderr.
-invariants:
-  - Exit code 2 for setup failures (cwd, agent init); exit code 1 for dispatch errors.
-external_deps:
-  - clap: CLI argument parsing via derived Parser.
-  - ctx_summarize: provides SubprocessAgent, StdFs, Cli, and dispatch.
+behavior: CLI entry point for ctx-summarize; wires a real filesystem (cwd) and a subprocess-based agent, parses argv, and streams the JSON summary result to stdout.
+edit_notes:
+  - All actual logic lives in ctx_summarize::cli::dispatch; this file only constructs dependencies (StdFs, SubprocessAgent) and handles top-level error reporting.
+  - Agent command is resolved via SubprocessAgent::from_env_or_dotenv, which reads CTX_AGENT_CMD or falls back to a .env in cwd; failure here exits before dispatch runs.
+  - Output discipline: all writes go through writer handles (stdout/stderr locks), never println!/eprintln!, so dispatch's output stream stays uncontaminated.
 functions:
   - name: emit
     signature: fn emit<W: Write>(mut w: W, msg: &str)
-    purpose: Writes a line to the given writer, silently ignoring write errors.
+    purpose: Writes a message plus newline to a handle, silently ignoring write failures.
   - name: fail
     signature: fn fail(msg: &str, code: u8) -> ExitCode
-    purpose: Emits an error message to stderr and returns the specified exit code.
+    purpose: Reports msg on stderr and produces the given process exit code.
   - name: main
     signature: fn main() -> ExitCode
-    purpose: Parses CLI args, constructs StdFs and SubprocessAgent, then runs dispatch with stdout as the output sink.
+    purpose: Resolves cwd, builds StdFs and SubprocessAgent, parses CLI args, and runs dispatch, mapping errors to exit codes 2 (setup) or 1 (dispatch failure).
+invariants:
+  - Exit code 2 is used for cwd/agent-setup failures; exit code 1 for dispatch failures; 0 for success.
+external_deps:
+  - clap: Cli::parse derives argv parsing for the Cli type defined in ctx_summarize::cli.

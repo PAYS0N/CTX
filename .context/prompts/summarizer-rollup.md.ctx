@@ -1,0 +1,11 @@
+file: prompts/summarizer-rollup.md
+behavior: Defines the prompt template used to generate `rollup.ctx` for a directory, instructing an LLM to summarize a subtree's domain, cross-child coupling, and per-child roles from the parent's perspective for consumption by other LLMs under context budget.
+edit_notes:
+  - Companion to prompts/summarizer-leaf.md (per-file `.ctx` generation); the two prompts must stay consistent on tone, banned-phrase list, and "facts only" philosophy since rollups sit above leaf summaries in the same context tree.
+  - The 15-line target / 40-line ceiling is stated here but is sourced from docs/SPEC.md (rule 10); changing the budget must be done in SPEC.md first, not by editing this prompt alone.
+  - Output format is strict: no code fences, no markdown headings, exact section order (directory/domain/edit_notes/children/invariants/intent_divergence) — downstream parsing likely depends on this shape.
+  - `intent_divergence:` is the only line that is conditionally omitted; every other section header must be emitted even when empty.
+functions:
+invariants:
+  - The example output block always ends with a divergence line to illustrate rule 5; the prompt's own instructions require omitting that line when no divergence exists.
+external_deps: to fill in later, if any deps identified in the file exist

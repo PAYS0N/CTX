@@ -1,0 +1,12 @@
+file: deny.toml
+behavior: Configures cargo-deny to enforce license allowlisting, advisory (RUSTSEC) checking, dependency-source restrictions, and ban rules on duplicate/wildcard versions for the crate's dependency graph.
+edit_notes:
+  - License allowlist is intentionally narrow (MIT, Apache-2.0 variants, BSD-2/3-Clause, ISC, Unicode licenses); adding a new dependency with a different license will fail CI until deliberately added here.
+  - multiple-versions = "deny" and wildcards = "deny" mean any duplicate dependency version or wildcard version requirement in Cargo.lock breaks the check; use skip/skip-tree entries to permit specific exceptions.
+  - Only crates.io is allowed as a registry source and unknown git sources are denied, so path/git dependencies not otherwise allowed will fail unless added to allow-registry or handled via sources overrides.
+functions:
+invariants:
+  - Yanked crate versions are always treated as deny-level errors (yanked = "deny").
+  - Only "https://github.com/rust-lang/crates.io-index" is an allowed registry; any other registry or unknown git source is rejected.
+external_deps:
+  - cargo-deny: this file is its config format, not consumed by cargo itself; validated via `cargo deny check`.

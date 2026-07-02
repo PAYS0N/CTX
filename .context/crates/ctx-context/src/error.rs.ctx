@@ -1,0 +1,10 @@
+file: crates/ctx-context/src/error.rs
+behavior: Defines the concrete error taxonomy (`CtxError`) shared across ctx-context, replacing `Box<dyn Error>`/`anyhow` so callers can match on specific failure modes.
+edit_notes:
+  - Adding a new failure mode requires a new enum variant here rather than wrapping an existing one; the crate's no-dyn-error policy is stated in the module doc comment.
+  - `Io` variant stores path/detail as plain Strings, not the original `std::io::Error` or `PathBuf` — conversions must stringify at the call site.
+functions:
+invariants:
+  - Every error variant carries a `#[error(...)]` message via thiserror; no variant relies on a Display impl elsewhere.
+external_deps:
+  - thiserror: derives Display/Error impls for each variant without manual boilerplate.

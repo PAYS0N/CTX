@@ -1,0 +1,36 @@
+file: crates/ctx-context/src/repo_path.rs
+behavior: Validates and represents repo-relative paths as ordered segment lists, rejecting any input that could escape the repository root (absolute paths, empty/`.`/`..` components, NUL bytes).
+edit_notes:
+  - Sole entry point for untrusted path strings into the system; `parse` is the only validation gate, so new construction paths must go through it or accept pre-trusted segments (`child`, `under`).
+  - `child` and `under` perform no validation and are documented as trusting the caller; do not feed user input to them.
+functions:
+  - name: root
+    signature: pub const fn root() -> Self
+    purpose: Returns the zero-segment path denoting the repository root.
+  - name: parse
+    signature: pub fn parse(raw: &str) -> Result<Self, CtxError>
+    purpose: Parses and validates an untrusted repo-relative path string into segments.
+    notes: Returns CtxError::PathEscape for absolute, empty, or `.`/`..`/empty-component/NUL-containing input.
+  - name: is_root
+    signature: pub const fn is_root(&self) -> bool
+    purpose: Reports whether the path has zero segments.
+  - name: as_string
+    signature: pub fn as_string(&self) -> String
+    purpose: Renders the path as a `/`-joined string, empty for root.
+  - name: file_name
+    signature: pub fn file_name(&self) -> Option<&str>
+    purpose: Returns the final path segment, if any.
+  - name: child
+    signature: pub fn child(&self, segment: &str) -> Self
+    purpose: Appends one trusted segment, producing a new path.
+    notes: Does not validate segment; caller must not pass user data.
+  - name: under
+    signature: pub fn under(&self, base: &str) -> Self
+    purpose: Prepends a trusted base segment in front of this path's segments.
+  - name: dir_chain
+    signature: pub fn dir_chain(&self) -> Vec<Self>
+    purpose: Returns the list of ancestor directory paths from root down to (not including) this path itself.
+invariants:
+  - Every segment in a constructed RepoPath is non-empty and contains no `/`, `.`, `..`, or NUL byte.
+  - An empty segment list always denotes the repository root.
+external_deps:

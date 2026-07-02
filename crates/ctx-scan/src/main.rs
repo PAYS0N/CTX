@@ -1,7 +1,9 @@
 //! `ctx-scan` binary entry point.
 //!
-//! Thin shell: build [`SubprocessAgent`] from `CTX_AGENT_CMD`, parse argv,
-//! run, stream human-readable output to stdout. All I/O through handles.
+//! Thin shell: build [`SubprocessAgent`] from `CTX_AGENT_CMD` (falling
+//! back to the target's `.env` for the command and, child-env only, the
+//! API key), parse argv, run, stream human-readable output to stdout.
+//! All I/O through handles.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -49,7 +51,7 @@ fn main() -> ExitCode {
     if cli.stop_hook() {
         return run_stop_hook(&cli, &mut out);
     }
-    let agent = match SubprocessAgent::from_env() {
+    let agent = match SubprocessAgent::from_env_or_dotenv(cli.dir()) {
         Ok(a) => a,
         Err(e) => return fail(&format!("ctx-scan: {e}"), 2),
     };

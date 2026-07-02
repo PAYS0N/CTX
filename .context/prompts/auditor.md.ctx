@@ -1,0 +1,12 @@
+file: prompts/auditor.md
+behavior: Defines the prompt/contract for an LLM "auditor" agent that compares a directory's intent.md against its rollup.ctx and emits a single JSON verdict (consistent/divergent) with severity and rationale.
+edit_notes:
+  - Output schema (path, verdict, severity, rationale) is consumed by downstream tooling/report aggregation; changing field names or verdict/severity enum values breaks parsers expecting this exact shape.
+  - Rationale text is itself fed back into other LLM tasks later, so banned hedge-phrase rules and "specific, not hedged" requirement are load-bearing for downstream prompt chains, not just style.
+  - Mirrors the rollup's own `intent_divergence:` field as a signal (per rule 4) — assumes rollup.ctx files elsewhere in the pipeline emit that field; keep in sync if that field is renamed/removed in the rollup-generating prompt.
+functions:
+invariants:
+  - Output must be a single JSON object with no surrounding prose, code fences, or markdown.
+  - severity is "none" only when verdict is "consistent"; any "divergent" verdict must carry low/medium/high.
+  - Auditor must derive intent independently from intent.md, not infer it from rollup.ctx content.
+external_deps:

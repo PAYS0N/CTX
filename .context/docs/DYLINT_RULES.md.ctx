@@ -1,0 +1,16 @@
+file: docs/DYLINT_RULES.md
+behavior: Specifies nine dylint lint rules planned for a future custom lint crate, none implemented at MVP; documents intended detection heuristics, exceptions, and thresholds for each.
+edit_notes:
+  - Rule 1 (rationale-comment enforcement) partially overlaps scripts/rationale_check.py, which currently enforces the line-count portion mechanically via pre-commit; keep both in sync if either changes.
+  - Rule 4 partially overlaps scripts/cycle_check.sh (uses cargo-modules) for circular-module-dependency detection; intended to be superseded, not duplicated, once implemented.
+  - Rule 5 (public-surface stability) requires a baseline file (proposed `pub_surface.lock`) and ties into CHANGES.md conventions; changing CHANGES.md format affects this rule's design.
+  - Rule 9's `unreachable!()` exception is contingent on the `unreachable` restriction lint (currently denied at MVP) being relaxed; the exception is inert until then.
+  - Rule 2's threshold is meant to live in `clippy.toml`, tunable per project.
+functions:
+invariants:
+  - None of the nine rules are active or enforced at MVP; only rule 1's line-count check has a mechanical (non-dylint) equivalent in scripts/.
+external_deps:
+  - dylint: target lint framework for all nine rules, not yet built.
+  - clippy: rule 1 and rule 2 depend on clippy-exposed metrics (cognitive complexity) or clippy.toml config that dylint does not yet expose.
+  - cargo-modules: currently powers scripts/cycle_check.sh, the mechanism rule 4 is meant to internalize.
+  - thiserror: suggested remedy for rule 7 (error-type ergonomics) in library crates.

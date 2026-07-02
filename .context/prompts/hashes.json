@@ -1,0 +1,9 @@
+{
+  "hash": "38df877926a6c8f53443726e55b76428aa2d15e5eef3b559ce74fc6eea3c8888",
+  "children": {
+    "README.md": "f:b6e2b259868ecf52d9b364009e9566df57d246244a8bd8b00ac86955befb931e",
+    "auditor.md": "f:cfc9d9b4db5515634f2a6afe4c2f845c193c5773319b3a4e9d61e14d8f46e539",
+    "summarizer-leaf.md": "f:8d92b21d1473562a760f6cc089ad3683ca26cd8f170fce51adf9a967ef1f452b",
+    "summarizer-rollup.md": "f:4fce260ff7eb228979d178049553ebd92b42ad715b7a1c037d37f3a3d48f60c2"
+  }
+}

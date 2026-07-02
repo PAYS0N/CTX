@@ -1,0 +1,12 @@
+file: rustfmt.toml
+behavior: Pins the project's rustfmt configuration to stable-channel-only options, enforcing consistent formatting (2021 edition, 100-col width, 4-space soft tabs, Unix newlines) across the codebase with no per-file overrides.
+edit_notes:
+  - Only stable-channel rustfmt options may appear here; nightly-only options are silently ignored by rustfmt on stable, producing rules that look enforced but aren't — verified by a Phase 0 smoke test.
+  - Desired-but-unavailable options (format_code_in_doc_comments, format_macro_matchers, format_strings, imports_granularity = "Crate", group_imports = "StdExternalCrate", trailing_comma = "Vertical", trailing_semicolon) are deliberately omitted, not commented as disabled; revisit if they stabilize or if a separately-pinned nightly rustfmt is adopted.
+  - imports_granularity and group_imports are called out as the highest-value gaps since import block shape is currently unenforced.
+  - Toolchain channel is pinned in rust-toolchain.toml; that file determines which rustfmt options are actually usable here.
+functions:
+invariants:
+  - Every key present is honored on the stable toolchain; no nightly-only keys are ever added to this file.
+external_deps:
+  - rustfmt: config format/keys are version- and channel-dependent; validity tied to rust-toolchain.toml's pinned stable version.

@@ -1,9 +1,12 @@
 directory: crates/ctx-core/src
-summary: Exposes the deny-by-default access gate as the sole shared primitive for all CTX tooling. Callers get `is_secret`, `is_binary`, `deny_reason`, and `accessible_set` through the `access` module re-exported from `lib.rs`; no other logic lives here.
+domain: Dependency-free security gate for the CTX system: the single canonical definition of which paths are secrets or binary and therefore must never be read or summarized. All other CTX crates (ctx-access, ctx-summarize, and any manifest builder) call into this crate rather than maintaining their own denylists.
+edit_notes:
+  - Any change to secret/binary detection rules happens only in access.rs; per ADR-023 a divergent denylist in a consumer crate is a security bug, not a style choice.
+  - Ignore-status is intentionally not computed here (kept dependency-free); consumers supply their own ignored bool from .ctxignore/.gitignore scoping.
+  - Consumers must map the returned &'static str reason ("secret"/"binary"/"ignored") into their own typed errors here; do not add crate-specific error types in this crate.
 children:
-  - lib.rs: Crate root; re-exports `access` as the single denylist authority.
-  - access.rs: Implements the three-check gate (secret / binary / gitignored) and the `accessible_set` bulk filter.
-key_invariants:
-  - All three checks must pass for a path to be accessible; no caller may bypass any check.
-  - `accessible_set` assumes its input is already non-ignored, so it skips the gitignore check.
-  - One canonical copy of the denylist; per-crate copies are structurally prevented.
+  - access.rs: Sole implementation of the deny-by-default gate re-exported at the crate root.
+  - lib.rs: Thin re-export surface; no logic of its own.
+invariants:
+  - Crate has zero external dependencies; this must hold for all future additions, not just access.rs.
+  - deny_reason priority order (secret > binary > ignored) is the crate's external contract — callers must not reorder these checks themselves.

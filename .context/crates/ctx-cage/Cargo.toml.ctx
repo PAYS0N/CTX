@@ -1,0 +1,11 @@
+file: crates/ctx-cage/Cargo.toml
+behavior: Package manifest for ctx-cage, providing a library plus two binaries — ctx-cage (bwrap-based offline sandbox launcher) and ctx-run (billed one-command launcher) — that run autonomous agent sessions inside a namespace with a writable workspace, masked secrets, and a host-side API proxy as sole egress.
+edit_notes:
+  - Two distinct binaries share one lib (ctx_cage at src/lib.rs); new shared logic belongs in the lib so both bins stay consistent.
+  - Binary entry points are src/bin/ctx_cage.rs and src/bin/ctx_run.rs; renaming/moving either requires updating the [[bin]] path here.
+  - publish = false: not intended for crates.io distribution.
+functions:
+invariants:
+external_deps:
+  - clap (derive): CLI argument parsing for both ctx-cage and ctx-run binaries.
+  - thiserror: structured error types for cage/proxy failure modes.

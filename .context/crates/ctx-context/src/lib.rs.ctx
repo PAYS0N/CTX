@@ -1,0 +1,8 @@
+file: crates/ctx-context/src/lib.rs
+behavior: Crate root for ctx-context; declares the module tree that computes and prints the summary/rollup chain above a path and injects it into Claude Code sessions via hook mode. Carries no logic itself.
+edit_notes:
+  - Post "lead-by-hooks pivot": agents edit source directly with native tools; this crate is read-only context serving, not an editing surface.
+  - serve, session, and hook are documented as pure over the env::Env boundary — keep argv/process/network I/O out of those modules and confined to the binary shell that calls cli::dispatch.
+functions:
+invariants:
+external_deps:

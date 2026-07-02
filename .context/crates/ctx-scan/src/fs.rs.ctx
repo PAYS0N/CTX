@@ -1,0 +1,18 @@
+```
+file: crates/ctx-scan/src/fs.rs
+behavior: Wraps StdFs to serve compile-time-embedded summarizer prompt files for two known repo-relative paths, so the runner works without a prompts/ directory on disk; delegates all other Fs operations to the inner StdFs.
+edit_notes:
+  - LEAF_PATH and ROLLUP_PATH must exactly match the paths the runner requests prompts at, and the include_str! paths must match the actual workspace prompts/ directory layout relative to this crate.
+  - Only read() is intercepted; write/exists/list_dir/is_ignored/remove all pass through to StdFs, so writes to the prompt paths go to the real filesystem, not the embedded constants.
+functions:
+  - name: new
+    signature: pub const fn new(base: PathBuf) -> Self
+    purpose: Constructs a ScanFs rooted at the given base directory.
+  - name: read
+    signature: fn read(&self, rel: &str) -> Result<String, SummError>
+    purpose: Returns the embedded prompt constant for the two known prompt paths, otherwise delegates to inner StdFs.
+invariants:
+  - read() for LEAF_PATH or ROLLUP_PATH always succeeds and returns the compiled-in constant regardless of filesystem state.
+external_deps:
+  - ctx_summarize::fs::{Fs, StdFs}: defines the Fs trait and the base filesystem implementation being wrapped.
+```

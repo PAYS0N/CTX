@@ -1,0 +1,48 @@
+file: crates/ctx-cage/src/lifecycle/run.rs
+behavior: Runs lifecycle phase 2 of the cage: starts a local Unix-socket API proxy for billed modes, execs the caged process via `bwrap` with stdio inherited, then stops the proxy and returns the cage's exit code.
+edit_notes:
+  - Depends on crate::bwrap (BwrapConfig, build_bwrap_args, path/name constants) and crate::proxy (ProxyConfig, SocatUpstream, serve) staying in sync with the argv/env layout built here.
+  - Env is fully cleared (`--clearenv` in BwrapConfig) and rebuilt from scratch in base_env/cage_env; anything the caged process needs must be added there explicitly.
+  - Never sets ANTHROPIC_API_KEY: proxy uses passthrough OAuth auth, and setting the key would trigger claude's interactive "use detected API key?" prompt inside the sandbox.
+  - self_test_stub_cmd is a containment probe (ADR-027): must only write under /work/target, must confirm secret masks are present-but-readable (not just present), and must confirm outbound network is blocked.
+  - Relay in claude_cmd assumes the proxy socket is bind-mounted at /run/ctx/API_SOCK_NAME inside the cage; changing API_SOCK_NAME or the bind path requires updating both start_proxy and claude_cmd.
+functions:
+  - name: run_until_exit
+    signature: pub fn run_until_exit(r: &Resolved, prep: &Prep) -> Result<i32, CageError>
+    purpose: Orchestrates optional proxy startup, cage exec, and proxy shutdown, returning the cage's exit code.
+    notes: Exit code defaults to 1 if the process was killed by a signal (no code()).
+  - name: start_proxy
+    signature: fn start_proxy(prep: &Prep) -> Result<ProxyHandle, CageError>
+    purpose: Binds the proxy Unix socket in the run dir and spawns the accept-loop thread.
+  - name: exec_cage
+    signature: fn exec_cage(r: &Resolved, prep: &Prep) -> Result<std::process::ExitStatus, CageError>
+    purpose: Builds the BwrapConfig and runs `bwrap` synchronously with inherited stdio.
+  - name: detect_secret_masks
+    signature: fn detect_secret_masks(root: &std::path::Path) -> Vec<String>
+    purpose: Lists repo-relative secret paths (.env, .git/config) present in the target root, for masking.
+  - name: toolchain_home
+    signature: fn toolchain_home(env_key: &str, default: &str) -> Option<PathBuf>
+    purpose: Resolves a toolchain directory from an env var override or a ~/default fallback, only if it exists.
+  - name: toolchain_dirs
+    signature: fn toolchain_dirs() -> Vec<PathBuf>
+    purpose: Collects existing CARGO_HOME/RUSTUP_HOME (or defaults) to bind read-only into the cage.
+  - name: tool_binds
+    signature: fn tool_binds(r: &Resolved, prep: &Prep) -> Vec<(PathBuf, String)>
+    purpose: Lists host binaries/credentials to bind under /cage/bin (and cage HOME) inside the sandbox.
+  - name: claude_rw_binds
+    signature: fn claude_rw_binds(prep: &Prep) -> Vec<(PathBuf, String)>
+    purpose: Lists the single writable bind (synthesized ~/.claude.json) needed because claude rewrites it.
+  - name: cage_env
+    signature: fn cage_env(r: &Resolved) -> Vec<(String, String)>
+    purpose: Builds the full cage environment, adding CTX_TASK_BRIEF for Task mode and ANTHROPIC_BASE_URL for billed modes.
+  - name: cage_cmd_for_mode
+    signature: fn cage_cmd_for_mode(mode: &Mode) -> Vec<OsString>
+    purpose: Selects the in-cage shell command for the active mode (self-test stub, headless task, or interactive claude).
+invariants:
+  - No ANTHROPIC_API_KEY is ever placed in the cage environment.
+  - cage_env/base_env fully determine the cage's environment; nothing is inherited from the host process beyond what they set.
+  - self_test_stub_cmd writes only under /work/target and exits nonzero with a distinguishing marker (SECRET-LEAK, MASK-UNREADABLE, GIT-BROKEN, NET-LEAK) on any containment failure.
+external_deps:
+  - bwrap (sibling module): argv construction and sandbox path constants (CAGE_BIN, CAGE_RULES_PATH, etc.) this file assembles config for.
+  - proxy (sibling module): passthrough HTTPS relay serving on the Unix socket this file binds and later stops via AtomicBool.
+  - socat: used both as the in-cage TCP↔Unix relay (claude_cmd) and as the self-test's network-leak probe.

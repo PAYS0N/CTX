@@ -1,0 +1,24 @@
+file: crates/ctx-context/src/main.rs
+behavior: Process entry point for the ctx-context binary — parses CLI args, conditionally reads stdin for hook mode, resolves the repo root, and dispatches to ctx_context::cli::dispatch, converting the result to a process exit code.
+edit_notes:
+  - Must never use println!/eprintln!; all output goes through writer handles (emit() to stderr, stdout lock passed into dispatch) to satisfy a crate-wide print_stdout/print_stderr lint restriction.
+  - Repo root resolution prefers the hook event's cwd field (via ctx_context::hook::event_cwd) over process cwd, because harnesses invoking hooks may spawn with a different working directory than the repo root.
+  - stdin is only read when cli.hook_mode() is true; otherwise dispatch receives an empty string.
+functions:
+  - name: emit
+    signature: fn emit<W: Write>(mut w: W, msg: &str)
+    purpose: Writes a message plus newline to a handle, silently discarding write failures.
+  - name: read_stdin
+    signature: fn read_stdin() -> String
+    purpose: Reads all of stdin for hook-mode input, returning an empty string on read failure.
+    notes: Fail-open by design — hook mode must not error out just because stdin read failed.
+  - name: resolve_root
+    signature: fn resolve_root(hook_stdin: &str) -> Result<std::path::PathBuf, std::io::Error>
+    purpose: Determines repo root from the hook event's cwd if present, else falls back to process current_dir.
+  - name: main
+    signature: fn main() -> ExitCode
+    purpose: Wires argument parsing, stdin reading, root resolution, and dispatch into a process exit code (0 on success, 1 on any error).
+invariants:
+  - Exit code is always 0 (Ok) or 1 (any error path); no other codes are produced.
+external_deps:
+  - clap: Cli::parse() derives argument parsing for the Cli type defined in ctx_context::cli.

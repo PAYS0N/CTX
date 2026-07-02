@@ -1,0 +1,35 @@
+file: crates/ctx-cage/src/bin/ctx_run.rs
+behavior: CLI entry point `ctx-run <dir> "<task>"` that launches a billed caged agent session via ctx_cage::lifecycle::execute, then refreshes context summaries with a `ctx-scan --update` child process on success.
+edit_notes:
+  - Agent auth is the operator's Claude Code subscription; running ctx-run is itself the spend authorization, so no `--allow-spend` flag exists here (unlike other CTX binaries that may require one).
+  - `~/.config/ctx/env` only feeds CTX_AGENT_CMD/ANTHROPIC_API_KEY into the ctx-scan child for summary refresh; it is never passed to the cage/session itself. Must be 0600 or load_env_file errors.
+  - Summary refresh (ctx-scan --update) is described as "the ONE place regeneration happens"; the Stop hook only reports, does not regenerate. Keep this division if touching hook/refresh logic.
+  - Sibling binary resolution (ctx-verify, ctx-context, ctx-scan) mirrors ctx-cage's own resolution rule: derived from current_exe's parent dir, overridable via CTX_VERIFY_BIN/CTX_CONTEXT_BIN/CTX_SCAN_BIN env vars.
+  - refresh_summaries never fails the run; a failed refresh only prints a manual-recovery hint to stderr since the session's deliverable already landed.
+functions:
+  - name: run
+    signature: fn run() -> Result<i32, CageError>
+    purpose: Parses CLI, loads operator env, resolves mode and sibling bins, executes the cage session, and triggers post-run summary refresh.
+  - name: refresh_summaries
+    signature: fn refresh_summaries(scan_bin: &PathBuf, dir: &PathBuf, env: &HashMap<String, String>)
+    purpose: Runs `ctx-scan <dir> --update` with operator env vars injected, logging (not failing) on error.
+  - name: load_env_file
+    signature: fn load_env_file() -> Result<HashMap<String, String>, CageError>
+    purpose: Reads and parses `~/.config/ctx/env`, enforcing 0600 permissions when the file exists.
+    notes: Returns empty map (not an error) when the file is absent.
+  - name: pick_mode
+    signature: fn pick_mode(cli: &Cli) -> Result<Mode, CageError>
+    purpose: Determines Interactive vs Task mode from CLI flags, erroring if neither task nor --interactive is given.
+  - name: warn_if_no_hooks
+    signature: fn warn_if_no_hooks(dir: &std::path::Path)
+    purpose: Warns to stderr if the target lacks `.claude/settings.json`, meaning the context-chain hook won't activate.
+  - name: ctx_run_bins
+    signature: fn ctx_run_bins() -> Result<RunBins, CageError>
+    purpose: Resolves paths to sibling ctx-verify/ctx-context/ctx-scan binaries, honoring env-var overrides.
+invariants:
+  - load_env_file errors (does not silently ignore) if the env file exists with mode bits outside 0600.
+  - refresh_summaries only passes CTX_AGENT_CMD and ANTHROPIC_API_KEY into the child env, never other operator env vars.
+  - main never panics on invalid exit codes; out-of-range i32 codes from execute() map to ExitCode::FAILURE via unwrap_or(1).
+external_deps:
+  - ctx_cage::lifecycle: owns actual session execution (Resolved struct, execute()); this file only assembles inputs.
+  - clap: CLI parsing via derive Parser on Cli struct.

@@ -1,29 +1,31 @@
 file: crates/ctx-summarize/src/cpath.rs
-purpose: Validates repo-relative paths and computes `.context`-mirror paths for source files, directories, rollups, and intent files.
-invariants:
-  - validate_rel returns Err(PathEscape) for empty, absolute, or dot/null-component paths; never panics.
-  - ancestor_dirs always includes "" (repo root) as its first element.
-external_deps:
-  - crate::error::SummError: PathEscape variant used as the sole error type.
+behavior: Validates repo-relative source paths and computes the `.context` mirror paths (leaf ctx, rollup, intent, ancestor directories) used to locate context artifacts for a given source file.
+edit_notes:
+  - Duplicates path-safety and `.context` mapping logic also present in `ctx-access` (`repo_path`/`chain`); keep both in sync until unified into a planned `ctx-core` crate (see docs/UNIMPLEMENTED.md).
+  - Mapping conventions (`.context/<src>.ctx`, `.context/<dir>/rollup.ctx`, `.context/<dir>/intent.md`) are relied upon by other parts of ctx-summarize that locate these files; changing the format here requires updating all callers.
 functions:
   - name: validate_rel
     signature: pub fn validate_rel(raw: &str) -> Result<(), SummError>
-    purpose: Rejects paths that are empty, absolute, or contain `.`, `..`, empty, or null-byte components.
+    purpose: Rejects absolute, empty, or unsafe (`.`/`..`/null-byte-containing) repo-relative paths.
   - name: context_dir_of
     signature: pub fn context_dir_of(dir: &str) -> String
-    purpose: Returns the `.context`-mirrored directory path for a given repo directory, using `.context` for the root.
+    purpose: Maps a repo directory (or "" for root) to its `.context`-mirrored directory.
   - name: leaf_ctx
     signature: pub fn leaf_ctx(src: &str) -> String
-    purpose: Returns the `.context/<src>.ctx` summary path for a source file.
+    purpose: Computes the `.context/<src>.ctx` leaf summary path for a source file.
   - name: rollup_of
     signature: pub fn rollup_of(dir: &str) -> String
-    purpose: Returns the `.context/<dir>/rollup.ctx` path for a directory.
+    purpose: Computes the `.context/<dir>/rollup.ctx` path for a directory.
   - name: intent_of
     signature: pub fn intent_of(dir: &str) -> String
-    purpose: Returns the `.context/<dir>/intent.md` path for a directory.
+    purpose: Computes the `.context/<dir>/intent.md` path for a directory.
   - name: dir_of
     signature: pub fn dir_of(src: &str) -> String
-    purpose: Returns the parent directory of a source path, or "" for root-level files.
+    purpose: Returns the parent directory of a source path, or "" if at repo root.
   - name: ancestor_dirs
     signature: pub fn ancestor_dirs(src: &str) -> Vec<String>
-    purpose: Returns all directory prefixes from repo root to the source file's parent, inclusive of "".
+    purpose: Lists all directory prefixes from repo root down to `src`'s parent, i.e. the directories whose rollups a change to `src` can affect.
+invariants:
+  - validate_rel never accepts empty strings, leading '/', or any component equal to "", ".", "..", or containing a null byte.
+  - ancestor_dirs always includes "" (repo root) as its first element.
+external_deps:

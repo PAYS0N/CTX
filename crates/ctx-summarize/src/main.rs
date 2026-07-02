@@ -1,8 +1,9 @@
 //! ctx-summarize binary entry point.
 //!
 //! Thin shell: build the real [`StdFs`] (cwd) and [`SubprocessAgent`]
-//! (`CTX_AGENT_CMD`), parse argv, run, stream the JSON summary to stdout.
-//! Output goes through writer handles, never `println!`/`eprintln!`.
+//! (`CTX_AGENT_CMD`, falling back to the cwd's `.env`), parse argv,
+//! run, stream the JSON summary to stdout. Output goes through writer
+//! handles, never `println!`/`eprintln!`.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -31,7 +32,7 @@ fn main() -> ExitCode {
         Ok(dir) => dir,
         Err(e) => return fail(&format!("cannot resolve cwd: {e}"), 2),
     };
-    let agent = match SubprocessAgent::from_env() {
+    let agent = match SubprocessAgent::from_env_or_dotenv(&base) {
         Ok(a) => a,
         Err(e) => return fail(&format!("ctx-summarize error: {e}"), 2),
     };

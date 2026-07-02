@@ -104,22 +104,19 @@ fn pick_mode(cli: &Cli) -> Result<Mode, CageError> {
 }
 
 /// Post-session summary refresh — the ONE place regeneration happens
-/// (the Stop hook only reports): `ctx-scan <dir> --update` with the
-/// agent command + key passed only into the child's environment. Never
-/// fails the run: the session's deliverable already landed; a refresh
-/// problem is maintenance, reported with the manual command.
+/// (the Stop hook only reports): `ctx-scan <dir> --update`. Agent
+/// config from `~/.config/ctx/env` is passed only into the child's
+/// environment; when absent, ctx-scan falls back to the target's own
+/// `.env`. Never fails the run: the session's deliverable already
+/// landed; a refresh problem is maintenance, reported with the manual
+/// command.
 fn refresh_summaries(scan_bin: &PathBuf, dir: &PathBuf, env: &HashMap<String, String>) {
-    let Some(agent_cmd) = env.get("CTX_AGENT_CMD") else {
-        emit(
-            std::io::stderr().lock(),
-            "ctx-run: CTX_AGENT_CMD not in ~/.config/ctx/env; skipping summary refresh",
-        );
-        return;
-    };
     let mut cmd = Command::new(scan_bin);
-    cmd.arg(dir).arg("--update").env("CTX_AGENT_CMD", agent_cmd);
-    if let Some(key) = env.get("ANTHROPIC_API_KEY") {
-        cmd.env("ANTHROPIC_API_KEY", key);
+    cmd.arg(dir).arg("--update");
+    for key in ["CTX_AGENT_CMD", "ANTHROPIC_API_KEY"] {
+        if let Some(val) = env.get(key) {
+            cmd.env(key, val);
+        }
     }
     if !cmd.status().is_ok_and(|s| s.success()) {
         emit(

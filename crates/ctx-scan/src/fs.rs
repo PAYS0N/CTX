@@ -1,5 +1,4 @@
-//! `ScanFs`: a [`StdFs`] wrapper that injects embedded prompt constants
-//! and gracefully handles gitignore checks outside git repositories.
+//! `ScanFs`: a [`StdFs`] wrapper that injects embedded prompt constants.
 
 use std::path::PathBuf;
 
@@ -22,8 +21,8 @@ const ROLLUP_PROMPT: &str = include_str!("../../../prompts/summarizer-rollup.md"
 ///
 /// Intercepts reads at the two known prompt paths and returns the embedded
 /// compile-time constants, so the binary works without a `prompts/`
-/// directory present. All other operations delegate to the inner [`StdFs`].
-/// Gitignore errors (e.g., not a git repo) are silently mapped to `false`.
+/// directory present. All other operations delegate to the inner [`StdFs`]
+/// (whose scope filter is `.ctxignore`-based and git-independent).
 pub struct ScanFs {
     /// Inner standard filesystem rooted at the scan target.
     inner: StdFs,
@@ -63,7 +62,7 @@ impl Fs for ScanFs {
     }
 
     fn is_ignored(&self, rel: &str) -> Result<bool, SummError> {
-        self.inner.is_ignored(rel).or(Ok(false))
+        self.inner.is_ignored(rel)
     }
 
     fn remove(&self, rel: &str) -> Result<(), SummError> {

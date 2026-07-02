@@ -1,11 +1,46 @@
 //! Filesystem boundary. The runner is pure over [`Fs`]; the real impl
 //! touches `std::fs`, tests use an in-memory fake.
+//!
+//! This module also owns [`scope_matcher`] — the single implementation
+//! of the summarization scope (`.ctxignore`, gitignore syntax, falling
+//! back to `.gitignore`, always seeded with `target/`). It is
+//! git-independent by design: scope must not couple to commit state or
+//! require a git repository. `ctx-scan`'s walker reuses it, so the
+//! walker and the per-target deny gate cannot drift.
 
 use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
 use crate::error::SummError;
+
+/// Build the summarization scope matcher for `base`: built-in defaults
+/// plus `.ctxignore` when present.
+///
+/// `.ctxignore` is the ONLY scope file — `.gitignore` is never
+/// consulted here; `ctx-scan` seeds a `.ctxignore` from it once, and
+/// from then on the two are decoupled.
+///
+/// # Errors
+///
+/// [`SummError::Io`] if `.ctxignore` exists but cannot be parsed.
+pub fn scope_matcher(base: &Path) -> Result<Gitignore, SummError> {
+    let scope_err = |path: &str, detail: &dyn std::fmt::Display| SummError::Io {
+        path: path.to_owned(),
+        detail: detail.to_string(),
+    };
+    let mut b = GitignoreBuilder::new(base);
+    b.add_line(None, "target/")
+        .map_err(|e| scope_err("<builtin-scope>", &e))?;
+    let ctxignore = base.join(".ctxignore");
+    if ctxignore.is_file() {
+        if let Some(e) = b.add(&ctxignore) {
+            return Err(scope_err(&ctxignore.to_string_lossy(), &e));
+        }
+    }
+    b.build().map_err(|e| scope_err("<scope-matcher>", &e))
+}
 
 /// Abstract filesystem rooted at the repository.
 pub trait Fs {
@@ -33,7 +68,9 @@ pub trait Fs {
     /// [`SummError::Io`] if the directory exists but cannot be listed.
     fn list_dir(&self, rel: &str) -> Result<Vec<String>, SummError>;
 
-    /// Whether `rel` is gitignored — the access gate's deny spine.
+    /// Whether `rel` is outside the summarization scope — the access
+    /// gate's ignore spine (`.ctxignore`, else `.gitignore`, plus
+    /// built-in defaults; see [`scope_matcher`]).
     ///
     /// # Errors
     ///
@@ -133,24 +170,9 @@ impl Fs for StdFs {
     }
 
     fn is_ignored(&self, rel: &str) -> Result<bool, SummError> {
-        let status = Command::new("git")
-            .arg("-C")
-            .arg(&self.base)
-            .args(["check-ignore", "-q", "--"])
-            .arg(rel)
-            .status()
-            .map_err(|e| SummError::Io {
-                path: "<git>".to_owned(),
-                detail: e.to_string(),
-            })?;
-        // git check-ignore: 0 = ignored, 1 = not ignored, >1 = error.
-        match status.code() {
-            Some(0) => Ok(true),
-            Some(1) => Ok(false),
-            other => Err(SummError::Io {
-                path: rel.to_owned(),
-                detail: format!("git check-ignore exit {other:?}"),
-            }),
-        }
+        // Rebuilt per query: point lookups are rare (one per target)
+        // and the ignore files are small; simplicity over caching.
+        let matcher = scope_matcher(&self.base)?;
+        Ok(matcher.matched_path_or_any_parents(rel, false).is_ignore())
     }
 }

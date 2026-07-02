@@ -1,0 +1,13 @@
+file: template/scripts/no_allow_check.sh
+behavior: CI/lint gate that fails if any tracked or untracked-but-not-ignored `.rs` file contains a `#[allow(...)]` or `#![allow(...)]` attribute; MVP policy is zero tolerance with no suppression mechanism.
+edit_notes:
+  - File set comes from `git ls-files -z --cached --others --exclude-standard`, not a filesystem walk, specifically to avoid descending into `target/` and racing concurrent cargo/rust-analyzer writes; do not replace with `find`.
+  - Appends `/dev/null` to the grep file list so grep always emits `file:line:` prefixed output (even for a single matching file), because downstream ctx-verify tooling parses that `path:line` form.
+  - Takes optional arg $1 as the repo root (defaults to `.`) and `cd`s into it before running.
+functions:
+invariants:
+  - Exits 0 immediately if no `.rs` files are found via git.
+  - Exits 1 with "FAIL: ... is not a git repository" if $ROOT is not inside a git work tree.
+  - Exits 1 and prints one "FAIL: <file>:<line>:..." line per match if any `#[allow(...)]` or `#![allow(...)]` is found; otherwise exits 0.
+external_deps:
+  - git: sole source of the file enumeration; ignored/untracked-ignored paths are pruned by git itself, making the check independent of build/filesystem state.

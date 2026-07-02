@@ -1,0 +1,39 @@
+```
+file: template/scripts/rationale_check.py
+behavior: Lints tracked .rs files for oversized functions and files, requiring a `// rationale:` comment to clear soft limits (30-line functions, 250-line files) and failing unconditionally past hard limits (80-line functions, 400-line files); acts as an MVP placeholder for a future dylint rule.
+edit_notes:
+  - Function boundaries are detected via a `fn` regex plus brace-balance counting (find_fn_end), not a real Rust parser; strips strings/`//` comments per-line but does not handle multi-line strings or `/* */` block comments.
+  - tracked_rs_files uses `git ls-files` (cached + others, excluding ignored) instead of filesystem walk deliberately, to avoid racing concurrent writers into target/; changing to rglob would reintroduce that hazard.
+  - Rationale comment must sit immediately before `fn` (for functions) or after any `//!` block (for files), skipping blank lines and `#[...]` attributes only.
+functions:
+  - name: strip_strings_and_comments
+    signature: def strip_strings_and_comments(line: str) -> str
+    purpose: Removes string literals and `//` comments from a line so brace counting is not confused by braces inside strings/comments.
+  - name: find_fn_end
+    signature: def find_fn_end(lines, start_idx) -> int | None
+    purpose: Finds the closing-brace line of the function starting at start_idx via brace-depth tracking.
+  - name: is_bodyless_fn_decl
+    signature: def is_bodyless_fn_decl(lines, start_idx) -> bool
+    purpose: Detects trait/extern fn signatures ending in `;` with no body, to exclude them from span measurement.
+  - name: has_rationale_before
+    signature: def has_rationale_before(lines, fn_idx) -> bool
+    purpose: Checks for a `// rationale:` comment directly above a function, skipping blanks/attributes.
+  - name: file_has_rationale_at_top
+    signature: def file_has_rationale_at_top(lines) -> bool
+    purpose: Checks for a `// rationale:` comment at file top, after any `//!` doc block.
+  - name: check_file
+    signature: def check_file(path: Path) -> list[str]
+    purpose: Runs file-length and per-function-length checks against a single file, returning failure messages.
+  - name: tracked_rs_files
+    signature: def tracked_rs_files(root: Path) -> list[Path]
+    purpose: Lists all git-tracked-or-untracked-but-unignored `.rs` files under root.
+    notes: Exits the process with code 1 if git invocation fails.
+  - name: main
+    signature: def main() -> int
+    purpose: Entry point; checks a single file or all tracked .rs files under a root path (default cwd), printing failures to stderr.
+invariants:
+  - Returns exit code 1 if any failure message was produced, else 0.
+  - Functions >= HARD_FN_LINES or files >= HARD_FILE_LINES always fail regardless of rationale comments.
+external_deps:
+  - git: source of truth for which files to check, chosen specifically to avoid filesystem races with concurrent builds.
+```

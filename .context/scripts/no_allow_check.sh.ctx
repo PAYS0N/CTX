@@ -1,0 +1,14 @@
+file: scripts/no_allow_check.sh
+behavior: CI-style lint that fails if any `#[allow(...)]` or `#![allow(...)]` attribute appears anywhere in the repo's tracked/untracked-but-not-ignored `*.rs` files.
+edit_notes:
+  - No suppression mechanism exists yet; any legitimate need for `#[allow(...)]` is unsupported by design until an appeal mechanism is added post-MVP.
+  - Uses `git ls-files -z --cached --others --exclude-standard` instead of a filesystem walk specifically to avoid racing cargo/rust-analyzer writes into `target/` and to get git's ignore-pruning for free; do not replace with `find`.
+  - Appends `/dev/null` to the grep file list to force multi-file mode so grep always emits `file:line:` prefixes, matching the `path:line` format ctx-verify's parser expects, even when only one `.rs` file is found.
+  - Output lines are prefixed `FAIL: ` and go to stderr; exit code is 1 if any match found, 0 otherwise (including when there are no `.rs` files).
+functions:
+invariants:
+  - Exits 1 immediately (before scanning) if `$ROOT` is not inside a git working tree.
+  - Exits 0 if no tracked/untracked-non-ignored `.rs` files exist.
+  - Matches attributes at any indentation via `^[[:space:]]*#!?\[allow\(`, so both crate-level `#![allow(...)]` and item-level `#[allow(...)]` are caught.
+external_deps:
+  - git: sole source of truth for which files are inspected; ignored paths are never scanned.

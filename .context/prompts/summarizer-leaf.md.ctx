@@ -1,0 +1,10 @@
+file: prompts/summarizer-leaf.md
+behavior: Prompt template instructing an LLM to generate a `.ctx` context document for a single non-leaf-tree source file, replacing an existing one, under a strict machine-consumable schema.
+edit_notes:
+  - Output schema (file/behavior/edit_notes/functions/invariants/external_deps) is contract-like; downstream tooling likely parses these fields, so field names, ordering, and "no prose/no fences" rule must stay stable if changed here.
+  - Companion prompt likely exists for non-leaf (directory/aggregate) summaries; this one is specifically for single-source-file leaves.
+functions:
+invariants:
+  - Emitted output must include all section headers even when empty (no omission).
+  - Target length 10 lines, hard ceiling 40 lines.
+external_deps:

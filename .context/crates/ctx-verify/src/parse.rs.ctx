@@ -1,17 +1,21 @@
 file: crates/ctx-verify/src/parse.rs
-purpose: Converts raw tool output strings (cargo JSON, script FAIL lines, rustfmt diff) into deduplicated `Diagnostic` values. No process execution; all parsers operate on in-memory strings.
-invariants:
-  - `parse_compiler_json` skips non-`compiler-message` JSON lines and suppresses exact duplicates (same file, line, lint, message).
-  - `parse_fmt` emits at most one diagnostic per file regardless of how many diff hunks appear.
-external_deps:
-  - serde_json: deserializes cargo `--message-format=json` lines into `Value` for field extraction.
+behavior: Parses verification-tool output (cargo JSON messages, script FAIL lines, cargo fmt diff output) into normalized `Diagnostic` values, with no subprocess execution.
+edit_notes:
+  - Depends on `crate::model::Diagnostic` field shape (file, line, col, lint, message); keep in sync if that struct changes.
+  - `parse_compiler_json` expects newline-delimited JSON as produced by `cargo --message-format=json`; only `reason == "compiler-message"` lines with level error/warning become diagnostics.
 functions:
   - name: parse_compiler_json
     signature: pub fn parse_compiler_json(stdout: &str) -> Vec<Diagnostic>
-    purpose: Parses `cargo --message-format=json` output into error/warning diagnostics, deduplicating identical entries.
+    purpose: Extracts error/warning diagnostics from cargo/clippy/rustdoc JSON message-format stdout.
   - name: parse_fail_lines
     signature: pub fn parse_fail_lines(text: &str) -> Vec<Diagnostic>
-    purpose: Extracts `FAIL:` prefixed lines from bash/python check script output, parsing an optional `path:line` location prefix.
+    purpose: Converts `FAIL: path:line ...` lines from bash/python check scripts into diagnostics with lint "script".
   - name: parse_fmt
     signature: pub fn parse_fmt(stdout: &str) -> Vec<Diagnostic>
-    purpose: Parses `cargo fmt --check` output, emitting one `rustfmt` diagnostic per file that needs formatting.
+    purpose: Converts `Diff in <path>:...` lines from `cargo fmt --check` into diagnostics with lint "rustfmt".
+invariants:
+  - parse_compiler_json skips messages whose level is not "error" or "warning", and never emits two diagnostics with identical (file, line, lint, message).
+  - parse_fmt emits at most one diagnostic per distinct file, always with line 0, col 0.
+  - Malformed JSON lines in parse_compiler_json input are silently skipped, not errored.
+external_deps:
+  - serde_json: used generically via `Value` to walk cargo's compiler-message JSON schema (spans, is_primary, code.code) without a typed struct.

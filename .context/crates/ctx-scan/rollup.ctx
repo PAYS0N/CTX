@@ -1,0 +1,13 @@
+directory: crates/ctx-scan
+domain: Standalone CLI crate (`ctx-scan`) that builds and maintains a `.context/` tree of AI-generated file/directory summaries via content-hash (Merkle-tree) change detection, independent of git state. Ships as both a library (runner, cli::dispatch entry points) and a binary, layered on top of ctx-core and ctx-summarize for shared types and the generic summarization runner.
+edit_notes:
+  - Freshness is entirely git-independent: hash.rs's SHA-256 Merkle tree is the sole source of truth, seeded once from `.gitignore` into `.ctxignore` at first scan and never re-synced.
+  - CLI modes (dry-run, check, update, stop-hook, full scan) are mutually exclusive with fixed dispatch order enforced in both cli.rs and main.rs; stop_hook must always fail open (main.rs swallows its Result).
+  - Integration tests bind against ctx_summarize's Fs/Agent trait fakes, not ctx-scan's own types, and assert exact agent-call counts and literal output substrings — changing staleness propagation or hint text requires updating both src/ and tests/ together.
+children:
+  - src: Implementation — walk/hash/summarize/readme pipeline, CLI dispatch, and the embedded-prompt Fs wrapper.
+  - tests: End-to-end integration tests covering summarize/check_run/update_run/walk_dir/stop_hook against fake and real filesystem fixtures.
+invariants:
+  - `.context/`, `.git/`, secrets, and binaries are always excluded from scanning regardless of `.ctxignore` contents.
+  - Output line prefixes (`stale-dir:`, `stale-leaf:`, `orphan-leaf:`, `fresh`) and the stop-hook JSON payload are stable formats consumed by external scripts/hooks.
+  - stop_hook never mutates freshness state or calls update_run; regeneration happens only through explicit update/full-scan runs.

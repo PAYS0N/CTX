@@ -1,0 +1,12 @@
+```
+file: docs/SANDBOX.md
+behavior: Retired design document for a broker/agent isolation architecture that would have made ctx-access enforcement unbypassable; kept as historical record of the enforcement-era threat model.
+edit_notes:
+  - Status RETIRED as of 2026-07-02 (SPEC revision 4, ADR-035/040/041); superseded by hook-led context chain (ctx-context --hook) and crates/ctx-cage (launched via ctx-run) as a safety boundary, not an enforcement broker.
+  - Original design (kept verbatim below status line) proposed a ctx-broker daemon owning source FS + cache, with ctx-access reduced to a thin UDS client; this was never built as described.
+  - Do not treat the "Chosen architecture" / "Implication for ctx-access" sections as current; they describe a rejected/superseded plan, referenced only for historical context.
+  - Cross-references docs/SPEC.md Layer 2 and docs/UNIMPLEMENTED.md, both of which have moved on from this model.
+functions:
+invariants:
+external_deps:
+```

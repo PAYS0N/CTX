@@ -1,0 +1,18 @@
+directory: scripts
+domain: Layer-1 CI/dev-loop checks for the Rust workspace — formatting, clippy, dependency policy, lint-table opt-in, banned-attribute scanning, function/file-size rationale enforcement, and a module-cycle placeholder. ci.sh is the sole entry point; the other five scripts are individually invocable but are designed to be run through it and aggregated into one pass/fail report.
+edit_notes:
+  - ci.sh discovers companion scripts by fixed filename next to itself (rationale_check.py, workspace_lints_check.sh, no_allow_check.sh, cycle_check.sh); renaming or moving any of them breaks ci.sh silently until next run.
+  - File-enumeration convention is shared: no_allow_check.sh, workspace_lints_check.sh, and rationale_check.py all use git (ls-files with --others --exclude-standard, or equivalent) instead of a filesystem walk, specifically to avoid racing target/ writers and to get gitignore pruning free; keep new scripts consistent with this if they scan source files.
+  - cycle_check.sh and rationale_check.py are explicit MVP placeholders pending real dylint rules (docs/DYLINT_RULES.md) — their exit codes reflect "tool ran" not "property verified"; do not treat passing as a real guarantee of no-cycles or size-compliance beyond the heuristic.
+  - Requires external tool installs not vendored/checked by ci.sh itself: cargo-deny, cargo-machete, cargo-modules; a missing tool fails that one check (or, for cargo-modules, fails cycle_check.sh fast with an install hint).
+children:
+  - ci.sh: orchestrator invoked by CI/pre-commit; runs every other script and aggregates results.
+  - cycle_check.sh: placeholder cycle check ci.sh runs; currently only confirms cargo-modules executes.
+  - no_allow_check.sh: banned-attribute scanner ci.sh runs; enforces no #[allow(...)] anywhere.
+  - rationale_check.py: size/rationale linter ci.sh runs; only tool with per-function/file granularity and a waiver mechanism.
+  - workspace_lints_check.sh: manifest checker ci.sh runs; enforces workspace lint-table opt-in from docs/SPEC.md.
+external_deps:
+  - cargo-deny, cargo-machete, cargo-modules: external cargo subcommands, not vendored; each is required only by the check that invokes it.
+invariants:
+  - Every check script exits 0 on success and 1 on failure, with failure lines prefixed "FAIL: " to stderr; ci.sh relies on this convention to build its unified report.
+  - Scripts that scan `.rs` files or manifests via git exit 1 immediately if run outside a git working tree.

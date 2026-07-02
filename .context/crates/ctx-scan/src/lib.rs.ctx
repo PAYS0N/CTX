@@ -1,0 +1,8 @@
+file: crates/ctx-scan/src/lib.rs
+behavior: Crate root for ctx-scan; declares module tree for a standalone directory-walking tool that builds and maintains a `.context/` summary tree using content-hash-based change detection, without requiring a git repository.
+edit_notes:
+  - Public entry points are runner::scan_run / check_run / update_run (programmatic) and cli::dispatch (CLI); keep doc comment in sync if these change.
+  - hash module is the sole source of truth for staleness detection used by --check and --update.
+functions:
+invariants:
+external_deps:

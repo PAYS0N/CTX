@@ -1,0 +1,10 @@
+file: crates/ctx-core/Cargo.toml
+behavior: Defines the ctx-core crate: a dependency-free library providing shared primitives and the canonical access-gate logic (secret/binary/gitignored deny) used by other crates.
+edit_notes:
+  - Crate is intentionally kept dependency-free; adding a dependency here contradicts the package description and propagates to all dependents.
+  - This crate is documented as the single source of truth for the security-sensitive access gate; gate logic should not be reimplemented elsewhere in the workspace.
+  - Inherits lint settings from [workspace] lints rather than defining its own.
+functions:
+invariants:
+  - No entries under [dependencies]; the crate must build with zero external crates.
+external_deps:

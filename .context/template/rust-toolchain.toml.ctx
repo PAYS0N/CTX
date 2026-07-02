@@ -1,0 +1,9 @@
+file: template/rust-toolchain.toml
+behavior: Pins the Rust toolchain version and required components (rustfmt, clippy) for building this project, using rustup's minimal profile.
+edit_notes:
+  - Version updates must be intentional; re-run the full clippy lint list against the new toolchain since restriction lint names occasionally change between releases.
+functions:
+invariants:
+  - channel is fixed at "1.95.0"; components always include rustfmt and clippy.
+external_deps:
+  - rustup: reads this file to select the active toolchain and install rustfmt/clippy.

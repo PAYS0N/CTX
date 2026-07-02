@@ -1,10 +1,16 @@
 directory: crates/ctx-summarize
-summary: The `ctx-summarize` crate generates `.ctx` leaf summaries and `rollup.ctx` directory summaries for a repo by driving an external LLM agent subprocess. It exposes `run()` and `dispatch()` as its public API, parameterized over `Fs` and `Agent` traits, and is exercised by an integration suite using in-memory fakes and real subprocess invocations.
+domain: Binary+library crate implementing the `ctx-summarize` runner: turns leaf source files into `.ctx` summaries and rolls them up bottom-up into `rollup.ctx`, via a pluggable Agent (LLM completion, subprocess-based) and Fs (filesystem) seam. Consumed as a CLI that resolves targets from either a ctx-access task cache or an explicit path list.
+edit_notes:
+  - Layering is fixed: cli (argv/io) -> runner (pure orchestration) -> fs/agent (seams); runner must never depend on cli.
+  - cpath.rs's `.context/<src>.ctx` / `.context/<dir>/rollup.ctx` layout is duplicated in ctx-access pending a planned ctx-core unification — changes there must be mirrored.
+  - fs.rs's scope_matcher (`.ctxignore` + `target/`) must stay in sync with ctx-scan's walker; it defines what runner/cli treat as in-scope.
+  - agent.rs's SubprocessAgent stdin/stdout JSON contract is the model-agnostic boundary any CTX_AGENT_CMD script must implement.
+  - Depends on ctx-core via relative path "../ctx-core"; must stay in the same workspace layout.
 children:
-  - src: Core binary, library, and orchestration logic — the crate's entire implementation surface.
-  - tests: Integration coverage for pipeline ordering, security gates, and subprocess agent contract.
-key_invariants:
-  - `intent.md` files are read as prompt context and never written by any code path.
-  - Rollup directories are always processed deepest-first, repo root last.
-  - Security gates (path escape, access denial, scope overflow) are enforced at the runner boundary.
-intent_divergence: No intent.md present; cannot assess divergence.
+  - src/: Crate implementation — CLI, runner orchestration, Fs/Agent seams, path/cache utilities, error types.
+  - tests/: Integration suite exercising runner ordering, gating, and Fs/Agent contracts via fakes and a real subprocess.
+invariants:
+  - intent.md is read-only everywhere in this crate — read as rollup input, never written.
+  - All fallible operations return SummError variants; no panics on malformed input, missing files, or bad task ids.
+  - runner writes leaves before rollups in strict leaf-to-root order; runs over 50 targets are blocked unless explicitly approved via `--approve`.
+  - Path validation rejects absolute/empty/`.`/`..`/null-byte paths before any file is touched.

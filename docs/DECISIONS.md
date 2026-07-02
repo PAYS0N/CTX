@@ -761,3 +761,41 @@ fires at the end of *every turn*, so mid-session regeneration both
 bills repeatedly and races the agent's half-finished edits. The owner
 framed the fix: regenerate between sessions, with finalized states at
 both ends of the user's input→output loop.
+
+## ADR-044 — The per-target deny gate keys on `.ctxignore` too, not git
+**Decision:** `ctx-summarize`'s `StdFs::is_ignored` — the `ignored`
+input to `ctx_core::access::deny_reason` — no longer shells
+`git check-ignore`; it evaluates the same scope matcher as the walker
+(`.ctxignore`, else `.gitignore`, built-in `target/`, parent-dir
+semantics via `matched_path_or_any_parents`). The matcher builder moved
+into `ctx_summarize::fs::scope_matcher` and `ctx-scan`'s walker now
+reuses it, so scope has exactly one implementation. The neutral deny
+reason renames `"gitignored"` → `"ignored"`. **Context:** [[ADR-038]]
+made the walker git-independent but left the per-target gate on git —
+two scope authorities that could disagree (a path excluded by
+`.ctxignore` but not by git would pass the gate when targeted
+directly), and the gate failed outside git repositories. **Rejected:**
+keeping the git subprocess as "defense in depth" (a second, weaker
+definition of scope is drift, not depth — the ADR-023 single-source
+argument applies); putting the matcher in `ctx-core` (it would break
+that crate's deliberately dependency-free posture; the secret/binary
+denylist single-source is untouched). Completes [[ADR-038]].
+
+## ADR-045 — `.ctxignore` is seeded once from `.gitignore`, then sole authority
+**Decision:** the scope matcher reads **only** `.ctxignore` (plus the
+built-in `target/`); the `.gitignore` *fallback* is removed. Instead,
+`ctx-scan` seeds a missing `.ctxignore` on first contact — `.gitignore`
+copied verbatim under an explanatory header (bare header when there is
+no `.gitignore`) — and after that one-time hand-off `.gitignore` is
+never consulted. **Context:** the owner observed `--check` results
+flipping as `.gitignore` was edited: with no `.ctxignore` on disk the
+fallback made git state a live, invisible scope input — precisely the
+coupling [[ADR-038]] set out to remove. **Rationale:** seed-once makes
+the scope an explicit, versionable artifact that answers "what is in
+scope?" by opening one file; determinism beats convenience-fallback.
+**Rejected:** keeping the live fallback (hidden coupling); refusing to
+run without a `.ctxignore` (hostile first contact); consulting both
+files (two authorities again — [[ADR-044]]). **Tradeoff (accepted):**
+even read-shaped modes (`--check`, `--dry-run`) write the seed file on
+first contact — a visible one-time artifact beats results that depend
+on which file happens to exist. Amends [[ADR-038]]/[[ADR-044]].

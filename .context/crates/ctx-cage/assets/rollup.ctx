@@ -1,0 +1,8 @@
+directory: crates/ctx-cage/assets
+domain: Static asset payloads embedded into the ctx-cage sandbox at build/run time: one config file bind-mounted into the container filesystem, one prompt text injected into the sandboxed agent's context. Neither file contains logic; both are read verbatim by ctx-cage's Rust code and their content directly determines sandbox networking behavior and agent tool-use behavior respectively.
+edit_notes:
+  - Both files are consumed by inclusion (bind-mount or include_str!-style embedding) rather than parsed/templated — any edit here changes runtime behavior immediately, not just documentation.
+  - Tool/command names and NSS source lists referenced in these files must stay in sync with what the cage container actually provides; neither file's correctness can be checked by reading this directory alone.
+children:
+invariants:
+  - Contents are static and environment-specific to the cage's minimal container (no systemd services, no scratch-copied filesystem); assumptions here don't transfer to full-host environments.

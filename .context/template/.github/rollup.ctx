@@ -1,0 +1,6 @@
+directory: template/.github
+domain: Houses GitHub Actions configuration for the templated Rust project produced by this repo's generator. Currently limited to CI workflow definitions; no issue templates, PR templates, or other GitHub-specific config exist here.
+edit_notes:
+children:
+  - workflows: single CI workflow (ci.yml) that provisions toolchain/lint tools and delegates checks to scripts/ci.sh
+invariants:

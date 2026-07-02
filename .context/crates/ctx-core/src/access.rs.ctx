@@ -1,19 +1,27 @@
+```
 file: crates/ctx-core/src/access.rs
-purpose: Deny-by-default access gate enforcing that paths are not secret, binary, or gitignored. This is the single authoritative copy of these rules; callers must apply them even for explicitly requested paths.
-invariants:
-  - A path is accessible iff all three checks pass: not secret, not binary, not gitignored.
-  - `accessible_set` only receives tracked (non-ignored) paths, so it applies only secret/binary filters.
-external_deps:
+behavior: Pure deny-by-default access gate deciding whether a path may be read/summarized: denies if it is a secret, binary, or (per caller-supplied flag) ignored.
+edit_notes:
+  - This is the single canonical source of secret/binary path rules in the crate; no other module should duplicate these lists.
+  - Ignore-status is not computed here — callers pass their own `.ctxignore`/`.gitignore` scope check as the `ignored` bool, so this module stays pure and dependency-free.
+  - Callers must apply deny_reason/is_secret/is_binary even for explicitly-requested paths, to prevent bypassing the gate via direct reads.
 functions:
   - name: is_secret
     signature: pub fn is_secret(path: &str) -> bool
-    purpose: Returns true for paths matching known secret file names or extensions (e.g. `.env`, `.pem`, `id_rsa`).
+    purpose: Flags paths matching known secret filenames or extensions (.env, id_rsa, .pem, .key, etc.).
   - name: is_binary
     signature: pub fn is_binary(path: &str) -> bool
-    purpose: Returns true for paths whose extension matches the hard-coded list of non-text formats.
+    purpose: Flags paths whose extension is in the non-text BINARY_EXTS list.
   - name: deny_reason
     signature: pub fn deny_reason(path: &str, ignored: bool) -> Option<&'static str>
-    purpose: Returns the first denial reason ("secret", "binary", "gitignored") or None if the path is accessible.
+    purpose: Returns "secret", "binary", "ignored", or None, checked in that priority order.
+    notes: Callers wrap the returned string into their own typed error variant.
   - name: accessible_set
     signature: pub fn accessible_set(tracked: &BTreeSet<String>) -> Vec<String>
-    purpose: Filters a set of tracked (non-ignored) paths to those that are neither secret nor binary, returned sorted.
+    purpose: Filters a tracked-path set down to non-secret, non-binary paths for the manifest body.
+    notes: Does not apply the ignore check; assumes `tracked` is already scope-filtered.
+invariants:
+  - deny_reason checks secret before binary before ignored; a secret binary file reports "secret".
+  - is_secret/is_binary match on lowercased final extension and final path component only.
+external_deps:
+```

@@ -1,0 +1,12 @@
+file: template/rustfmt.toml
+behavior: Pins the project's rustfmt configuration to stable-channel-only options, establishing formatting as a non-negotiable, uniformly enforced rule across the codebase.
+edit_notes:
+  - Only stable-channel rustfmt options may be added; rustfmt silently ignores unstable options on stable rather than erroring, so adding a nightly-only key here would create a rule that appears enforced but silently does nothing.
+  - Desired-but-unavailable options (format_code_in_doc_comments, format_macro_matchers, format_strings, imports_granularity="Crate", group_imports="StdExternalCrate", trailing_comma="Vertical", trailing_semicolon) are deliberately omitted and listed only in a comment; do not uncomment them without first verifying stabilization or switching to a separately-pinned nightly rustfmt.
+  - imports_granularity and group_imports are called out as the highest-value gaps: import block shape is currently unenforced.
+  - Assumes rust-toolchain.toml pins the stable toolchain referenced in the comments; changing that pin invalidates the "verified ignored-on-stable" claim and requires re-verification via the Phase 0 smoke test.
+functions:
+invariants:
+  - Every key present must be a stable-channel rustfmt option; nightly-only options are excluded by policy, not disabled in place.
+external_deps:
+  - rustfmt: consumes this file directly as its config; behavior documented here is only correct for the stable-channel rustfmt version matching the pinned toolchain.

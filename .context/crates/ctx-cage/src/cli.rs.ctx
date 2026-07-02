@@ -1,16 +1,20 @@
+```
 file: crates/ctx-cage/src/cli.rs
-purpose: Parses argv for `ctx-cage` via clap and resolves the parsed flags into a `Mode` enum, enforcing mutual-exclusion rules and a spend gate before returning to the caller.
-invariants:
-  - `--self-test` is mutually exclusive with `--task`, `--task-file`, and `--interactive`.
-  - `--task` and `--task-file` are mutually exclusive with each other and with `--interactive`.
-  - Any `Mode` where `mode_is_billed` returns `true` requires `allow_spend == true` or `ResolveError::NotAllowed` is returned.
-external_deps:
-  - clap: argv parsing with `Parser`, `Args`, `ValueEnum` derives.
-  - thiserror: `ResolveError` derive.
+behavior: Defines the ctx-cage argv schema and resolves parsed flags into a lifecycle::Mode (self-test, headless task, or interactive), enforcing mode exclusivity and the spend gate before the lifecycle runs.
+edit_notes:
+  - Mode resolution precedence is fixed: --self-test wins, then --task/--task-file, else Interactive; encoded in check_flag_conflicts + compute_mode, not in Cli's derive.
+  - Billed-mode gating is double-checked: resolve_mode enforces --allow-spend/CTX_CAGE_ALLOW_SPEND=1 here, and the host binary (only ctx-run) separately supplies the API key to the lifecycle; this file only knows about the flag, not the key.
+  - TaskFlags/SpendFlags are split into sub-structs solely to keep struct_excessive_bools under threshold without #[allow], per workspace clippy policy.
 functions:
   - name: mode_is_billed
     signature: pub const fn mode_is_billed(mode: &Mode) -> bool
-    purpose: Returns whether a given `Mode` incurs billing; `SelfTestStub` is free, `Task` and `Interactive` are billed.
+    purpose: Reports whether a Mode requires the spend gate (false only for SelfTestStub).
   - name: resolve_mode
     signature: pub fn resolve_mode(cli: &Cli, allow_spend: bool) -> Result<Mode, ResolveError>
-    purpose: Validates flag combinations, reads `--task-file` from disk if needed, enforces the spend gate, and returns the resolved `Mode`.
+    purpose: Validates flag combinations, reads --task-file if used, computes the Mode, and enforces the spend gate on billed modes.
+invariants:
+  - --self-test, --task/--task-file, and --interactive are pairwise mutually exclusive; any combination yields ResolveError::Conflict before Mode computation.
+  - resolve_mode never returns Mode::Task or Mode::Interactive unless allow_spend is true.
+external_deps:
+  - clap: Args/Parser/ValueEnum derive the CLI schema and enum flag parsing directly from these structs.
+```

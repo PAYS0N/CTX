@@ -1,0 +1,33 @@
+```
+file: agents/summarizer-claude.py
+behavior: CLI adapter that reads a {"system","user"} JSON object from stdin, sends it as one Anthropic Messages API call, and writes the model's completion text verbatim to stdout; the default target for CTX_AGENT_CMD.
+edit_notes:
+  - Not under the Rust lint regime; deliberately a thin transport with no added prompt instructions, per prompts/README.md decoupling rule.
+  - system prompt is sent as a cached ephemeral block (list form with cache_control) because callers reuse the identical system prompt across every leaf/rollup call in a task; changing system into a plain string would break caching.
+  - Any provider adapter must follow the same stdin/stdout/exit contract (see agents/README.md) so CTX_AGENT_CMD is swappable across providers.
+functions:
+  - name: die
+    signature: def die(message: str) -> "None"
+    purpose: Prints a prefixed error to stderr and exits with status 1.
+    notes: Raises SystemExit(1); does not return, though annotated -> "None".
+  - name: read_request
+    signature: def read_request() -> "tuple[str, str]"
+    purpose: Parses and validates the {"system","user"} JSON object from stdin.
+  - name: build_body
+    signature: def build_body(system: str, user: str) -> "dict"
+    purpose: Builds the Messages API request body with model, max_tokens, cached system block, and user message.
+  - name: call_api
+    signature: def call_api(body: "dict") -> "dict"
+    purpose: POSTs the request body to /v1/messages and returns the parsed JSON response.
+  - name: extract_text
+    signature: def extract_text(response: "dict") -> str
+    purpose: Concatenates all text-type content blocks from a Messages response into one string.
+  - name: main
+    signature: def main() -> "None"
+    purpose: Wires stdin parsing, API call, and stdout write together.
+invariants:
+  - Exits non-zero via die() on: invalid JSON, missing/wrong-typed fields, missing ANTHROPIC_API_KEY, HTTP/network error, non-list content, or empty/whitespace-only extracted text.
+  - stdout receives exactly the concatenated text blocks, nothing else.
+external_deps:
+  - urllib.request/error: only stdlib HTTP client used, avoiding a requests dependency for this standalone script.
+```

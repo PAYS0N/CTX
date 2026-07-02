@@ -1,0 +1,20 @@
+file: crates/ctx-context/src/hook.rs
+behavior: Implements Claude Code `PostToolUse` hook mode — parses the tool-use event JSON, resolves the touched file to a repo-relative path, serves the not-yet-injected portion of its context chain for the session, and prints a `hookSpecificOutput.additionalContext` JSON payload.
+edit_notes:
+  - Fail-open by design: any parse/lookup failure yields empty output (silence) except chain-serving errors, which yield an explicit "(chain unavailable)" marker; must never propagate an error that blocks the agent.
+  - Depends on serve::chain_for/render for chain resolution and session::load/save for per-session dedup bookkeeping; changing session state format must stay consistent with session.rs.
+  - Skips paths under `.context` or `.git` (first path component check) to avoid injecting context about the scaffolding itself.
+functions:
+  - name: event_cwd
+    signature: pub fn event_cwd(input: &str) -> Option<std::path::PathBuf>
+    purpose: Extracts the event's own `cwd` field so the hook can locate the repo root independent of how the harness spawns the process.
+  - name: run
+    signature: pub fn run<E: Env>(env: &E, base: &Path, input: &str) -> String
+    purpose: Top-level entry point — parses stdin JSON, resolves target, serves fresh chain nodes, and returns the payload string to print (or empty string for nothing).
+    notes: Never errors; all failure paths return Ok-like strings (empty or a fail-open marker).
+invariants:
+  - Returns empty string on any input/session_id/target parse failure — never panics on malformed hook input.
+  - fresh_nodes returns None (nothing emitted) unless at least one served node is `present`; absent-only chains are treated as no new context.
+  - session_id defaults to the literal "default" when absent from the event.
+external_deps:
+  - serde_json::Value: used ad hoc in event_cwd for partial parsing without deserializing the full event schema.

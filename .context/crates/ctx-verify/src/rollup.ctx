@@ -1,16 +1,13 @@
 directory: crates/ctx-verify/src
-summary: Implements the `ctx-verify` binary and library: runs a fixed suite of cargo/clippy/fmt/script checks via an injectable `Runner`, parses tool output into `Diagnostic` values, caps results to a diagnostic budget, and serializes a `Report` as JSON with exit codes 0/1/2. The public surface is the six re-exported modules plus the `run` entry point consumed by `main.rs`.
+domain: Implements ctx-verify, a CLI broker that runs a fixed set of cargo/clippy/script checks and emits one capped, deterministic JSON verification report. Consumers depend on the crate's binary (argv → JSON report → exit code) or on `ctx_verify::cli::run` for embedding; internal modules are not meant to be depended on individually.
+edit_notes:
+  - Layering is main.rs (argv/exit code) → cli.rs (drives one run, serializes report) → checks.rs (SPECS table, pure orchestration) → runner.rs (Runner trait / ProcRunner process boundary), with parse.rs and model.rs as shared leaves; new logic belongs in the matching layer, not scattered across it.
+  - checks.rs's Runner-based design means tests inject fake Runners instead of spawning processes; changing the Runner trait signature (runner.rs) ripples into checks.rs's SPECS handling and all its tests.
+  - Diagnostic shape is defined in model.rs and consumed by parse.rs's three parsers (parse_compiler_json, parse_fail_lines, parse_fmt) and by checks.rs's failure_hint synthesis; keep them in sync if the field set changes.
+  - Report JSON schema (model.rs) is described as part of the same family as the spec's audit report elsewhere in the workspace; schema changes must stay compatible with that consumer.
 children:
-  - main.rs: Binary entry point; maps `run` results to exit codes 0/1/2.
-  - cli.rs: CLI argument parsing and top-level orchestration of checks-to-JSON-output.
-  - checks.rs: Drives the ordered check suite, scopes cargo commands to a package, and synthesizes fallback diagnostics on silent failures.
-  - model.rs: JSON report types with token-frugal serialization and precedence-ordered status aggregation.
-  - parse.rs: Converts raw tool stdout/stderr into deduplicated `Diagnostic` values.
-  - runner.rs: `Runner` trait and `ProcRunner` implementation; injection seam for tests.
-  - error.rs: Typed error enum covering all crate failure modes.
-key_invariants:
-  - `fmt` always runs before other checks because it mutates source files.
-  - A failed check with no parsed diagnostics always receives a synthesized hint; no fail result is ever empty.
-  - `ToolMissing` produces a skipped report, not an error report.
-  - Overall `Report` status precedence: `Errored` > `Fail` > `Pass`; `Skipped` is ignored.
-  - Diagnostic counts are capped to `max` before serialization; truncation is flagged in the report.
+invariants:
+  - A check that fails to spawn (other than ToolMissing) becomes `errored`; a check that ran, exited non-zero, and produced no parsed diagnostics gets exactly one synthesized diagnostic — never a silent bare fail.
+  - Report::new status precedence is Errored > Fail > Pass; Skipped checks never affect top-level status.
+  - Serialized report/check output omits detail fields unless the corresponding status is failing, keeping successful-run JSON minimal; final CLI output is always pretty JSON plus exactly one trailing newline.
+  - CheckError (error.rs) is the sole error type crossing module boundaries; its variants are matched at report-encoding and runner call sites, so adding/renaming a variant requires updating both.

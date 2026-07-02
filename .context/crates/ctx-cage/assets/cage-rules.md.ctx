@@ -1,0 +1,9 @@
+file: crates/ctx-cage/assets/cage-rules.md
+behavior: Static prompt text injected into a sandboxed coding agent's context, instructing it to use native file tools directly against the real (not scratch-copied) working tree, ignore any stale project-level tool-contract docs, and verify work via `ctx-verify`.
+edit_notes:
+  - Tool names referenced here (`ctx-verify`, `ctx-context`, `ctx-access`) must match the actual binaries/commands shipped elsewhere in the workspace; renaming those tools requires updating this text too.
+  - Likely loaded via include_str! or similar by ctx-cage at runtime and fed verbatim to the agent as system/context text — wording changes directly change agent behavior, not just documentation.
+  - Explicitly instructs the agent to disregard CLAUDE.md/spec claims of a brokered `ctx-access` read/write contract; this is an intentional override, not an oversight.
+functions:
+invariants:
+external_deps:

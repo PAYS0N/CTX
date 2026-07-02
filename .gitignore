@@ -13,3 +13,5 @@ Cargo.lock.bak
 
 # Cage dry-run scratch (host-prepared seed bound into the cage)
 sandbox/.seed/
+
+__pycache__

@@ -1,15 +1,38 @@
 file: crates/ctx-summarize/src/fs.rs
-purpose: Defines the `Fs` trait abstracting filesystem I/O and a `StdFs` implementation rooted at a base path, enabling the runner to be tested against an in-memory fake.
-invariants:
-  - `list_dir` returns an empty `Vec` (not an error) when the path does not exist or is not a directory.
-  - `list_dir` returns entries sorted lexicographically.
-  - `read` decodes bytes as UTF-8 lossy, never failing on non-UTF-8 content.
-  - All error returns use `SummError::Io` with the relative path and OS detail.
-external_deps:
+behavior: Defines the `Fs` filesystem trait abstracting the summarizer runner from `std::fs`, plus `StdFs` its real implementation, plus `scope_matcher` which builds the single gitignore-syntax matcher (`.ctxignore` + built-in `target/`) defining summarization scope.
+edit_notes:
+  - scope_matcher is git-independent by design and reused by ctx-scan's walker; changing its rules affects both the walker and the per-target deny gate, keep them in sync.
+  - Only `.ctxignore` is consulted here — `.gitignore` is never read directly; ctx-scan seeds `.ctxignore` from `.gitignore` once at setup, after which they are decoupled.
+  - Fs trait exists so the runner can be tested against an in-memory fake instead of real disk.
 functions:
+  - name: scope_matcher
+    signature: pub fn scope_matcher(base: &Path) -> Result<Gitignore, SummError>
+    purpose: Builds the gitignore-syntax matcher defining summarization scope for base (built-in target/ plus optional .ctxignore).
+  - name: Fs::read
+    signature: fn read(&self, rel: &str) -> Result<String, SummError>
+    purpose: Reads a file as lossy UTF-8.
+  - name: Fs::write
+    signature: fn write(&self, rel: &str, contents: &str) -> Result<(), SummError>
+    purpose: Writes a file, creating parent directories as needed.
+  - name: Fs::exists
+    signature: fn exists(&self, rel: &str) -> bool
+    purpose: Checks path existence.
+  - name: Fs::list_dir
+    signature: fn list_dir(&self, rel: &str) -> Result<Vec<String>, SummError>
+    purpose: Lists sorted entry names directly within a directory.
+    notes: Returns empty Vec (not an error) if the directory is absent.
+  - name: Fs::is_ignored
+    signature: fn is_ignored(&self, rel: &str) -> Result<bool, SummError>
+    purpose: Tests whether rel falls outside the summarization scope defined by scope_matcher.
+  - name: Fs::remove
+    signature: fn remove(&self, rel: &str) -> Result<(), SummError>
+    purpose: Deletes a file.
+    notes: Idempotent — removing a missing file returns Ok(()).
   - name: StdFs::new
     signature: pub const fn new(base: PathBuf) -> Self
-    purpose: Roots the filesystem at the given absolute path.
-  - name: StdFs::at
-    signature: fn at(&self, rel: &str) -> PathBuf
-    purpose: Resolves a relative path against the base; returns base itself when `rel` is empty.
+    purpose: Roots the real filesystem implementation at base.
+invariants:
+  - scope_matcher always seeds "target/" as ignored regardless of .ctxignore contents.
+  - StdFs::remove and StdFs::is_ignored never error on a merely-missing path (remove) or missing .ctxignore (is_ignored treats absence as "no extra rules").
+external_deps:
+  - ignore: gitignore::{Gitignore, GitignoreBuilder} supplies gitignore-syntax pattern matching used both here and by ctx-scan's walker.

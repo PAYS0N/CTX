@@ -1,8 +1,21 @@
 file: crates/ctx-cage/tests/bwrap_build.rs
-purpose: Argv-shape tests for `build_bwrap_args`. Verifies flag presence, bind mounts, env vars, and command placement without invoking `bwrap`.
-invariants:
-  - All tests are pure; no subprocess is spawned.
-external_deps:
-  - ctx_cage::bwrap: module under test, plus its path constants
-  - common: test helpers (`has_pair`, `has_ro_bind`, `has_setenv`, `has_tmpfs`, `sample_claude_binds`, `sample_config`)
+behavior: Unit tests for the pure `bwrap` argv builder in `ctx_cage::bwrap`, asserting safety-cage semantics: writable workspace, masked secrets as regular files, unconditional network unshare, cleared env, explicit env re-injection, and RO toolchain/tool/rules/rundir binds.
+edit_notes:
+  - Exercises `build_bwrap_args`/`BwrapConfig` from ctx-cage::bwrap; any field renamed or removed there must be updated in `sample_config()`.
+  - Depends on `CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR` constants from the same module for expected cage-side paths.
+  - Secret masks must bind a regular empty file (not `/dev/null`), since bind mounts carry `nodev` and would break readers like git; `workspace_is_bound_read_write_with_regular_file_secret_masks` enforces this by asserting `/dev/null` is absent from argv.
 functions:
+  - name: sample_config
+    signature: fn sample_config() -> BwrapConfig
+    purpose: Builds a representative BwrapConfig exercising every bind family for reuse across tests.
+  - name: find
+    signature: fn find(argv: &[OsString], needle: &str) -> Option<usize>
+    purpose: Locates the index of a literal argv token.
+  - name: assert_bind
+    signature: fn assert_bind(argv: &[OsString], flag: &str, host: &str, cage: &str)
+    purpose: Asserts a contiguous `flag host cage` triple exists in argv.
+    notes: Panics via assert! if the triple is not found.
+invariants:
+  - build_bwrap_args must never emit `/dev/null` as a mask target.
+  - `--new-session` is emitted only when BwrapConfig.new_session is true; `--unshare-net` is always present regardless.
+external_deps:

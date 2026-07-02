@@ -1,0 +1,9 @@
+file: README.md
+behavior: Top-level orientation document for an MVP scaffolding repo implementing an opinionated agentic coding system; points readers to the sealed spec, the unimplemented-work list, and the repo layout.
+edit_notes:
+  - Must stay in sync with docs/SPEC.md (full spec) and docs/UNIMPLEMENTED.md (TODO list); this file only summarizes/links them.
+  - References a sibling repo at ../meal-planning/ (CLI meal planner) as the reference consumer, kept outside this repo intentionally for sandbox isolation.
+  - Quickstart steps describe a workflow (ctx-access init-task/end-task, .context/ tree, summarizer prompts) that is not yet implemented ("once implemented").
+functions:
+invariants:
+external_deps:

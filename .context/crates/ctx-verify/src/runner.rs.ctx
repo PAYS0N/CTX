@@ -1,13 +1,20 @@
 file: crates/ctx-verify/src/runner.rs
-purpose: Defines the `Runner` trait and `ProcRunner` implementation for executing external tools, providing a seam for injecting canned output in tests.
-invariants:
-  - `ToolMissing` is returned only when the OS reports `NotFound`; all other spawn failures yield `Spawn`.
-  - `CommandOutcome::ok()` returns true iff `code == Some(0)`.
-external_deps:
+behavior: Defines the process-execution boundary used by ctx-verify's checks, providing a `Runner` trait abstraction and a real implementation (`ProcRunner`) that shells out via `std::process::Command`.
+edit_notes:
+  - checks (crate::checks) is written to be pure over Runner; tests inject fake Runner impls instead of spawning real processes, so changes to the Runner trait signature ripple into all check implementations and their tests.
+  - Mirrors the `Env` seam pattern used in ctx-access; keep the abstraction style consistent if both evolve.
 functions:
   - name: ok
     signature: pub fn ok(&self) -> bool
-    purpose: Reports whether the process exited with code zero.
+    purpose: Reports whether the captured command exited with status code 0.
+  - name: run (Runner trait)
+    signature: fn run(&self, tool: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<CommandOutcome, CheckError>
+    purpose: Runs an external tool and captures its outcome; implemented by test doubles and ProcRunner.
   - name: run (ProcRunner)
     signature: fn run(&self, tool: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<CommandOutcome, CheckError>
-    purpose: Spawns `tool` with `args` and environment `envs`, capturing stdout/stderr and exit code.
+    purpose: Spawns `tool` via std::process::Command with given args/env and captures exit code, stdout, stderr.
+    notes: Maps ErrorKind::NotFound to CheckError::ToolMissing; all other spawn/wait errors become CheckError::Spawn.
+invariants:
+  - stdout/stderr are always valid UTF-8 (lossy-converted from raw bytes), never raw invalid sequences.
+  - code is None only if the process was terminated by a signal rather than exiting normally.
+external_deps:

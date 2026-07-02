@@ -1,7 +1,11 @@
 directory: crates/ctx-core
-summary: Provides the single, shared access-control primitive for all CTX tooling: a deny-by-default gate that classifies paths as secret, binary, or gitignored and exposes `is_secret`, `is_binary`, `deny_reason`, and `accessible_set` as the crate's entire public surface.
+domain: Dependency-free crate defining the canonical access-gate (secret/binary/gitignored deny) used across the CTX workspace. Consumers call its functions rather than reimplementing denylist logic; it deliberately excludes ignore-status computation, leaving `.ctxignore`/`.gitignore` scoping to callers.
+edit_notes:
+  - Gate rule changes belong solely in src/access.rs (ADR-023); a divergent denylist elsewhere in the workspace is treated as a security bug.
+  - Zero-dependency constraint applies to the whole crate, not just source: Cargo.toml must have no [dependencies] entries even as the crate evolves.
 children:
-  - src: Houses the access gate implementation and the crate root that re-exports it.
-key_invariants:
-  - All three checks (secret / binary / gitignored) must pass for a path to be accessible; no caller may bypass any check.
-  - One canonical denylist copy; per-crate duplication is structurally prevented.
+  - Cargo.toml: Crate manifest enforcing the dependency-free constraint.
+  - src/: Implements and re-exports the access gate (access.rs) plus a thin lib.rs surface.
+invariants:
+  - Zero external dependencies, enforced both in Cargo.toml and in all future source additions.
+  - deny_reason priority order (secret > binary > ignored) is fixed and must not be reordered by callers.

@@ -1,0 +1,14 @@
+file: agents/README.md
+behavior: Documents the stdin/stdout JSON contract that model-specific adapter scripts must implement to bridge ctx-summarize's model-agnostic Agent seam to a concrete LLM provider.
+edit_notes:
+  - Directory is explicitly decoupled from Rust core and not subject to the lint regime, same posture as prompts/.
+  - Adapters must be thin transports: no adding instructions, reformatting, or wrapping prompt/data, per prompts/README.md; prompt files alone govern model behavior.
+  - system input is always the verbatim contents of prompts/summarizer-leaf.md or prompts/summarizer-rollup.md; changing those prompt files changes adapter behavior without touching adapter code.
+  - ctx-summarize invokes $CTX_AGENT_CMD via `sh -c`, so the command string may embed arguments or a shell wrapper (e.g. for sourcing .env).
+  - Empty stdout or nonzero exit must both signal failure; runner treats non-zero exit as agent error, not a written summary.
+functions:
+invariants:
+  - Adapter stdout must be exactly the model's completion text, nothing else.
+  - Adapter exit code must be 0 only on success; failures must be non-zero with a message on stderr.
+external_deps:
+  - summarizer-claude.py uses python3 stdlib only (no pip/curl/jq) and calls the Anthropic Messages API directly, caching the system prompt block since it repeats across all leaf/rollup calls in a task.

@@ -1,0 +1,15 @@
+directory: template/scripts
+domain: Layer 1 CI checks for repos generated from this template: formatting, clippy, doc warnings, dependency policy, unused deps, per-function/file rationale comments, workspace-lints opt-in, absence of `#[allow(...)]`, and a module-cycle stub. ci.sh is the single entry point that runs all checks and reports the union of failures; individual scripts are also independently invokable with an optional repo-root argument.
+edit_notes:
+  - All git-based enumeration scripts (no_allow_check.sh, workspace_lints_check.sh, rationale_check.py) deliberately use `git ls-files -z --cached --others --exclude-standard` instead of a filesystem walk, to avoid racing concurrent cargo/rust-analyzer writes into target/; keep this enumeration strategy consistent across all three if changed in one.
+  - ci.sh locates sibling scripts via SCRIPTS_DIR (its own script directory), not CWD, and each check script takes the target repo root as optional $1 (default "."); adding a new check means wiring it into ci.sh's RUN/PHASE sequence and following the same non-short-circuiting pattern.
+  - rationale_check.py and cycle_check.sh are explicitly MVP placeholders for future dylint rules (see docs/DYLINT_RULES.md); workspace_lints_check.sh and no_allow_check.sh's manual/string-based parsing (awk state machine, line-based grep) are similarly approximate rather than real TOML/Rust parsers.
+children:
+  - ci.sh: Orchestrator invoked by CI; sequences all other scripts and aggregates pass/fail.
+  - cycle_check.sh: One check phase in ci.sh; currently a scaffold (verifies cargo-modules runs, doesn't detect cycles).
+  - no_allow_check.sh: One check phase in ci.sh; zero-tolerance gate on `#[allow(...)]` usage.
+  - rationale_check.py: One check phase in ci.sh; enforces size limits with rationale-comment escape hatch.
+  - workspace_lints_check.sh: One check phase in ci.sh; enforces workspace lint opt-in per crate manifest.
+invariants:
+  - Every check script exits 0 on pass, non-zero on failure, and is independent of build artifacts (no scanning of target/).
+  - Checks that scan source rely on git as the file-enumeration source of truth, not filesystem globbing, across the whole directory.

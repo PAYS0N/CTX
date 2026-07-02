@@ -1,21 +1,26 @@
 file: crates/ctx-verify/src/model.rs
-purpose: Defines the JSON report model for a verification run: a top-level `Report` with per-check `CheckReport` entries, each capped to a fixed diagnostic budget. Serialization is token-frugal, emitting detail only for failing or errored outcomes.
-invariants:
-  - `Report::new` sets status to `Errored` over `Fail` over `Pass`; `Skipped` checks are ignored.
-  - `CheckReport` serializes only `status` for `Pass`/`Skipped`; emits `count`, `diagnostics`, `truncated` only for `Fail`/`Errored`.
-  - `CheckReport::errored` always produces exactly one diagnostic with `file="<runner>"` and `lint="exec"`.
-external_deps:
-  - serde: custom `Serialize` impls use `SerializeStruct` to conditionally omit fields.
+behavior: Defines the capped JSON report model for verification runs — a top-level Status plus a per-check map, where each check's diagnostics are truncated to a fixed budget and serialization omits detail fields on non-failing checks/runs to keep token cost deterministic.
+edit_notes:
+  - Schema is part of a "spec's audit report" family shared with other tooling; field names/shapes (status, count, diagnostics, truncated, checks) must stay in sync with whatever consumes this JSON elsewhere.
+  - Custom Serialize impls on CheckReport and Report hand-control field count/emission (not #[derive(Serialize)] with skip_serializing_if) — editing fields requires updating the manual serialize_field calls and the `fields`/`full` counts together.
+  - Status::Errored is intentionally distinct from Fail and takes precedence in Report::new's status computation; do not merge the two.
 functions:
   - name: CheckReport::skipped
     signature: pub const fn skipped() -> Self
-    purpose: Returns a zero-diagnostic `CheckReport` with `Status::Skipped`.
+    purpose: Constructs a CheckReport for a tool that is not installed.
   - name: CheckReport::errored
     signature: pub fn errored(detail: String) -> Self
-    purpose: Returns a `CheckReport` with `Status::Errored` and the error message wrapped as a single diagnostic.
+    purpose: Constructs a CheckReport for a check that could not execute, embedding the error message as a synthetic diagnostic.
   - name: CheckReport::build
     signature: pub fn build(cmd_ok: bool, mut diagnostics: Vec<Diagnostic>, max: usize) -> Self
-    purpose: Constructs a `CheckReport` from tool output, capping diagnostics to `max` and setting status based on count and exit success.
+    purpose: Derives status from exit code/diagnostic presence and truncates diagnostics to max, recording the truncated count.
   - name: Report::new
     signature: pub fn new(checks: BTreeMap<String, CheckReport>) -> Self
-    purpose: Assembles the top-level `Report`, deriving overall status from the per-check map with `Errored` taking precedence over `Fail`.
+    purpose: Aggregates per-check statuses into a top-level Status, prioritizing Errored over Fail over Pass (Skipped ignored).
+invariants:
+  - Diagnostics list on a CheckReport never exceeds `max`; any excess count is recorded in `truncated`, not silently dropped.
+  - Serialized CheckReport includes count/diagnostics/truncated only when status is Fail or Errored; otherwise only `status` is emitted.
+  - Serialized Report includes `checks` only when status != Pass.
+  - Report::new returns Errored if any check errored, else Fail if any failed, else Pass; Skipped checks never affect the top-level status.
+external_deps:
+  - serde::ser::SerializeStruct: used directly (not derive) to conditionally omit fields for token-frugal JSON output.

@@ -1,11 +1,18 @@
 file: crates/ctx-cage/src/bwrap/build.rs
-purpose: Builds a deterministic bwrap argv (`Vec<OsString>`) from a `BwrapConfig`, composing namespace isolation, bind mounts, env vars, and optional Claude binds.
-invariants:
-  - Output always starts with `"bwrap"` as argv[0].
-  - Returns `CageError::Protocol` if `claude` is `Some` and `allow_net` is `false`.
-  - `--clearenv` is always emitted; only explicitly set env vars exist inside the cage.
-external_deps:
+behavior: Pure builder that composes a deterministic bwrap argv (`Vec<OsString>`) from a `BwrapConfig`, isolating a target project directory in a sandboxed, network-disabled bubblewrap invocation.
+edit_notes:
+  - Output vec starts with "bwrap" by convention; callers do `Command::new(&argv[0]).args(&argv[1..])`.
+  - Argument order is fixed: base isolation, workspace, toolchain, tools/rules, envs, then "--" and cage_cmd; bwrap applies binds/masks in argv order so reordering can change semantics (e.g. mask binds must follow the workspace bind they mask).
+  - `--unshare-net` is unconditional — network egress only via the proxy socket under CAGE_RUN_DIR; do not make this configurable without updating that guarantee.
+  - `--clearenv` is unconditional, so add_envs is the only source of env vars in the sandbox; any new env requirement must go through BwrapConfig.env.
+  - secret_masks are RO-bound over c.mask_file (an empty file) inside WORK_DIR so paths remain readable-as-empty rather than absent, to avoid breaking tools like git that stat them.
+  - Depends on constants CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR, WORK_DIR from super::config; changing those constants changes in-cage paths this file writes into argv.
 functions:
   - name: build_bwrap_args
-    signature: pub fn build_bwrap_args(c: &BwrapConfig) -> Result<Vec<OsString>, CageError>
-    purpose: Assembles the complete bwrap argv from the config, validating the claude+net constraint before building.
+    signature: pub fn build_bwrap_args(c: &BwrapConfig) -> Vec<OsString>
+    purpose: Assembles the full bwrap argv from config by calling the add_* helpers in sequence.
+invariants:
+  - Network is always unshared regardless of BwrapConfig contents; there is no code path that omits --unshare-net.
+  - Environment inside the sandbox contains only the key/value pairs in c.env (due to unconditional --clearenv).
+  - Every path in c.secret_masks is bound read-only to an empty file, never removed or made unreadable.
+external_deps:

@@ -1,0 +1,22 @@
+# .ctxignore — summarization scope for the ctx tools (gitignore syntax).
+# Seeded once from .gitignore by ctx-scan; edit freely. This file is the
+# ONLY scope source — .gitignore is never consulted after seeding.
+# Always applied on top: target/ is excluded; secrets and binaries are
+# denied and cannot be un-ignored here.
+
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Secrets. `.env` holds ANTHROPIC_API_KEY for the agent adapter; never
+# commit it. `.env.example` is the committed, keyless template.
+.env
+
+# Per-task cache and reports. Generated context files (rollup.ctx, *.ctx,
+# intent.md) ARE committed.
+.context/
+
+# Cage dry-run scratch (host-prepared seed bound into the cage)
+sandbox/.seed/
+
+__pycache__

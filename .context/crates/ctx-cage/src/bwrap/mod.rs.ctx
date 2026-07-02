@@ -1,6 +1,9 @@
 file: crates/ctx-cage/src/bwrap/mod.rs
-purpose: Re-exports the bwrap argv builder, config types, and crate auto-discovery from submodules. Documents the mount layout produced inside the cage.
-invariants:
-  - No I/O or filesystem access occurs except in `discover_crate_dirs`.
-external_deps:
+behavior: Re-exports the pure `bwrap` argv builder for the ctx-cage sandbox: turns a resolved `BwrapConfig` into a deterministic `Vec<OsString>` for `Command::new("bwrap").args(...)`, with no I/O or filesystem access performed here.
+edit_notes:
+  - Actual logic lives in sibling modules build.rs (build_bwrap_args) and config.rs (BwrapConfig and path constants); this file only declares the mount-layout contract and re-exports.
+  - Mount layout is part of the security boundary: /work is RW bind of target_root, secret paths (.env, .git/config) are masked RO with /dev/null, toolchain dirs are RO at identical host paths, /cage/bin is a tmpfs RO bind of host CTX tools, /opt/cage/rules.md is RO, and /run/ctx (holding the API proxy socket) is the sole egress path since the cage has no network — changes to this layout must stay consistent with the lifecycle module that fills BwrapConfig from CLI flags/environment.
 functions:
+invariants:
+  - This module performs no I/O, no bwrap exec, and no filesystem access; it is pure argv construction over BwrapConfig.
+external_deps:

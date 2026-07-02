@@ -1,10 +1,14 @@
 directory: crates/ctx-cage
-summary: The `ctx-cage` crate delivers a bwrap-based sandbox for running Claude with controlled tool access. It exposes a host orchestrator binary, an in-cage proxy binary, a Unix-socket broker, a binary wire protocol, and a three-phase lifecycle API. The `tests/` tree validates all major subsystems against real sockets and filesystems.
+domain: Sandbox launcher crate for running autonomous agent sessions inside a bwrap namespace, exposing two binaries (ctx-cage, ctx-run) built on a shared lib. The sandbox gives the agent a writable workspace and masked secrets, with a host-side HTTP proxy as the sole network egress path; assets/ supplies the static bwrap config and agent prompt that make this concrete.
+edit_notes:
+  - ctx_cage.rs and ctx_run.rs (src/bin) are thin entry points over one shared lib; new cross-binary behavior belongs in the lib so both stay consistent.
+  - Source is organized into broker, bwrap (argv builder + discovery), cli (mode/flag resolution), protocol (wire format), proxy (header rewriting/serving), and summarize (staleness) modules, each with a matching one-file-per-module test in tests/.
+  - assets/ files are embedded/bind-mounted verbatim (not templated); editing them changes sandbox networking or agent tool-use behavior immediately, and their tool/NSS names must stay in sync with what the cage container actually provides.
 children:
-  - src/: Full implementation — binaries, sandbox construction, broker, protocol, lifecycle, and summarization.
-  - tests/: Integration and unit coverage for broker, bwrap, protocol, CLI, and summarize subsystems.
-key_invariants:
-  - All host↔cage communication is exclusively through the length-prefixed binary protocol; no other channel exists.
-  - The broker allowlist is the sole enforcement point for tool invocation from inside the cage.
-  - `--clearenv` is always present in bwrap construction; no host environment leaks into the cage.
-  - Teardown always executes regardless of serve outcome and its errors never propagate.
+  - Cargo.toml: Declares the lib + two-binary layout and pins clap/thiserror as the CLI/error-handling foundation.
+  - assets/: Static bwrap config and agent prompt consumed verbatim by the cage at runtime.
+  - src/: Implementation of the broker, bwrap sandbox builder, CLI mode resolution, wire protocol, proxy, and summarize logic shared by both binaries.
+  - tests/: Integration/unit coverage mirroring each src module, exercising real Unix sockets only for broker and proxy.
+invariants:
+  - Network egress from the sandboxed agent is only through the host-side API proxy; bwrap argv construction must enforce network isolation and secret masking, and tests assert this without touching real filesystem/network state outside broker_loopback.rs and proxy.rs.
+  - Filesystem paths needed by tests or the running sandbox that must be unique (sockets, tempdirs) are derived from pid + an atomic/process-unique counter, never fixed paths.

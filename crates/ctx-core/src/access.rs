@@ -1,8 +1,9 @@
 //! The deny-by-default access gate (pure; the security boundary).
 //!
-//! A path is accessible iff it is not gitignored AND not a secret AND
-//! not binary. Gitignore status is supplied by the caller (each crate's
-//! own `is_ignored`); the secret/binary predicates here are pure name/
+//! A path is accessible iff it is not ignored AND not a secret AND not
+//! binary. Ignore status is supplied by the caller (each crate's own
+//! `is_ignored` — the `.ctxignore` scope filter, falling back to
+//! `.gitignore`); the secret/binary predicates here are pure name/
 //! extension rules. Callers enforce this even when a path is explicitly
 //! requested, so a careless `read .env` is impossible, not merely
 //! discouraged. This module is the ONLY copy of these rules.
@@ -10,9 +11,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-// Secret/binary are absolute hard denials. A new untracked-but-not-
-// ignored source file is legitimately readable/writable, so the gate
-// keys on *gitignored*, not on "untracked".
+// Secret/binary are absolute hard denials. A new not-yet-listed source
+// file is legitimately readable/writable, so the gate keys on
+// *ignored*, not on "untracked".
 
 /// Lowercase final extension of `path`, or empty.
 fn ext(path: &str) -> String {
@@ -59,7 +60,8 @@ pub fn is_binary(path: &str) -> bool {
 
 /// Why `path` is refused, or `None` if accessible. Neutral string so
 /// each crate can wrap it in its own typed error. `ignored` is the
-/// caller's gitignore check for `path`.
+/// caller's scope-filter check for `path` (`.ctxignore` /
+/// `.gitignore`).
 #[must_use]
 pub fn deny_reason(path: &str, ignored: bool) -> Option<&'static str> {
     if is_secret(path) {
@@ -67,14 +69,14 @@ pub fn deny_reason(path: &str, ignored: bool) -> Option<&'static str> {
     } else if is_binary(path) {
         Some("binary")
     } else if ignored {
-        Some("gitignored")
+        Some("ignored")
     } else {
         None
     }
 }
 
 /// The accessible subset of `tracked`, sorted — the manifest's body.
-/// (Tracked paths are not gitignored, so only secret/binary filter.)
+/// (Tracked paths are in scope, so only secret/binary filter.)
 #[must_use]
 pub fn accessible_set(tracked: &BTreeSet<String>) -> Vec<String> {
     tracked
@@ -89,12 +91,12 @@ mod tests {
     use super::{accessible_set, deny_reason, BTreeSet};
 
     #[test]
-    fn secret_binary_and_gitignored_are_denied() {
+    fn secret_binary_and_ignored_are_denied() {
         assert_eq!(deny_reason(".env", false), Some("secret"));
         assert_eq!(deny_reason("a/b/.env.local", false), Some("secret"));
         assert_eq!(deny_reason("deploy/server.pem", false), Some("secret"));
         assert_eq!(deny_reason("assets/logo.png", false), Some("binary"));
-        assert_eq!(deny_reason("src/lib.rs", true), Some("gitignored"));
+        assert_eq!(deny_reason("src/lib.rs", true), Some("ignored"));
         assert_eq!(deny_reason("src/lib.rs", false), None);
     }
 

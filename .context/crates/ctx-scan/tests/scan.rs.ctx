@@ -1,0 +1,15 @@
+file: crates/ctx-scan/tests/scan.rs
+behavior: Integration test suite for ctx-scan covering summarize()/check_run()/update_run()/walk_dir() against both an in-memory fake filesystem+agent and real tmpdir filesystem fixtures.
+edit_notes:
+  - FakeFs and RecordingAgent implement ctx_summarize's Fs and Agent traits, not ctx-scan's own; summarize() bridges the two crates.
+  - Tests assume prompts/summarizer-leaf.md and prompts/summarizer-rollup.md exist (embedded or seeded); FakeFs variants seed these manually while ScanFs serves them from embedded resources.
+  - .ctxignore/.gitignore hand-off semantics are asserted here: .gitignore only seeds .ctxignore on first contact, then is ignored — changing that seeding logic in the walker breaks walk_seeds_ctxignore_from_gitignore_once_then_decouples.
+  - target/ exclusion by built-in default and .context/ exclusion are load-bearing assumptions checked directly against walk_dir output.
+  - Hash/update lifecycle tests assert exact stale-dir and agent-call counts (e.g. "one leaf + src rollup + root rollup" = 3 calls), so runner staleness propagation logic must keep these counts in sync.
+  - All filesystem-backed tests use a fixed tmpdir naming scheme (test_dir(label) = std::env::temp_dir()/ctx-scan-test-<label>) and manually remove_dir_all before and after; no shared harness enforces isolation between parallel test runs beyond unique labels.
+functions:
+invariants:
+  - RecordingAgent::complete always succeeds, returning "SUMMARY[{system}]"; used to assert call counts, not content.
+  - FakeFs::is_ignored always returns Ok(false); ignore-pattern behavior is only tested against real ScanFs.
+external_deps:
+  - ctx_summarize: summarize() in ctx-scan delegates to this crate's runner/Fs/Agent traits; fakes here satisfy that crate's trait contracts, not ctx-scan's.

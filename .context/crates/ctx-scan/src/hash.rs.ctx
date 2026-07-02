@@ -1,0 +1,29 @@
+file: crates/ctx-scan/src/hash.rs
+behavior: Computes and persists a CACT-style content-hash Merkle tree over source files for change detection, and diffs stored vs. recomputed trees to determine which directory rollups and leaf summaries are stale.
+edit_notes:
+  - Freshness is defined entirely by these hashes, never by git; must stay decoupled from git state to catch gitignore-invisible edits.
+  - Sidecar format is `.context/<dir>/hashes.json` holding one `DirNode` per directory; path derived via `cpath::context_dir_of`/`ancestor_dirs`, must stay in sync with ctx-summarize's cpath module.
+  - Aggregate hash is over newline-joined `name=entry` pairs sorted by BTreeMap key order; changing serialization format invalidates all existing sidecars.
+  - Orphan leaf detection assumes leaf `.ctx` files are named `<name>.ctx` under `context_dir_of(dir)`.
+functions:
+  - name: compute
+    signature: pub fn compute(base: &Path, files: &[String]) -> Result<TreeState, ScanError>
+    purpose: Builds the current hash tree by reading and hashing each file under base, then aggregating directory nodes.
+  - name: load_stored
+    signature: pub fn load_stored<F: Fs>(fs: &F, current: &TreeState) -> TreeState
+    purpose: Loads previously persisted DirNode sidecars for every directory the current tree covers.
+    notes: Missing or corrupt sidecar is treated as absent rather than erroring, forcing that directory stale.
+  - name: store
+    signature: pub fn store<F: Fs>(fs: &F, state: &TreeState) -> Result<(), ScanError>
+    purpose: Writes each directory's DirNode as pretty JSON to its sidecar path.
+  - name: diff
+    signature: pub fn diff(current: &TreeState, stored: &TreeState) -> Staleness
+    purpose: Compares current against stored trees to produce stale directories (deepest-first), changed files, and orphaned leaves.
+invariants:
+  - stale_dirs is sorted deepest-first so callers can regenerate bottom-up.
+  - A directory's hash changes if and only if any child entry (file hash or subdirectory hash) changes, propagating up to root.
+  - Staleness::is_fresh() true iff all three fields are empty.
+external_deps:
+  - sha2: SHA-256 used for both leaf file hashes and directory aggregate hashes.
+  - ctx_summarize::cpath: shared path-mapping helpers (ancestor_dirs, context_dir_of) that define the on-disk sidecar layout, must match ctx-summarize's own usage.
+  - ctx_summarize::fs::Fs: injected filesystem trait for testability of load_stored/store.

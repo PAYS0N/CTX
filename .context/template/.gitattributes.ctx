@@ -1,0 +1,9 @@
+file: template/.gitattributes
+behavior: Declares a custom `ctx-regenerate` git merge driver for all `.ctx` context files and rollup files under `.context/`, so git invokes that driver on merge conflicts instead of textual merge.
+edit_notes:
+  - The `ctx-regenerate` driver is not yet implemented (no corresponding entry in .git/config or a merge.ctx-regenerate.driver setting exists at MVP); until it is, conflicts in matched paths must be resolved manually by running `ctx-resummarize <path>`.
+  - Patterns must stay in sync with wherever `.context/` tree layout or `.ctx`/`rollup.ctx` naming conventions are defined/generated elsewhere in the tooling.
+functions:
+invariants:
+  - Any `.ctx` or `rollup.ctx` file under `.context/` at any depth is subject to the `ctx-regenerate` merge driver per these patterns.
+external_deps:

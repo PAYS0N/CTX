@@ -1,11 +1,16 @@
 file: crates/ctx-summarize/src/cli.rs
-purpose: Defines the CLI structure and dispatches summarization runs, resolving targets from either a task cache or explicit paths and writing JSON output.
-invariants:
-  - Output is always followed by a trailing newline via `writeln!`.
-external_deps:
-  - clap: argument parsing with subcommand dispatch.
-  - serde_json: pretty-prints the summary struct to the writer.
+behavior: Defines the `ctx-summarize` CLI surface (argv parsing via clap) and dispatches either a cache-derived or explicit path list to the runner, writing the resulting JSON summary to a caller-supplied writer.
+edit_notes:
+  - Two target modes (`FromCache`, `Paths`) both funnel into runner::run; adding a new mode requires extending the Command enum and the match in dispatch.
+  - `--approve` bypasses runner::scope_check's blast-radius guard; the guard's threshold (MAX_TARGETS) lives in runner, not here.
+  - dispatch is generic over Fs, Agent, and Write so tests can inject fakes; keep signature generic when modifying.
 functions:
   - name: dispatch
     signature: pub fn dispatch<F: Fs, A: Agent, W: Write>(fs: &F, agent: &A, cli: &Cli, out: &mut W) -> Result<(), SummError>
-    purpose: Resolves target paths, runs the summarizer, and writes the pretty-printed JSON result to `out`.
+    purpose: Resolves target paths, runs the summarizer, and writes pretty-printed JSON plus trailing newline to out.
+    notes: Wraps serde_json/write errors as SummError::Io with path "<stdout>".
+invariants:
+  - Command::FromCache always resolves targets via paths_from_cache before scope_check runs, so cache errors surface before the size guard.
+  - Output is always valid JSON followed by exactly one trailing newline, on success.
+external_deps:
+  - clap: derive-based Parser/Subcommand for argv, including global flags shared across subcommands.

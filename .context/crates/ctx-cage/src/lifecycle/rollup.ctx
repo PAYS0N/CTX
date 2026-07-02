@@ -1,12 +1,16 @@
 directory: crates/ctx-cage/src/lifecycle
-summary: Implements the three-phase cage run: prepare (temp dir, socket, init-task), serve (broker thread + bwrap exec), and teardown (sockdir removal). The public entry point is `execute`, which sequences these phases, wraps them with optional ctx-summarize hooks when spend is permitted, and guarantees teardown runs regardless of serve outcome.
+domain: Implements the three-phase lifecycle of a single cage run — prepare (clean-tree gate, run-dir mint, rules/mask materialization, runtime resolution), run (bwrap exec with a backchannel), teardown (best-effort run-dir cleanup) — driven by `mod.rs::execute`. Consumers call only `execute(&Resolved) -> Result<i32, CageError>`; everything else here is private phase machinery operating on the shared `Resolved`/`Prep` structs.
+edit_notes:
+  - Two parallel phase-2 implementations exist: run.rs (`run_until_exit`, HTTPS passthrough proxy over a Unix socket, via crate::proxy) and serve.rs (`serve_until_exit`, tool-request broker over a Unix socket, via crate::broker). mod.rs::execute wires in only run::run_until_exit — serve.rs is not called from execute(); confirm intended status (dead code vs. planned replacement) before modifying either.
+  - run.rs and serve.rs each independently define `exec_cage` and `cage_cmd_for_mode` against the same `BwrapConfig`/Prep shape; a change to bwrap argv layout, cage sandbox paths, or Prep fields must be mirrored in both files or one will silently drift.
+  - teardown::teardown_run always runs after phase 2 finishes, success or failure, and its result never affects the returned exit code — do not add early returns between run/serve and teardown.
 children:
-  - mod.rs: Top-level sequencer; owns the summarize-hook logic and phase-error policy.
-  - prepare.rs: Phase 1 — produces the `Prep` struct consumed by serve and teardown.
-  - serve.rs: Phase 2 — runs the bwrap sandbox with a brokered Unix-socket tool interface.
-  - teardown.rs: Phase 3 — discards the sockdir; errors are intentionally swallowed here.
-key_invariants:
-  - Teardown always executes; its errors never propagate.
-  - Summarize hooks fire only when both `allow_spend` and `mode_is_billed` are true.
-  - The broker allowlist restricts tool access to `ctx-access` and `ctx-verify` only.
-  - Socket path is always `<sockdir>/ctx.sock`; sockdir is cleaned before creation and after exit.
+  - mod.rs: Entry point; sequences prepare → (run) → teardown and owns the shared Resolved/Prep contract.
+  - prepare.rs: Phase 1 — gates billed modes, mints the run dir, materializes rules/mask files, resolves claude runtime.
+  - run.rs: Active phase-2 implementation — proxy-backed bwrap exec, wired into mod.rs::execute.
+  - serve.rs: Alternate phase-2 implementation — broker-backed bwrap exec, not currently invoked by mod.rs.
+  - teardown.rs: Phase 3 — deletes prep.rundir only, swallowing all errors.
+invariants:
+  - teardown never touches paths outside prep.rundir and never propagates errors or panics.
+  - Phase-2 implementations exit code 1 if the cage process was killed by signal rather than exiting normally.
+external_deps:

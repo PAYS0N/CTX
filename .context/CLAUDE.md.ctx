@@ -1,0 +1,13 @@
+file: CLAUDE.md
+behavior: Defines operating conventions for an AI agent working in this repo: where doctrine/rationale/status live, how to read hook-injected context, and the build/lint/test checkpoint workflow.
+edit_notes:
+  - template/ and the root workspace lint configs must be changed together; this file is the only place that states that requirement.
+  - .context/ is generated (via ctx-context/ctx-scan tooling); this file forbids hand-editing it, so any workflow change must go through those tools, not direct edits.
+functions:
+invariants:
+  - "#[allow]" attributes are banned in the codebase.
+  - unwrap/expect are only permitted inside #[test]/#[cfg(test)] bodies; test helpers outside those must return Result.
+  - Functions over 30 lines or files over 250 lines require refactoring first; a single-line "// rationale:" comment is the only accepted exception, and multi-line rationale comments are not recognized.
+  - ctx-verify success is defined as output {"status":"pass"}.
+  - .env contents (summarizer key) must never be passed to a model or committed.
+external_deps:

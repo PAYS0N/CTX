@@ -1,12 +1,22 @@
 directory: .
-summary: The CTX workspace root. It delivers three agent-facing binaries (`ctx-access`, `ctx-summarize`, `ctx-verify`/`ctx-check`) backed by shared crates, a prompt library for decoupled agent contracts, and enforcement infrastructure (lint regime, deny lists) that makes policy violations unrepresentable rather than merely discouraged. The public surface is the `crates/` binaries and the `agents/` file-contract prompts; everything else is implementation or documentation.
+domain: Root of an opinionated agentic-coding system: a Rust workspace (`crates/`) implementing three layers — strict compiler/clippy lint enforcement, a `.context/` tree of `.ctx`/`rollup.ctx`/`intent.md` files that agents must read top-down before editing, and a deferred architecture-audit layer. `template/` scaffolds new projects with the same lint regime this repo dogfoods on itself; `agents/` and `prompts/` implement the LLM-driven summarizer/auditor pipeline that writes the context tree; `docs/` is the authoritative spec/status/decision record.
+edit_notes:
+  - Root Cargo.toml's lint tables must stay byte-identical to template/Cargo.toml (dogfood guarantee); root clippy.toml/rust-toolchain.toml/rustfmt.toml/deny.toml are the workspace-enforced counterparts to template/'s copies — check both when changing policy.
+  - .context/ tree layout (`.ctx` per file, `rollup.ctx` per dir, `intent.md` seeds) is independently relied on by ctx-access, ctx-scan, ctx-context, ctx-summarize (crates/) and by the prompts/ pipeline (leaf → rollup → auditor) and CLAUDE.md's agent workflow; changing the layout requires auditing all of these plus docs/SPEC.md.
+  - .gitignore/.ctxignore both special-case `.context/`: cache/reports ignored, but `*.ctx`/rollup.ctx/intent.md always tracked — this is enforced in two places and must stay consistent.
+  - CI enforcement chain: scripts/ci.sh (root, mirrored in template/scripts/) orchestrates cargo fmt/clippy/deny + rationale/allow/workspace-lint checks; .claude/settings.json wires ctx-context into the live editing session separately from CI.
+  - README.md/docs/UNIMPLEMENTED.md/docs/STATUS.md must track real implementation state in crates/; do not describe unimplemented workflows as current.
 children:
-  - crates: All CTX tooling crates — access control, sandboxing, summarization, and check/verify pipelines.
-  - agents: Decoupled prompt files that define the `{system,user}`→stdout contracts for each agent role.
-  - docs: Frozen spec, ADR log, and current status; authoritative for design decisions and active plan.
-key_invariants:
-  - No `unsafe`, no `#[allow]`, no `Box<dyn Error>` in libraries; these are enforced by the workspace lint regime the project dogfoods.
-  - Every binary is a thin CLI over a pure core with injected `Env`/`Fs`/`Agent`/`Runner`/clock boundaries; no core has argv, process, or network dependencies.
-  - Prompts are files in `agents/`, never embedded in code.
-  - Secrets (`.env`) are never read by a model nor committed.
-intent_divergence: `ctx-check` and `ctx-verify` both occupy the check-and-report role; intent.md names only `ctx-verify` as the canonical verification broker.
+  - crates: Nine-crate Rust workspace implementing access-gating, sandboxing, context-tree generation/injection, and independent check/verify reporting — the enforcement engine.
+  - agents: LLM adapter contract/implementation feeding ctx-summarize; outside the Rust lint regime.
+  - prompts: Verbatim system prompts driving the leaf→rollup→auditor summarization pipeline; schema changes here cascade into ctx-summarize's consumers.
+  - docs: Authoritative spec (frozen), status, decision log, and backlog governing all enforcement/context-tree behavior.
+  - template: Standalone new-project scaffold duplicating root's lint/CI policy; must be kept in sync with root, not depended on by it.
+  - scripts: Root-level CI checks (fmt/clippy/deny/rationale/allow-ban/workspace-lints), same design as template/scripts.
+  - sandbox: Retired Bash prototype; superseded by crates/ctx-cage, no live code.
+  - .claude: Editor hook wiring ctx-context into Claude Code's tool-call lifecycle.
+invariants:
+  - No `unsafe`, no `#[allow]` anywhere, typed errors only (no `Box<dyn Error>` in libraries) — enforced across root and template lint configs plus scripts/no_allow_check.sh.
+  - `.context/*.ctx`, `.context/rollup.ctx`, and `intent.md` are always git-tracked despite `.context/` otherwise being cache/report scratch; `.env` is always excluded, only `.env.example` is tracked.
+  - Every crate routes OS/process/clock access through an injected seam (Env/Fs/Runner/Agent), never direct — enabling fake-backed tests workspace-wide.
+intent_divergence: Layer 2 (ctx-access chain enforcement, ctx-summarize, ctx-verify) and Layer 3 (audit) exist in crates/ and prompts/ beyond a bare scaffold, but intent.md still frames Layer 2 as advisory-until-sandboxed and Layer 3 as fully deferred — actual repo state is further along than intent.md's phrasing suggests.

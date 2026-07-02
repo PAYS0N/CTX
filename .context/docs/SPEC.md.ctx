@@ -1,0 +1,9 @@
+file: docs/SPEC.md
+behavior: Sealed specification for an opinionated Rust agentic-coding system: compiler/clippy enforcement thresholds (Layer 1), a mirrored context-tree of leaf/rollup/intent files with hook-based context injection (Layer 2), deferred architecture auditing (Layer 3), and a CLI meal-planner reference project used to stress-test the whole design.
+edit_notes:
+  - Status is sealed; changes require an explicit owner-authorized re-spec (see revision preamble), not ad hoc edits.
+  - Revision 4 supersedes, in the body text below, the entire "Access protocol" section (ctx-access, task lifecycle, served_nodes, write-needs-read, stale banners), the summarization trigger (end-task), the scope rule, and the file-format prose — that body prose is retained but stale; read the rev4 paragraph first, not the section literally.
+  - Post-rev4: reads/edits happen via native tools plus a fail-open Claude Code PostToolUse hook (`ctx-context --hook`); `ctx-context <path>` is the read-only chain server; freshness is tracked via CACT-style `hashes.json` sidecars checked/updated by `ctx-scan`.
+  - rollup.ctx line budget (15 target/40 ceiling) must stay numerically identical to prompts/summarizer-rollup.md; changing one requires changing the other. Leaf `.ctx` budget is 10/40.
+  - Workspace-wide `missing_docs`/`unsafe_code` denial lives in `[workspace.lints]` in the root Cargo.toml; each member crate must opt in via `[lints] workspace = true`, checked by scripts/workspace_lints_check.sh — not via crate-root `#![...]` attributes.
+  - Module-cycle detection is NOT enforced at MVP despite policy wording; scripts/cycle_check.sh only checks `cargo-

@@ -1,0 +1,24 @@
+file: crates/ctx-context/src/serve.rs
+behavior: Resolves a repo path (file or directory) to its full context chain and serves each node's contents, substituting a soft `(absent: …)` marker for missing files instead of erroring.
+edit_notes:
+  - Relies on chain::for_dir/for_file (crate::chain) to compute node ordering/kinds; this file only resolves target type and fetches contents.
+  - Depends on Env trait (exists/read/is_dir) for all filesystem access, enabling test doubles.
+  - render() output format ("=== id [kind] ===\n<body>") is a de facto CLI/consumer contract; changing it affects downstream display.
+functions:
+  - name: parse_target
+    signature: fn parse_target(raw: &str) -> Result<RepoPath, CtxError>
+    purpose: Parses a CLI target string, treating "." as repo root and tolerating a trailing slash.
+  - name: serve_one
+    signature: fn serve_one<E: Env>(env: &E, node: &ChainNode) -> Result<ServedNode, CtxError>
+    purpose: Serves a single chain node's contents or an absent marker if the backing file doesn't exist.
+  - name: chain_for
+    signature: pub fn chain_for<E: Env>(env: &E, raw: &str) -> Result<Vec<ServedNode>, CtxError>
+    purpose: Computes the chain for a target path and serves every node in it.
+    notes: Directory targets (including root) omit the leaf `.ctx`; file targets append it via chain::for_file.
+  - name: render
+    signature: pub fn render(nodes: &[ServedNode]) -> String
+    purpose: Formats served nodes into labeled text sections for display.
+invariants:
+  - Only a genuinely unreadable present file produces CtxError::Io; a missing node never errors, it yields present=false with a marker body.
+  - render() output always ends each section's body with a trailing newline, inserting one if absent.
+external_deps:

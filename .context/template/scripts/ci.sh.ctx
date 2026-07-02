@@ -1,0 +1,19 @@
+file: template/scripts/ci.sh
+behavior: Runs all Layer 1 CI checks (fmt, clippy, doc, cargo-deny, cargo-machete, rationale comments, workspace lints opt-in, no-#[allow], module cycle check) against a target repo root and reports the union of all failures.
+edit_notes:
+  - Runs every check regardless of earlier failures (does not short-circuit) so agents see the complete failure picture in one pass; new checks must follow this pattern via RUN/PHASE helpers, not `set -e`.
+  - Depends on sibling scripts rationale_check.py, workspace_lints_check.sh, no_allow_check.sh, cycle_check.sh existing in the same directory as this script (resolved via SCRIPTS_DIR, not CWD).
+  - Target directory defaults to "." but can be overridden via $1; the script cd's into it, so all checks run relative to that root.
+functions:
+  - name: PHASE
+    signature: PHASE() { echo; echo "=== $1 ==="; }
+    purpose: Prints a section header for a group of checks.
+  - name: RUN
+    signature: RUN() { local name=$1; shift; if "$@"; then ...; else ...; fi }
+    purpose: Executes a check command, prints OK/FAIL, and sets OVERALL=1 on failure without stopping the script.
+invariants:
+  - Exit code is non-zero iff at least one RUN invocation failed; otherwise exits 0.
+  - clippy runs with RUSTFLAGS="-D warnings" and cargo doc runs with RUSTDOCFLAGS="-D warnings", so warnings are treated as failures in both.
+external_deps:
+  - cargo-deny: enforces dependency/license policy, invoked as a distinct check from clippy/fmt.
+  - cargo-machete: detects unused dependencies, separate from clippy's dead-code lints.

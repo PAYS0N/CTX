@@ -1,14 +1,18 @@
+```
 file: crates/ctx-cage/src/lifecycle/prepare.rs
-purpose: Lifecycle phase 1 setup: creates a per-run temp directory, writes the embedded cage-rules.md, optionally resolves Claude runtime binds, and runs `ctx-access init-task`.
-invariants:
-  - Socket basename is always `"ctx.sock"`.
-  - `sockdir` is named `ctxcage-{task_id}-{pid}` under `TMPDIR`; any pre-existing directory at that path is removed before creation.
-external_deps:
-  - crate::bwrap::ClaudeBinds: holds host paths for `--claude` bwrap mounts
-  - crate::runtime::resolve_claude_binds: resolves Claude-specific filesystem paths into `ClaudeBinds`
-  - crate::CAGE_RULES_MD: embedded markdown written verbatim to disk
+behavior: Lifecycle phase 1 of a cage run: gates billed modes on a clean git tree, mints a per-run tempdir, materializes the rules file and a secret-mask file, and resolves the claude runtime when billed.
+edit_notes:
+  - Billed-mode detection via mode_is_billed(&r.mode) gates both the clean-tree check and claude runtime resolution; keep these two gated together since the read-write cage mount only makes "recovery is plain git" valid when starting from a clean commit.
+  - Mask file must be a real empty regular file, not /dev/null, because bind mounts carry nodev.
+  - Rundir path is deterministic (ctxcage-<task_id>-<pid>) and any pre-existing dir at that path is silently removed before recreation.
 functions:
   - name: prepare_run
     signature: pub fn prepare_run(r: &Resolved) -> Result<Prep, CageError>
-    purpose: Orchestrates all phase-1 setup and returns a `Prep` holding the resources needed for the run.
-    notes: Returns `CageError::Protocol` if `init-task` exits non-zero or Claude runtime resolution fails.
+    purpose: Runs the full phase-1 setup sequence and returns the Prep bundle consumed by later lifecycle phases.
+    notes: Returns CageError::Protocol for dirty tree or missing claude runtime/credential; CageError::Io for filesystem failures.
+invariants:
+  - claude field is Some iff mode_is_billed(&r.mode) is true.
+  - ensure_clean_tree errors unless target_root is a git repo with a clean porcelain status or allow_dirty is set.
+external_deps:
+  - git (external binary via Command): sole mechanism for the dirty-tree check; failure to invoke or non-git-repo output is treated as CageError::Protocol.
+```

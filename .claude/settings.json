@@ -10,16 +10,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/target/debug/ctx-scan \"$CLAUDE_PROJECT_DIR\" --stop-hook 2>/dev/null || true"
-          }
-        ]
-      }
     ]
   }
 }
