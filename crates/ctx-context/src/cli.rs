@@ -3,7 +3,9 @@
 //! Knows nothing about chain logic; it maps parsed arguments onto
 //! [`crate::serve`] / [`crate::hook`] calls and renders results to an
 //! injected writer (never `println!`, so `clippy::print_stdout` need not
-//! be excepted).
+//! be excepted). Path mode additionally folds what it served into
+//! [`crate::session`]'s ledger when run inside a Claude Code session, so
+//! a manual call and the hook share one dedup record.
 
 use std::io::Write;
 use std::path::Path;
@@ -12,7 +14,7 @@ use clap::Parser;
 
 use crate::env::Env;
 use crate::error::CtxError;
-use crate::{hook, serve};
+use crate::{hook, serve, session};
 
 /// The context-chain server.
 #[derive(Debug, Parser)]
@@ -72,5 +74,8 @@ pub fn dispatch<E: Env, W: Write>(
         return Err(CtxError::Usage("a path (or --hook) is required".to_owned()));
     };
     let nodes = serve::chain_for(env, &raw)?;
+    if let Some(session_id) = env.env_var(session::ENV_SESSION_ID) {
+        session::record(env, &session_id, nodes.iter().map(|n| n.id.clone()))?;
+    }
     write!(out, "{}", serve::render(&nodes)).map_err(|e| out_err(&e))
 }

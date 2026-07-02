@@ -31,6 +31,9 @@ pub trait Env {
 
     /// Whether a path is an existing directory.
     fn is_dir(&self, path: &RepoPath) -> bool;
+
+    /// Read an environment variable, if set.
+    fn env_var(&self, key: &str) -> Option<String>;
 }
 
 /// Real implementation rooted at an absolute repository path.
@@ -86,5 +89,9 @@ impl Env for StdEnv {
 
     fn is_dir(&self, path: &RepoPath) -> bool {
         self.resolve(path).is_dir()
+    }
+
+    fn env_var(&self, key: &str) -> Option<String> {
+        std::env::var(key).ok()
     }
 }

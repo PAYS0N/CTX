@@ -13,6 +13,13 @@ use crate::env::Env;
 use crate::error::CtxError;
 use crate::repo_path::RepoPath;
 
+/// Environment variable the harness sets to the current session id.
+///
+/// CLI path mode reads this to fold manually-served node ids into the
+/// same per-session ledger the `--hook` mode maintains, so a node shown
+/// by one path is not re-shown by the other.
+pub const ENV_SESSION_ID: &str = "CLAUDE_CODE_SESSION_ID";
+
 /// State-file path for `session`, its id sanitized to `[A-Za-z0-9._-]`.
 fn state_path(session: &str) -> RepoPath {
     let safe: String = session
@@ -55,4 +62,21 @@ pub fn save<E: Env>(env: &E, session: &str, served: &BTreeSet<String>) -> Result
         detail: e.to_string(),
     })?;
     env.write(&state_path(session), &bytes)
+}
+
+/// Merge `ids` into the served set already recorded for `session` and
+/// persist the result, so a later hook injection for the same session
+/// treats them as already shown.
+///
+/// # Errors
+///
+/// [`CtxError::Io`] if the state file cannot be written or encoded.
+pub fn record<E: Env>(
+    env: &E,
+    session: &str,
+    ids: impl IntoIterator<Item = String>,
+) -> Result<(), CtxError> {
+    let mut served = load(env, session);
+    served.extend(ids);
+    save(env, session, &served)
 }

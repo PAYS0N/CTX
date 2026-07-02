@@ -1,22 +1,23 @@
 directory: crates/ctx-context/src
-domain: Computes and serves the "context chain" (ancestor rollup.ctx/intent.md plus a leaf `<file>.ctx`) for a repo path, and injects the not-yet-seen portion of that chain into Claude Code sessions via a PostToolUse hook. Exposes both a standalone CLI (path → rendered chain) and a hook mode (stdin event JSON → additionalContext payload), all built on a filesystem-abstracting `Env` trait for testability.
+domain: Implements the ctx-context binary: computes the ordered chain of context-node paths (rollup.ctx/intent.md ancestors plus a leaf .ctx) above any repo file or directory, serves their contents with soft-absent handling, and injects unseen portions of that chain into Claude Code sessions via a fail-open PostToolUse hook. External consumers get two entry points: the CLI (path mode, manual invocation) and hook mode (stdin JSON, automatic injection), both funneled through `cli::dispatch`.
 edit_notes:
-  - Data flow for a path lookup: repo_path::parse validates untrusted input → chain::for_file/for_dir computes ordered ChainNodes → serve::chain_for/render fetches and formats contents (absent files become soft markers, never errors). Hook mode layers session.rs on top of this same chain to filter out already-injected node ids.
-  - repo_path::parse is the sole untrusted-input validation gate; chain.rs, serve.rs, session.rs, and hook.rs all consume already-validated RepoPaths and must not construct them via `child`/`under` from raw external strings.
-  - serve, session, and hook are written purely against Env (no direct std::fs/process/stdin); all real I/O and argv/stdin handling is confined to cli.rs/main.rs, which also enforce a crate-wide println!/eprintln! ban (output only via injected writers).
-  - Hook mode (hook.rs, session.rs, main.rs's read_stdin) is uniformly fail-open: parse/session/stdin errors yield empty output rather than propagating, except chain-serving failures which surface as an explicit "(chain unavailable)" marker.
+  - All filesystem/env access in serve, session, chain, and hook goes through the `Env` trait (env.rs), never std::fs directly, so tests can substitute fakes; StdEnv is the only real impl, rooted at an absolute repo base path.
+  - Chain node ordering/kind (chain.rs) is a protocol depended on by serve.rs (rendering) and hook.rs (fresh-node filtering); changing node kinds, order, or leaf-path derivation requires updating both consumers.
+  - Session dedup ledger (session.rs, keyed by ENV_SESSION_ID or hook event's session_id) is shared between CLI path mode and hook mode — the JSON state file format/location must stay consistent across both call sites, and hook.rs's "fresh nodes" logic depends on it.
+  - Untrusted path strings must enter the system only through `RepoPath::parse` (repo_path.rs); `child`/`under` are unchecked and assume pre-trusted segments — serve.rs's `parse_target` is the CLI-facing gate.
+  - Crate-wide lint bans println!/eprintln!/print!; main.rs and cli.rs route all output through injected writers instead.
 children:
-  - chain.rs: defines the ChainNode ordering/labels that serve.rs fetches and hook.rs filters.
-  - cli.rs: CLI argv → dispatch layer sitting above serve.rs and hook.rs, writer-only output.
-  - env.rs: the Env trait/StdEnv boundary all other modules (except cli/main) are written against.
-  - error.rs: shared CtxError taxonomy used by every other module instead of dyn-error/anyhow.
-  - hook.rs: Claude Code hook entry point combining chain resolution (serve.rs) with session dedup (session.rs).
-  - lib.rs: module tree declaration only; documents the read-only, hook-driven crate posture.
-  - main.rs: process entry point wiring argv/stdin/root-resolution into cli::dispatch.
-  - repo_path.rs: the single validated-path type threaded through chain/serve/session/hook.
-  - serve.rs: chain-to-content resolution and rendering, used by both cli.rs and hook.rs.
-  - session.rs: per-session served-node-id persistence used only by hook.rs.
+  - lib.rs: Declares the module tree and states the crate's read-only, hook-injecting purpose; no logic.
+  - main.rs: Process shell — argv/stdin/exit-code plumbing around cli::dispatch; only place allowed to touch real process I/O outside StdEnv.
+  - cli.rs: Argv parsing and mode dispatch (hook vs path), wiring session recording to path-mode output.
+  - hook.rs: PostToolUse hook logic — event parsing, path resolution, fail-open fresh-context injection.
+  - serve.rs: Turns a resolved chain into rendered, absence-tolerant text output; defines the CLI/hook display contract.
+  - chain.rs: Computes chain structure/ordering (rollup/intent/leaf nodes) consumed by serve.rs and hook.rs.
+  - session.rs: Per-session served-node ledger backing hook dedup and CLI `--hook`-equivalent tracking.
+  - repo_path.rs: Validated repo-relative path type; sole gate for untrusted path strings.
+  - env.rs: `Env` trait + `StdEnv`, the filesystem/env-var abstraction all above modules depend on.
+  - error.rs: Shared `CtxError` taxonomy; no `Box<dyn Error>`/anyhow anywhere in the crate.
 invariants:
-  - No module outside cli.rs/main.rs performs direct filesystem, stdin, or stdout/stderr I/O; all such access goes through Env or injected writer handles.
-  - A missing/absent context file or corrupt session state never surfaces as an error — it degrades to a marker string or empty set, preserving fail-open behavior across serve.rs/session.rs/hook.rs.
-  - CtxError is the only error type crossing module boundaries; no Box<dyn Error> or anyhow usage anywhere in the crate.
+  - Hook-mode code paths (hook.rs, and cli::dispatch's hook branch) never propagate errors that would block the agent — failures degrade to empty/marker output, not process failure.
+  - Chain resolution never reads or exposes source file bytes — only rollup.ctx, intent.md, and leaf `.ctx` contents flow through serve/hook.
+  - All cross-module errors are `CtxError` variants (error.rs); no module introduces its own error type or dyn-Error boxing.

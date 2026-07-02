@@ -1,21 +1,22 @@
+```
 file: crates/ctx-context/src/session.rs
-behavior: Tracks which context node ids have already been injected into a Claude session, persisted as one JSON file per session under `.context/.cache/`, so the hook can skip re-injecting nodes already served.
+behavior: Tracks which context node ids have already been injected for a given Claude session, backed by one gitignored JSON file per session under `.context/.cache/`, to prevent duplicate hook injections on repeated Read/Grep/Glob calls.
 edit_notes:
-  - Session ids are sanitized to [A-Za-z0-9._-] before being used in the filename; non-matching chars become '_', so distinct raw ids could collide on the same state file.
-  - load() treats any failure (missing file, unreadable, bad JSON) as "nothing served yet" rather than propagating an error — intentional fail-open behavior for the hook caller.
-  - State files live under .context/.cache/, expected to be gitignored; path layout must stay consistent with whatever hook code constructs session ids.
+  - CLI path mode reads ENV_SESSION_ID to share the same served-node ledger as `--hook` mode; keep the state file format/location compatible with both.
+  - load() treats missing or corrupt state files as empty (fail-open by design) — never make this path return an error or block.
 functions:
-  - name: state_path
-    signature: fn state_path(session: &str) -> RepoPath
-    purpose: Builds the sanitized per-session state file path under .context/.cache/hook-{safe}.json.
   - name: load
     signature: pub fn load<E: Env>(env: &E, session: &str) -> BTreeSet<String>
-    purpose: Reads the set of node ids already served for this session.
-    notes: Never errors; missing/corrupt state silently yields an empty set.
+    purpose: Reads the set of node ids already served for `session`, defaulting to empty on any failure.
   - name: save
     signature: pub fn save<E: Env>(env: &E, session: &str, served: &BTreeSet<String>) -> Result<(), CtxError>
-    purpose: Persists the full served-node set for this session as JSON.
+    purpose: Persists the full served-node set for `session` as JSON.
+  - name: record
+    signature: pub fn record<E: Env>(env: &E, session: &str, ids: impl IntoIterator<Item = String>) -> Result<(), CtxError>
+    purpose: Merges new node ids into the session's served set and persists the result.
 invariants:
-  - load() never panics or returns Err; worst case on corruption/missing file is an empty BTreeSet, causing re-injection rather than a block.
+  - state_path sanitizes session ids to [A-Za-z0-9._-], replacing all other characters with '_'.
+  - load() never panics or errors; missing/corrupt files yield an empty BTreeSet.
 external_deps:
-  - serde_json: (de)serializes the BTreeSet<String> state file.
+  - serde_json: (de)serializes the served-id set to/from the cache file.
+```

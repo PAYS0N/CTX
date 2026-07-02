@@ -1,19 +1,19 @@
 directory: crates
-domain: Workspace of nine crates implementing the CTX system: agent sandboxing (ctx-cage), gated file access for agents (ctx-access), the canonical access-gate rules (ctx-core), context-chain generation and injection into Claude Code sessions (ctx-context, ctx-scan, ctx-summarize), and independent build/lint verification reporting (ctx-check, ctx-verify). Consumers depend on individual crate binaries/libraries; there is no shared workspace-level API beyond the `.context/` on-disk convention and the ctx-core access gate.
+domain: Workspace root holding every first-party crate of the CTX system: enforced file access (ctx-access), sandboxed agent execution (ctx-cage), the canonical access-gate logic (ctx-core), the `.context/` summary pipeline (ctx-scan, ctx-summarize), context-chain rendering/hooks (ctx-context), and two independent check-running CLIs (ctx-check, ctx-verify). This directory itself holds no source; it is the dependency graph between these crates.
 edit_notes:
-  - ctx-core's access.rs is the sole authority for secret/binary/gitignored deny decisions; ctx-access and ctx-scan both consume it and must not reimplement or diverge from it (ADR-023).
-  - The `.context/<src>.ctx` / `.context/<dir>/rollup.ctx` on-disk layout is independently duplicated in ctx-access and ctx-summarize (pending planned ctx-core unification) and is also relied on by ctx-context and ctx-scan; changing the layout in one place requires auditing all four.
-  - ctx-check and ctx-verify each independently implement a cargo/clippy/script-check runner emitting a capped JSON report; they do not share a runner or report model — schema/behavior changes must be made in each separately.
-  - ctx-summarize depends on ctx-core via relative path "../ctx-core"; all crates assume the current workspace member layout.
+  - ctx-core's access.rs is the single canonical secret/binary/gitignored deny gate; ctx-access delegates to it entirely — any denylist logic added elsewhere in these crates is a bug, not a feature.
+  - The `.context/<src>.ctx` / `.context/<dir>/rollup.ctx` path layout is independently implemented in both ctx-summarize (cpath.rs) and ctx-access; a pending unification into ctx-core means both must be changed together until that lands.
+  - ctx-scan drives ctx-summarize's runner for staleness-triggered regeneration, and ctx-context/ctx-access both read the same rollup/intent/leaf chain that ctx-summarize writes — chain ordering or file-naming changes ripple through all three.
+  - ctx-check and ctx-verify are separate crates with overlapping purpose (both run cargo/clippy/script checks and emit a capped JSON pass/fail report); changes to one's check set or report shape do not propagate to the other automatically.
 children:
-  - ctx-access: Gated read/write/list surface agents use to touch source files, enforcing ctx-core's rules plus its own read-before-write and chain-delivery ordering.
-  - ctx-cage: Sandbox launcher (bwrap) that runs agent sessions with a proxy-only network egress path; orchestrates but does not itself implement the access/context/check logic.
-  - ctx-check: Standalone check-and-report binary (cargo/clippy/fmt/script → JSON), independent of ctx-verify.
-  - ctx-context: Computes and injects context chains (rollup.ctx/intent.md/.ctx ancestry) into Claude Code sessions via a hook.
-  - ctx-core: Zero-dependency access-gate library; foundational rule source for ctx-access and ctx-scan.
-  - ctx-scan: Builds/maintains the `.context/` Merkle-hash summary tree that ctx-context and ctx-access read from.
-  - ctx-summarize: Generates leaf `.ctx` and rollup `.ctx` content via pluggable LLM Agent; the writer side of the `.context/` tree ctx-scan/ctx-access/ctx-context read.
-  - ctx-verify: Standalone check-and-report binary matching the workspace's audit-report JSON schema, independent of ctx-check.
+  - ctx-access: Enforcement gateway — the only sanctioned read/write/list path into repo files for agents, delegating access decisions to ctx-core.
+  - ctx-cage: Sandbox launcher wrapping agent sessions in bwrap, with host-side proxy as sole network egress.
+  - ctx-check: Verification broker CLI producing a capped JSON check report.
+  - ctx-context: Renders and injects the rollup/intent/leaf context chain for a given path, including a Claude Code session hook.
+  - ctx-core: Zero-dependency source of the access-gate rules consumed by ctx-access (and intended for wider reuse).
+  - ctx-scan: Maintains `.context/` freshness via content hashing and triggers ctx-summarize regeneration.
+  - ctx-summarize: Generates leaf `.ctx` and `rollup.ctx` files consumed by ctx-scan, ctx-context, and ctx-access.
+  - ctx-verify: Separate fixed-check-set CLI emitting its own capped JSON verification report.
 invariants:
-  - All crates route filesystem/process/clock I/O through an injected seam (Env/Fs/Runner/Agent) rather than touching the OS directly, enabling fake-backed integration tests throughout.
-  - Fallible operations across these crates return typed error enums (never bare panics or `Box<dyn Error>`) crossing their public boundaries.
+  - Every crate isolates real filesystem/process/clock access behind an injected seam (Env/Fs/Runner/Agent) with fake implementations exercised in tests — no crate's core logic touches the OS directly.
+  - `.context/` scaffolding (rollup.ctx, intent.md, per-file .ctx) is the only artifact shared as a cross-crate contract; none of these crates serve

@@ -1,18 +1,18 @@
-//! Behavioral tests for chain serving and hook injection over an
+//! Behavioral tests for chain resolution and rendering over an
 //! in-memory `Env`.
 //!
-//! No real filesystem: a `FakeEnv` backs every operation so the tests are
-//! hermetic and assert the protocol (chain order, directory targets,
-//! absent markers, session dedup, hook fail-open).
+//! No real filesystem: a `FakeEnv` backs every operation so the tests
+//! are hermetic and assert the protocol (chain order, directory
+//! targets, absent markers). Hook/session behavior is covered in
+//! `hook_session.rs`.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use ctx_context::env::Env;
 use ctx_context::error::CtxError;
 use ctx_context::repo_path::RepoPath;
-use ctx_context::{hook, serve, session};
+use ctx_context::serve;
 
 /// In-memory environment: a flat path -> bytes map. Directories are
 /// implied by key prefixes.
@@ -69,6 +69,10 @@ impl Env for FakeEnv {
     fn is_dir(&self, path: &RepoPath) -> bool {
         let prefix = format!("{}/", path.as_string());
         self.files.borrow().keys().any(|k| k.starts_with(&prefix))
+    }
+
+    fn env_var(&self, _key: &str) -> Option<String> {
+        None
     }
 }
 
@@ -152,70 +156,4 @@ fn render_labels_every_section() {
     let text = serve::render(&nodes);
     assert!(text.contains("=== .context/rollup.ctx [rollup] ===\nroot rollup\n"));
     assert!(text.contains("=== .context/intent.md [intent] ===\nroot intent\n"));
-}
-
-/// Build a `PostToolUse` event for a Read of `file_path`.
-fn read_event(session: &str, file_path: &str) -> String {
-    format!(
-        r#"{{"session_id":"{session}","tool_name":"Read","tool_input":{{"file_path":"{file_path}"}}}}"#
-    )
-}
-
-#[test]
-fn hook_injects_chain_then_dedups_within_session() {
-    let env = FakeEnv::seeded();
-    let base = Path::new("/repo");
-    let first = hook::run(&env, base, &read_event("s1", "/repo/crates/foo/bar.rs"));
-    assert!(first.contains("additionalContext"));
-    assert!(first.contains("foo rollup"));
-    // Same session, sibling file: ancestors are deduped; only the new
-    // leaf level would remain, and it is absent -> nothing to inject.
-    let second = hook::run(&env, base, &read_event("s1", "/repo/crates/foo/baz.rs"));
-    assert!(second.is_empty());
-    // A different session starts fresh.
-    let other = hook::run(&env, base, &read_event("s2", "/repo/crates/foo/bar.rs"));
-    assert!(other.contains("foo rollup"));
-}
-
-#[test]
-fn hook_is_silent_outside_the_repo_and_on_scaffolding() {
-    let env = FakeEnv::seeded();
-    let base = Path::new("/repo");
-    assert!(hook::run(&env, base, &read_event("s", "/etc/passwd")).is_empty());
-    assert!(hook::run(&env, base, &read_event("s", "/repo/.context/rollup.ctx")).is_empty());
-    assert!(hook::run(&env, base, &read_event("s", "/repo/.git/config")).is_empty());
-}
-
-#[test]
-fn hook_is_silent_on_unparseable_or_pathless_input() {
-    let env = FakeEnv::seeded();
-    let base = Path::new("/repo");
-    assert!(hook::run(&env, base, "not json").is_empty());
-    assert!(hook::run(&env, base, r#"{"session_id":"s","tool_input":{}}"#).is_empty());
-    assert!(hook::run(&env, base, "{}").is_empty());
-}
-
-#[test]
-fn event_cwd_comes_from_the_event_json() {
-    assert_eq!(
-        hook::event_cwd(r#"{"cwd":"/repo","tool_name":"Read"}"#),
-        Some(std::path::PathBuf::from("/repo"))
-    );
-    assert!(hook::event_cwd(r#"{"tool_name":"Read"}"#).is_none());
-    assert!(hook::event_cwd("not json").is_none());
-}
-
-#[test]
-fn corrupt_session_state_reads_as_empty() {
-    let env = FakeEnv::seeded();
-    let state = RepoPath::parse(".context/.cache/hook-s9.json").expect("path");
-    env.write(&state, b"not json").expect("seed corrupt state");
-    assert!(session::load(&env, "s9").is_empty());
-    // And the hook still injects (fail-open, worst case re-injection).
-    let out = hook::run(
-        &env,
-        Path::new("/repo"),
-        &read_event("s9", "/repo/crates/foo/bar.rs"),
-    );
-    assert!(out.contains("foo rollup"));
 }

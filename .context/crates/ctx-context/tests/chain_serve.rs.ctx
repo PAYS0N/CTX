@@ -1,17 +1,12 @@
 file: crates/ctx-context/tests/chain_serve.rs
-behavior: Integration tests for `ctx_context::serve`, `hook`, and `session` against an in-memory `FakeEnv`, asserting chain ordering, directory/root target handling, absent-node markers, rendered output format, hook injection/dedup by session, and fail-open behavior on corrupt session state.
+behavior: Behavioral tests for `serve::chain_for` and `serve::render`, verifying chain resolution order (per-level rollup + intent, then leaf ctx), directory vs. file vs. repo-root targets, soft-missing markers for absent scaffolding, and path-escape rejection, all against an in-memory `FakeEnv`.
 edit_notes:
-  - Defines FakeEnv, a flat path->bytes map implementing the ctx_context::env::Env trait; is_dir is inferred from key prefixes ("<path>/"), not from an explicit directory marker.
-  - FakeEnv::seeded() fixture layout (paths and contents) is relied on by nearly every test; changing it requires updating expected id/body assertions throughout this file.
-  - Chain node ids and expected ordering (root rollup/intent, then per-directory-level rollup/intent, then leaf .ctx) encode the traversal contract of serve::chain_for; must stay in sync with that function's actual algorithm.
-  - Absent-node body text is asserted verbatim ("(absent: no intent at this level)", body containing "no leaf") and must match serve.rs's literal marker strings.
-  - render() output format asserted verbatim: "=== <id> [<kind>] ===\n<body>\n"; must match serve::render's formatting.
-  - Session dedup test depends on hook::run consulting and updating per-session state (via session module) keyed by session_id from the event JSON.
-  - corrupt_session_state_reads_as_empty writes directly to the .context/.cache/hook-<id>.json path that session::load reads; format/path must match session module's internal convention.
+  - FakeEnv is a flat path->bytes BTreeMap; directories are implied by key prefixes (is_dir checks for any key starting with "path/"), so seeding must include full relative paths exactly as serve.rs would request them.
+  - Chain order asserted here (root rollup, root intent, then per-directory-level rollup+intent descending, then leaf .ctx) is the contract serve::chain_for must maintain; changing traversal order breaks these tests.
+  - Hook/session behavior is intentionally excluded; covered in hook_session.rs.
 functions:
 invariants:
-  - serve::chain_for rejects any path escaping the repo root (absolute paths, "..", or "//" segments) with CtxError::PathEscape.
-  - hook::run returns an empty string for events outside the repo, targeting .context/.git paths, or that are unparseable/pathless.
-  - hook::run never errors on corrupt session state; treats it as an empty session (fail-open, may re-inject).
+  - Absent scaffolding files produce nodes with present == false and a body of "(absent: no intent at this level)" or containing "no leaf", never an Err.
+  - Source files themselves (e.g. crates/foo/bar.rs) never appear as chain node ids.
+  - serve::chain_for rejects paths containing "..", leading "/", or empty segments ("a//b") with CtxError::PathEscape.
 external_deps:
-  - ctx_context::env::Env: trait FakeEnv implements to substitute a real filesystem in tests.

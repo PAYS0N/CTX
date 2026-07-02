@@ -1,6 +1,7 @@
 {
-  "hash": "dda3ba700a2135b34f7bb10d675e55d9a2a1a6ebe3f33b474a46973416a07009",
+  "hash": "b972b4af06a4687e3a4813412cf78f4b1364ad063ff4739b238f45ae449f45f7",
   "children": {
-    "chain_serve.rs": "f:70efd9804713871dade468bb38fdb7d8269f6ffece6787221715dc8f0a797481"
+    "chain_serve.rs": "f:013e90574227f8dfc233fbbdbf7f35d2f34b862397071c6582d4a8949e21700b",
+    "hook_session.rs": "f:879e3bd5cfd5a3ef9779e861b105fbb9e4aa549624d1b283a603366c06486d20"
   }
 }

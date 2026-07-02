@@ -3,7 +3,7 @@ Doctrine: `.context/intent.md` + `docs/SPEC.md`. Rationale:
 
 Call `target/debug/ctx-context .`. Do not skip this. 
 
-- Source: native Read/Edit/Grep. The context chain is hook-injected on
+- Source: native Read/Edit/Grep. Do not use cat for file reads. The context chain is hook-injected on
   read. To use on demand: `target/debug/ctx-context <path>` (dir or `.`). 
   Use the tool on a directory when you want to know more about a directories contents.
   When gathering information before doing code changes, use the tool to retrieve 

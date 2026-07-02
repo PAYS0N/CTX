@@ -1,9 +1,13 @@
 directory: crates/ctx-context/tests
-domain: Integration test suite for the `ctx_context` crate, exercising `serve::chain_for`/`render`, `hook::run`, and `session` state against an in-memory fake filesystem rather than real disk I/O. Verifies the end-to-end contract: chain traversal ordering, path-escape rejection, absent-node rendering, hook dedup by session, and fail-open behavior on corrupt session state.
+domain: Integration/behavioral test suite for ctx-context's serve and hook/session subsystems, exercised entirely against an in-memory `FakeEnv` (no real filesystem). Verifies chain resolution order, absent-scaffolding handling, path-escape rejection, hook injection dedup, and CLI/hook session-ledger sharing.
 edit_notes:
-  - FakeEnv (defined in chain_serve.rs) implements ctx_context::env::Env with a flat path->bytes map, inferring directories from "<path>/" key prefixes; any change to Env's contract or to serve::chain_for's traversal algorithm requires updating FakeEnv and the ordering/id assertions here in lockstep.
-  - Tests assert exact literal strings owned by the source crate (absent-node markers, render() format, session file path convention under .context/.cache/hook-<id>.json); changing those literals in serve.rs, hook.rs, or session.rs breaks these tests silently unless greped for.
+  - Both files rely on FakeEnv (flat path->bytes BTreeMap, directories implied by key prefixes); seeding must use exact relative paths the code under test will request.
+  - Chain traversal order (root rollup, root intent, per-level rollup+intent descending, then leaf .ctx) is asserted in chain_serve.rs and is a contract on serve::chain_for; hook_session.rs separately depends on the same scaffolding convention (.context/ rollups/intents) via its own seeded tree.
+  - Session state path convention `.context/.cache/hook-<session_id>.json` is asserted directly in hook_session.rs and must track the session module's real path scheme.
 children:
+  - chain_serve.rs: covers serve::chain_for/render — traversal order, missing-node markers, path-escape rejection.
+  - hook_session.rs: covers hook::run and CLI path-mode dispatch — injection dedup, session ledger sharing, fail-open on corrupt state.
 invariants:
-  - Path escape (absolute, "..", "//") must surface as CtxError::PathEscape from serve::chain_for.
-  - hook::run is fail-open: corrupt/unparseable session state or out-of-repo/.context/.git targets never error, only yield empty results or empty-session treatment.
+  - Absent scaffolding never errors; it yields present==false nodes with a fixed "(absent...)"/"no leaf" body marker.
+  - Source files (e.g. *.rs) never appear as chain node ids alongside .context/ scaffolding nodes.
+  - Path traversal (.., leading /, empty segments) is rejected with CtxError::PathEscape before any FakeEnv lookup.

@@ -1,18 +1,19 @@
 file: crates/ctx-context/src/cli.rs
-behavior: Parses argv (path arg or --hook flag) via clap and dispatches to serve::chain_for/render for path mode, or hook::run for Claude Code PostToolUse hook mode, rendering output to an injected writer.
+behavior: Parses CLI argv into a `Cli` struct and dispatches to either hook mode (reads hook JSON from stdin, emits additional-context payload, fail-open) or path mode (resolves the context chain for a path and renders it), writing output to an injected writer instead of stdout.
 edit_notes:
-  - Never uses println!/print! (clippy::print_stdout enforced); all output goes through the injected `out: &mut W`.
-  - Hook mode is fail-open: hook::run errors are swallowed and an empty result yields Ok(()) with no output, by design.
+  - Path mode records served node ids into crate::session's ledger only when session::ENV_SESSION_ID is set in env, so manual invocation and the PostToolUse hook share one dedup record; keep this in sync with session.rs's ledger format.
+  - Never calls println!/print! directly (clippy::print_stdout stays enabled); all output goes through the `out: &mut W` writer.
+  - hook::run itself is fail-open (never returns Err); the only failure path in hook mode is a broken writer.
 functions:
   - name: hook_mode
     signature: pub const fn hook_mode(&self) -> bool
     purpose: Reports whether stdin must be consumed before dispatch.
   - name: dispatch
     signature: pub fn dispatch<E: Env, W: Write>(env: &E, base: &Path, cli: Cli, stdin: &str, out: &mut W) -> Result<(), CtxError>
-    purpose: Routes parsed CLI arguments to hook or path-based chain rendering.
-    notes: Returns CtxError::Usage if neither a path nor --hook is given; only writer I/O failures propagate in hook mode.
+    purpose: Routes parsed CLI args to hook::run or serve::chain_for + serve::render, folding path-mode results into session::record when a session id is present.
+    notes: Returns CtxError::Usage if neither a path nor --hook is given.
 invariants:
-  - Hook mode never returns an Err except from a broken writer.
-  - Path mode requires cli.path to be Some; absence is a Usage error, not a panic.
+  - In hook mode, an empty JSON string from hook::run means nothing is written and Ok(()) is returned (no trailing newline emitted for empty payload).
+  - Path mode never touches stdin; only hook mode consumes the stdin argument.
 external_deps:
-  - clap: Cli struct derives argv parsing (Parser).
+  - clap: derives Cli's argv parsing via #[derive(Parser)].
