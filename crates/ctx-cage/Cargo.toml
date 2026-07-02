@@ -2,7 +2,7 @@
 name = "ctx-cage"
 version = "0.1.0"
 edition = "2021"
-description = "Generic sandboxed-agent harness: project-parameterized cage + broker that runs an agent against any target repo through the brokered ctx-access/ctx-verify tools."
+description = "Safety cage for autonomous agent runs: offline bwrap namespace with a writable workspace, masked secrets, and a host-side API proxy as the sole egress. ctx-run is the one-command billed launcher."
 publish = false
 
 [lints]
@@ -13,8 +13,8 @@ name = "ctx-cage"
 path = "src/bin/ctx_cage.rs"
 
 [[bin]]
-name = "ctx-cage-client"
-path = "src/bin/ctx_cage_client.rs"
+name = "ctx-run"
+path = "src/bin/ctx_run.rs"
 
 [lib]
 name = "ctx_cage"

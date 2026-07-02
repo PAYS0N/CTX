@@ -47,7 +47,12 @@ pub fn load_prompts<F: Fs>(fs: &F, prompts_dir: &str) -> Result<Prompts, SummErr
 }
 
 /// Summarize one source file into its leaf `.ctx`; returns the `.ctx` path.
-fn summarize_leaf<F: Fs, A: Agent>(
+///
+/// # Errors
+///
+/// [`SummError::PathEscape`] for an unsafe path, [`SummError::AccessDenied`]
+/// for a gated target; propagates filesystem and agent failures.
+pub fn summarize_leaf<F: Fs, A: Agent>(
     fs: &F,
     agent: &A,
     prompts: &Prompts,
@@ -128,7 +133,11 @@ fn push_section(buf: &mut String, label: &str, body: &str) {
 }
 
 /// Summarize one directory into its `rollup.ctx`; returns the path.
-fn summarize_rollup<F: Fs, A: Agent>(
+///
+/// # Errors
+///
+/// Propagates filesystem and agent failures.
+pub fn summarize_rollup<F: Fs, A: Agent>(
     fs: &F,
     agent: &A,
     prompts: &Prompts,

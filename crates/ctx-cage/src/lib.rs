@@ -1,28 +1,33 @@
-//! ctx-cage — generic sandboxed-agent harness.
+//! ctx-cage — a *safety* boundary for autonomous agent runs.
 //!
-//! A staged refactor (ADR-034, in flight): replaces the meal-planning-
-//! shaped `sandbox/*.sh` scripts with a project-parameterized Rust tool
-//! subject to the same lint regime and `ctx-verify` gate as every other
-//! crate in this workspace. This commit lands the foundation — the
-//! [`protocol`] module the broker, in-cage forwarder, and lifecycle
-//! orchestrator will all speak — plus the embedded caged-agent rules.
-//! Subsequent commits land the broker, `bwrap` launcher, lifecycle,
-//! summarize-on-start/-stop, and the PTY relay.
+//! Post-pivot role (supersedes the ADR-034 enforcement cage): the cage
+//! no longer masks source or brokers tools — the context chain is led
+//! by hooks (`ctx-context`), and the agent uses its native Read/Edit
+//! inside the cage. What the cage contains is *blast radius*:
 //!
-//! Cage rules — the project-agnostic caged-agent doctrine, injected
-//! via `--append-system-prompt-file` on every real `claude` launch —
-//! are embedded with `include_str!` so the binary cannot be shipped
-//! without them and cannot drift from a file on disk.
+//! - **Filesystem:** only the target workspace is writable (`/work`,
+//!   bound read-write); the toolchain is bound read-only; secrets are
+//!   masked even inside the workspace (`.env`, `.git/config`); nothing
+//!   from `$HOME` is mounted. Recovery is plain git — sessions start
+//!   from a clean committed tree.
+//! - **Host:** fresh user/pid/ipc/uts namespaces, `--die-with-parent`,
+//!   cleared environment; bwrap sets `no_new_privs` unconditionally.
+//!   (A seccomp filter is a documented residual, not yet wired.)
+//! - **Network:** fully offline (`--unshare-net`). The sole egress is
+//!   the host-side [`proxy`] that injects the real API key and
+//!   originates TLS to the API, reached over a bind-mounted UNIX
+//!   socket; the raw key never enters the cage.
+//!
+//! Cage rules — the agent doctrine injected via
+//! `--append-system-prompt-file` on every real `claude` launch — are
+//! embedded with `include_str!` so the binary cannot ship without them.
 
-pub mod broker;
 pub mod bwrap;
 pub mod cli;
 pub mod error;
 pub mod lifecycle;
-pub mod protocol;
+pub mod proxy;
 pub mod runtime;
-pub mod spawn;
-pub mod summarize;
 
 /// The project-agnostic caged-agent rules, injected as the system
 /// prompt's append-context on every real `claude` launch.

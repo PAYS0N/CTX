@@ -1,10 +1,11 @@
 //! Command-line surface for `ctx-cage`. Parses argv into a
 //! `lifecycle::Resolved` (via [`resolve_mode`] + path resolution in
-//! the host binary).
+//! the host binaries).
 //!
 //! Mode resolution rule: `--self-test <kind>` wins; otherwise
-//! `--task` / `--task-file` ⇒ headless; otherwise interactive (the
-//! default, landed in turn 6). Turn 4 only wires `--self-test stub`.
+//! `--task` / `--task-file` ⇒ headless; otherwise interactive. Billed
+//! modes are double-gated: `--allow-spend` here, and the host-side
+//! API key (only `ctx-run` provides it) in the lifecycle.
 //!
 //! Flags are grouped into [`TaskFlags`] and [`SpendFlags`] sub-structs
 //! to keep the `struct_excessive_bools` clippy threshold satisfied
@@ -56,19 +57,17 @@ pub struct TaskFlags {
     pub interactive: bool,
 }
 
-/// Spend gate + claude-runtime + network flags. Three bools — under
-/// the `struct_excessive_bools` threshold by design.
+/// Spend / safety flags. Two bools — under the
+/// `struct_excessive_bools` threshold by design.
 #[derive(Debug, Args)]
 pub struct SpendFlags {
-    /// Provision a real claude runtime in the cage. Reserved for turn 6.
-    #[arg(long)]
-    pub claude: bool,
-    /// Don't `--unshare-net` (implied by `--claude`).
-    #[arg(long)]
-    pub net: bool,
-    /// Required for any billed mode. Reserved for turn 5+.
+    /// Required for any billed mode.
     #[arg(long)]
     pub allow_spend: bool,
+    /// Permit a billed run on a dirty tree (default: refuse — plain
+    /// git from a clean commit is the recovery story).
+    #[arg(long)]
+    pub allow_dirty: bool,
 }
 
 /// Available no-spend self-tests. New kinds land in later turns.

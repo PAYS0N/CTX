@@ -16,11 +16,16 @@ directory has a `.context/<dir>/rollup.ctx` summarizing its subtree.
 These files are consumed by LLM-based tools to load precise, token-frugal
 context about a codebase without reading every source file in full.
 
-Regenerate by running `ctx-scan <dir>` again. Summaries reflect the source
-as it existed at generation time; re-run after significant changes.
+Each directory also carries a `hashes.json` (content hashes of its
+children); `ctx-scan <dir> --check` diffs them against the source with no
+model call, and `ctx-scan <dir> --update` regenerates only what changed.
+Scope is defined by `.ctxignore` (gitignore syntax; falls back to
+`.gitignore`); secrets and binaries are always excluded and cannot be
+un-ignored. If the tree ever drifts beyond repair, delete `.context/` and
+run a full `ctx-scan <dir>`.
 
-Do not edit `.ctx` or `rollup.ctx` files by hand — they will be
-overwritten on the next scan.
+Do not edit `.ctx`, `rollup.ctx`, or `hashes.json` files by hand — they
+will be overwritten on the next scan.
 ";
 
 /// The fixed README content for the `.context` directory.

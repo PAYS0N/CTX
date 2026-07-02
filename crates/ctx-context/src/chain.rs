@@ -1,14 +1,16 @@
 //! Chain computation: the ordered context nodes from repo root to a
-//! target source path.
+//! target path.
 //!
-//! Order per `docs/SPEC.md`: for each directory top-down, its
-//! `rollup.ctx` then its `intent.md`; then the target's leaf
-//! `<file>.ctx`; then source.
+//! Order: for each directory top-down, its `rollup.ctx` then its
+//! `intent.md`; a file target additionally ends with its leaf
+//! `<file>.ctx`. No source bytes are ever part of a chain — the agent
+//! reads source natively; this tool serves only the summary scaffolding
+//! above it.
 
 use crate::error::CtxError;
 use crate::repo_path::RepoPath;
 
-/// What a chain node is, for stale-banner and shallow-stop decisions.
+/// What a chain node is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeKind {
     /// A directory `rollup.ctx`.
@@ -17,8 +19,6 @@ pub enum NodeKind {
     Intent,
     /// The target file's leaf `<file>.ctx`.
     Leaf,
-    /// The target source file itself.
-    Source,
 }
 
 impl NodeKind {
@@ -29,12 +29,11 @@ impl NodeKind {
             Self::Rollup => "rollup",
             Self::Intent => "intent",
             Self::Leaf => "leaf",
-            Self::Source => "source",
         }
     }
 }
 
-/// One ordered step of a read chain.
+/// One ordered step of a context chain.
 #[derive(Debug, Clone)]
 pub struct ChainNode {
     /// Repo-relative location of this node's backing file.
@@ -54,26 +53,44 @@ const fn node(id: RepoPath, kind: NodeKind) -> ChainNode {
     ChainNode { id, kind }
 }
 
-/// Compute the full ordered chain for `target` (a source file path).
+/// Rollup + intent nodes for each of `dirs`, in the given (top-down) order.
+fn dir_nodes(dirs: &[RepoPath]) -> Vec<ChainNode> {
+    let mut nodes = Vec::new();
+    for dir in dirs {
+        let cdir = context_dir(dir);
+        nodes.push(node(cdir.child("rollup.ctx"), NodeKind::Rollup));
+        nodes.push(node(cdir.child("intent.md"), NodeKind::Intent));
+    }
+    nodes
+}
+
+/// Compute the chain for a **file** target: each ancestor directory's
+/// rollup + intent, then the target's leaf `<file>.ctx`.
 ///
 /// # Errors
 ///
 /// [`CtxError::PathEscape`] if `target` has no file-name component.
-pub fn build(target: &RepoPath) -> Result<Vec<ChainNode>, CtxError> {
+pub fn for_file(target: &RepoPath) -> Result<Vec<ChainNode>, CtxError> {
     let filename = target
         .file_name()
         .ok_or_else(|| CtxError::PathEscape(target.as_string()))?
         .to_owned();
     let dirs = target.dir_chain();
-    let mut nodes = Vec::new();
-    for dir in &dirs {
-        let cdir = context_dir(dir);
-        nodes.push(node(cdir.child("rollup.ctx"), NodeKind::Rollup));
-        nodes.push(node(cdir.child("intent.md"), NodeKind::Intent));
-    }
+    let mut nodes = dir_nodes(&dirs);
     let parent = dirs.last().map_or_else(RepoPath::root, Clone::clone);
     let leaf = context_dir(&parent).child(&format!("{filename}.ctx"));
     nodes.push(node(leaf, NodeKind::Leaf));
-    nodes.push(node(target.clone(), NodeKind::Source));
     Ok(nodes)
+}
+
+/// Compute the chain for a **directory** target: rollup + intent for
+/// every level from the repo root down to (and including) the directory
+/// itself — this is how directory summaries are served on demand.
+#[must_use]
+pub fn for_dir(target: &RepoPath) -> Vec<ChainNode> {
+    let mut dirs = target.dir_chain();
+    if !target.is_root() {
+        dirs.push(target.clone());
+    }
+    dir_nodes(&dirs)
 }

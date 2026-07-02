@@ -1,47 +1,50 @@
-//! Host-side `--claude` runtime resolution.
+//! Host-side claude runtime resolution for billed modes.
 //!
-//! Finds the real `claude` binary, the host user's
-//! `~/.claude/.credentials.json`, `/etc/resolv.conf` (followed through
-//! its symlink), and materializes two ephemeral files in the run's
-//! sockdir: the deterministic minimal `nsswitch.conf` (embedded as an
-//! asset) and a **synthesized** `~/.claude.json` that pre-satisfies
-//! Claude Code's first-run onboarding while carrying *only* the host
-//! `oauthAccount` field (no projects/history — blinding preserved per
-//! the original ADR-030).
+//! Auth is the operator's Claude Code **subscription** (`OAuth`): the
+//! host's `~/.claude/.credentials.json` is bound read-only into the
+//! cage (nothing else from `~/.claude`, preserving blinding), and the
+//! synthesized `~/.claude.json` carries ONLY the host `oauthAccount`
+//! object plus onboarding pre-completion — so claude auto-detects the
+//! credential without prompting. API traffic still leaves the offline
+//! cage only through the host proxy relay (`ANTHROPIC_BASE_URL` points
+//! at it); the proxy passes the `Authorization` header through.
 
 use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::bwrap::ClaudeBinds;
 use crate::error::CageError;
 
-/// Deterministic minimal `nsswitch.conf` (the host's pulls
-/// systemd-only NSS plugins absent in the cage).
-pub const CAGE_NSSWITCH_CONF: &str = include_str!("../assets/cage-nsswitch.conf");
+/// In-cage base URL claude is pointed at (the socat relay's listener).
+pub const CAGE_BASE_URL: &str = "http://127.0.0.1:8080";
 
-/// Resolve every host path the cage's `--claude` mode binds, writing
-/// the two ephemeral files (nsswitch + synthesized claude.json) into
-/// `sockdir`.
+/// Host paths a billed cage launch binds for the claude runtime.
+#[derive(Debug, Clone)]
+pub struct ClaudeRuntime {
+    /// Resolved (`readlink -f`) host path of the `claude` binary.
+    pub claude_binary: PathBuf,
+    /// Host path of `~/.claude/.credentials.json` (bound RO).
+    pub credentials: PathBuf,
+    /// Host path of the synthesized `~/.claude.json` (rw, ephemeral).
+    pub claude_config_json: PathBuf,
+}
+
+/// Resolve the claude binary + subscription credential and write the
+/// synthesized config into `rundir`.
 ///
 /// # Errors
 ///
-/// [`CageError::Protocol`] when `claude` is not on `PATH`, when
-/// `HOME` is unset, or when the host credential / config are missing;
-/// [`CageError::Io`] on any file write; [`CageError::Json`] if the
-/// host config is malformed.
-pub fn resolve_claude_binds(sockdir: &Path) -> Result<ClaudeBinds, CageError> {
+/// [`CageError::Protocol`] when `claude` is not on `PATH` or the
+/// credential/host config are missing; [`CageError::Io`] /
+/// [`CageError::Json`] on config read/write.
+pub fn resolve_claude_runtime(rundir: &Path) -> Result<ClaudeRuntime, CageError> {
     let claude_binary = which_claude_realpath()?;
     let credentials = home_credentials_path()?;
-    let resolv_conf = std::fs::canonicalize("/etc/resolv.conf")?;
-    let nsswitch_conf = write_nsswitch(sockdir)?;
-    let claude_config_json = synth_claude_config(sockdir)?;
-    Ok(ClaudeBinds {
+    let claude_config_json = synth_claude_config(rundir)?;
+    Ok(ClaudeRuntime {
         claude_binary,
         credentials,
-        resolv_conf,
-        nsswitch_conf,
         claude_config_json,
     })
 }
@@ -56,7 +59,7 @@ fn which_claude_realpath() -> Result<PathBuf, CageError> {
         .output()?;
     if !out.status.success() {
         return Err(CageError::Protocol(
-            "claude not found on PATH (need it for --claude)".to_owned(),
+            "claude not found on PATH (needed for a billed mode)".to_owned(),
         ));
     }
     let raw = String::from_utf8_lossy(&out.stdout).trim().to_owned();
@@ -72,44 +75,18 @@ fn which_claude_realpath() -> Result<PathBuf, CageError> {
 /// claude reads when no API key is set).
 fn home_credentials_path() -> Result<PathBuf, CageError> {
     let home = std::env::var_os("HOME")
-        .ok_or_else(|| CageError::Protocol("HOME unset (need it for --claude)".to_owned()))?;
+        .ok_or_else(|| CageError::Protocol("HOME unset (needed for a billed mode)".to_owned()))?;
     let path = PathBuf::from(home).join(".claude/.credentials.json");
     if !path.exists() {
         return Err(CageError::Protocol(format!(
-            "{} missing (need it for --claude)",
+            "{} missing — log in to Claude Code once on the host first",
             path.display()
         )));
     }
     Ok(path)
 }
 
-/// Drop the embedded nsswitch.conf at `<sockdir>/cage-nsswitch.conf`.
-fn write_nsswitch(sockdir: &Path) -> Result<PathBuf, CageError> {
-    let path = sockdir.join("cage-nsswitch.conf");
-    std::fs::write(&path, CAGE_NSSWITCH_CONF)?;
-    Ok(path)
-}
-
-/// Build a minimal `~/.claude.json` and drop it at `<sockdir>/claude.json`.
-///
-/// `oauthAccount` is copied from the host config so claude
-/// auto-detects the subscription credential without prompting; every
-/// other field is set to a sensible default (onboarding done, `/work`
-/// pre-trusted, auto-updates off, theme dark, fresh anonymous id).
-fn synth_claude_config(sockdir: &Path) -> Result<PathBuf, CageError> {
-    let host_config = read_host_claude_config()?;
-    let oauth = host_config
-        .get("oauthAccount")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!({}));
-    let cfg = build_synth_config(&oauth);
-    let path = sockdir.join("claude.json");
-    std::fs::write(&path, serde_json::to_string_pretty(&cfg)?)?;
-    Ok(path)
-}
-
-/// Read and parse `$HOME/.claude.json`. Errors if `HOME` is unset or
-/// the file is missing/invalid.
+/// Read and parse `$HOME/.claude.json` (for the `oauthAccount` object).
 fn read_host_claude_config() -> Result<serde_json::Value, CageError> {
     let home =
         std::env::var_os("HOME").ok_or_else(|| CageError::Protocol("HOME unset".to_owned()))?;
@@ -117,6 +94,24 @@ fn read_host_claude_config() -> Result<serde_json::Value, CageError> {
     let text = std::fs::read_to_string(&path)?;
     let json: serde_json::Value = serde_json::from_str(&text)?;
     Ok(json)
+}
+
+/// Build a minimal `~/.claude.json` and drop it at `<rundir>/claude.json`.
+///
+/// Onboarding is pre-completed, `/work` is pre-trusted, and the host's
+/// `oauthAccount` object is carried so the bound credential
+/// auto-detects with no login prompt. No projects or history enter the
+/// cage.
+fn synth_claude_config(rundir: &Path) -> Result<PathBuf, CageError> {
+    let host_config = read_host_claude_config()?;
+    let oauth = host_config
+        .get("oauthAccount")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let cfg = build_synth_config(&oauth);
+    let path = rundir.join("claude.json");
+    std::fs::write(&path, serde_json::to_string_pretty(&cfg)?)?;
+    Ok(path)
 }
 
 /// The synthesized config body, given an already-extracted `oauth`

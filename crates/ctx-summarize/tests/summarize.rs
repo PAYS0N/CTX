@@ -77,6 +77,11 @@ impl Fs for FakeFs {
     fn is_ignored(&self, _rel: &str) -> Result<bool, SummError> {
         Ok(false)
     }
+
+    fn remove(&self, rel: &str) -> Result<(), SummError> {
+        self.map.borrow_mut().remove(rel);
+        Ok(())
+    }
 }
 
 /// Records every `(system, user)` and returns a fixed completion.

@@ -1,4 +1,4 @@
-# Dogfood workspace. This repository builds its own tooling (ctx-access)
+# Dogfood workspace. This repository builds its own tooling (ctx-context)
 # under the exact lint regime the template enforces. The lint table below
 # is kept byte-identical to template/Cargo.toml on purpose; if they drift,
 # the tooling is no longer eating its own dog food. Any change here must be
@@ -8,7 +8,7 @@
 resolver = "2"
 members = [
     "crates/ctx-core",
-    "crates/ctx-access",
+    "crates/ctx-context",
     "crates/ctx-verify",
     "crates/ctx-summarize",
     "crates/ctx-cage",

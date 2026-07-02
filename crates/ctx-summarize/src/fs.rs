@@ -39,6 +39,13 @@ pub trait Fs {
     ///
     /// [`SummError::Io`] if ignore status cannot be determined.
     fn is_ignored(&self, rel: &str) -> Result<bool, SummError>;
+
+    /// Remove a file. Removing a missing file is not an error.
+    ///
+    /// # Errors
+    ///
+    /// [`SummError::Io`] if removal fails for a reason other than absence.
+    fn remove(&self, rel: &str) -> Result<(), SummError>;
 }
 
 /// Real filesystem rooted at an absolute repository path.
@@ -112,6 +119,17 @@ impl Fs for StdFs {
         }
         names.sort();
         Ok(names)
+    }
+
+    fn remove(&self, rel: &str) -> Result<(), SummError> {
+        match fs::remove_file(self.at(rel)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(SummError::Io {
+                path: rel.to_owned(),
+                detail: e.to_string(),
+            }),
+        }
     }
 
     fn is_ignored(&self, rel: &str) -> Result<bool, SummError> {

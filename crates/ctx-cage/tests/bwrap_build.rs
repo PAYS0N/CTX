@@ -1,153 +1,108 @@
-//! Argv-shape tests for [`build_bwrap_args`]. Pure; never invokes
-//! `bwrap`. Helpers live in `tests/common/mod.rs`.
-
-mod common;
+//! Tests for the pure bwrap argv builder: safety-cage semantics —
+//! writable workspace, masked secrets, unconditional network unshare,
+//! explicit env, RO toolchain and tool binds.
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 
-use ctx_cage::bwrap::{
-    build_bwrap_args, CAGE_BIN, CAGE_CLAUDE_CONFIG, CAGE_CLAUDE_CRED, CAGE_RULES_PATH,
-    CAGE_SOCK_DIR, WORK_DIR,
-};
-use ctx_cage::error::CageError;
+use ctx_cage::bwrap::{build_bwrap_args, BwrapConfig, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR};
 
-use common::{has_pair, has_ro_bind, has_setenv, has_tmpfs, sample_claude_binds, sample_config};
-
-#[test]
-fn starts_with_bwrap_and_injects_isolation_flags() -> Result<(), CageError> {
-    let argv = build_bwrap_args(&sample_config())?;
-    assert_eq!(argv.first(), Some(&OsString::from("bwrap")));
-    for flag in [
-        "--unshare-user",
-        "--unshare-pid",
-        "--unshare-ipc",
-        "--unshare-uts",
-        "--die-with-parent",
-        "--new-session",
-        "--clearenv",
-        "--unshare-net",
-    ] {
-        assert!(
-            argv.contains(&OsString::from(flag)),
-            "missing flag {flag} in {argv:?}"
-        );
+/// A representative config exercising every bind family.
+fn sample_config() -> BwrapConfig {
+    BwrapConfig {
+        target_root: PathBuf::from("/home/u/proj"),
+        secret_masks: vec![".env".to_owned(), ".git/config".to_owned()],
+        mask_file: PathBuf::from("/tmp/run/empty-mask"),
+        toolchain: vec![
+            PathBuf::from("/home/u/.cargo"),
+            PathBuf::from("/home/u/.rustup"),
+        ],
+        tool_binds: vec![(
+            PathBuf::from("/host/bin/ctx-verify"),
+            format!("{CAGE_BIN}/ctx-verify"),
+        )],
+        rw_binds: vec![(
+            PathBuf::from("/tmp/run/claude.json"),
+            "/tmp/.claude.json".to_owned(),
+        )],
+        rundir: PathBuf::from("/tmp/run"),
+        cage_rules_path: PathBuf::from("/tmp/run/cage-rules.md"),
+        env: vec![("PATH".to_owned(), "/cage/bin:/usr/bin:/bin".to_owned())],
+        new_session: true,
+        cage_cmd: vec!["sh".into(), "-c".into(), "true".into()],
     }
-    Ok(())
+}
+
+/// Position of `needle` in `argv`, if present.
+fn find(argv: &[OsString], needle: &str) -> Option<usize> {
+    argv.iter().position(|a| a == needle)
+}
+
+/// Assert the triple `flag host cage` appears contiguously in `argv`.
+fn assert_bind(argv: &[OsString], flag: &str, host: &str, cage: &str) {
+    let found = argv.windows(3).any(|w| {
+        w.first().is_some_and(|a| a == flag)
+            && w.get(1).is_some_and(|a| a == host)
+            && w.get(2).is_some_and(|a| a == cage)
+    });
+    assert!(found, "expected `{flag} {host} {cage}` in argv");
 }
 
 #[test]
-fn overlays_tmpfs_on_every_discovered_crate_dir() -> Result<(), CageError> {
-    let argv = build_bwrap_args(&sample_config())?;
-    for cage_path in [
-        "/work/crates/a/src",
-        "/work/crates/b/src",
-        "/work/crates/a/tests",
-        "/work/target",
-    ] {
-        assert!(has_tmpfs(&argv, cage_path), "missing tmpfs of {cage_path}");
-    }
-    Ok(())
-}
-
-#[test]
-fn binds_target_rules_sock_and_both_client_names() -> Result<(), CageError> {
-    let argv = build_bwrap_args(&sample_config())?;
-    let client_at_access = format!("{CAGE_BIN}/ctx-access");
-    let client_at_verify = format!("{CAGE_BIN}/ctx-verify");
-    let pairs: [(&str, &str); 5] = [
-        ("/abs/proj", WORK_DIR),
-        ("/abs/cage-rules.md", CAGE_RULES_PATH),
-        ("/tmp/ctxcage-sock", CAGE_SOCK_DIR),
-        ("/abs/target/debug/ctx-cage-client", &client_at_access),
-        ("/abs/target/debug/ctx-cage-client", &client_at_verify),
-    ];
-    for (host, cage) in pairs {
-        assert!(has_ro_bind(&argv, host, cage), "missing {host} -> {cage}");
-    }
-    Ok(())
-}
-
-#[test]
-fn sets_the_post_clearenv_env_explicitly() -> Result<(), CageError> {
-    let argv = build_bwrap_args(&sample_config())?;
-    let sock = format!("{CAGE_SOCK_DIR}/ctx.sock");
-    let path = format!("{CAGE_BIN}:/usr/bin:/bin");
-    let envs: [(&str, &str); 7] = [
-        ("HOME", "/tmp"),
-        ("USER", "cage"),
-        ("LANG", "C.UTF-8"),
-        ("TERM", "xterm-256color"),
-        ("TASK", "t1"),
-        ("CTX_SOCK", &sock),
-        ("PATH", &path),
-    ];
-    for (k, v) in envs {
-        assert!(has_setenv(&argv, k, v), "missing setenv {k}={v}");
-    }
-    Ok(())
-}
-
-#[test]
-fn allow_net_drops_unshare_net() -> Result<(), CageError> {
-    let mut c = sample_config();
-    c.allow_net = true;
-    let argv = build_bwrap_args(&c)?;
-    assert!(!argv.contains(&OsString::from("--unshare-net")));
-    Ok(())
-}
-
-#[test]
-fn claude_mode_binds_runtime_dns_tls_creds_and_config() -> Result<(), CageError> {
-    let mut c = sample_config();
-    c.allow_net = true;
-    c.claude = Some(sample_claude_binds());
-    let argv = build_bwrap_args(&c)?;
-    let claude_at = format!("{CAGE_BIN}/claude");
-    let ro_pairs: [(&str, &str); 5] = [
-        ("/home/u/.local/share/claude/versions/9.9.9", &claude_at),
-        ("/etc/resolv.conf", "/etc/resolv.conf"),
-        ("/etc/ssl", "/etc/ssl"),
-        ("/host/cage-nsswitch.conf", "/etc/nsswitch.conf"),
-        ("/home/u/.claude/.credentials.json", CAGE_CLAUDE_CRED),
-    ];
-    for (host, cage) in ro_pairs {
-        assert!(has_ro_bind(&argv, host, cage), "missing {host} -> {cage}");
-    }
-    assert!(has_pair(&argv, "--bind", "/host/tmp/claude.json"));
-    assert!(argv.contains(&OsString::from(CAGE_CLAUDE_CONFIG)));
-    Ok(())
-}
-
-#[test]
-fn claude_without_net_is_a_protocol_error() {
-    let mut c = sample_config();
-    c.claude = Some(sample_claude_binds());
-    c.allow_net = false;
-    let err = build_bwrap_args(&c).expect_err("must reject");
-    assert!(matches!(err, CageError::Protocol(_)));
-}
-
-#[test]
-fn cage_cmd_appears_after_a_double_dash_terminator() -> Result<(), CageError> {
-    let mut c = sample_config();
-    c.cage_cmd = vec![
-        OsString::from("/cage/bin/ctx-access"),
-        OsString::from("manifest"),
-    ];
-    let argv = build_bwrap_args(&c)?;
-    let dash_idx = argv
-        .iter()
-        .position(|s| s == &OsString::from("--"))
-        .expect("must contain a -- terminator");
-    let after: Vec<&OsString> = argv.iter().skip(dash_idx + 1).collect();
-    assert_eq!(after.len(), 2);
-    assert_eq!(
-        after.first().map(|s| s.as_os_str()),
-        Some("/cage/bin/ctx-access".as_ref())
+fn workspace_is_bound_read_write_with_regular_file_secret_masks() {
+    let argv = build_bwrap_args(&sample_config());
+    assert_bind(&argv, "--bind", "/home/u/proj", "/work");
+    // Masks must be a regular file, never /dev/null: bind mounts carry
+    // nodev, so a masked device node breaks every reader (git).
+    assert_bind(&argv, "--ro-bind", "/tmp/run/empty-mask", "/work/.env");
+    assert_bind(
+        &argv,
+        "--ro-bind",
+        "/tmp/run/empty-mask",
+        "/work/.git/config",
     );
-    assert_eq!(
-        after.get(1).map(|s| s.as_os_str()),
-        Some("manifest".as_ref())
+    assert!(!argv.iter().any(|a| a == "/dev/null"));
+}
+
+#[test]
+fn network_is_always_unshared_and_env_cleared() {
+    let argv = build_bwrap_args(&sample_config());
+    assert!(find(&argv, "--unshare-net").is_some(), "must be offline");
+    assert!(find(&argv, "--clearenv").is_some(), "no host env leak");
+    assert!(find(&argv, "--die-with-parent").is_some());
+    assert!(find(&argv, "--new-session").is_some());
+}
+
+#[test]
+fn toolchain_and_tools_are_read_only() {
+    let argv = build_bwrap_args(&sample_config());
+    assert_bind(&argv, "--ro-bind", "/home/u/.cargo", "/home/u/.cargo");
+    assert_bind(&argv, "--ro-bind", "/home/u/.rustup", "/home/u/.rustup");
+    let cage_verify = format!("{CAGE_BIN}/ctx-verify");
+    assert_bind(&argv, "--ro-bind", "/host/bin/ctx-verify", &cage_verify);
+    assert_bind(
+        &argv,
+        "--ro-bind",
+        "/tmp/run/cage-rules.md",
+        CAGE_RULES_PATH,
     );
-    Ok(())
+    assert_bind(&argv, "--ro-bind", "/tmp/run", CAGE_RUN_DIR);
+}
+
+#[test]
+fn rw_binds_and_env_and_command_are_emitted() {
+    let argv = build_bwrap_args(&sample_config());
+    assert_bind(&argv, "--bind", "/tmp/run/claude.json", "/tmp/.claude.json");
+    assert_bind(&argv, "--setenv", "PATH", "/cage/bin:/usr/bin:/bin");
+    let sep = find(&argv, "--").expect("separator");
+    assert_eq!(argv.get(sep + 1), Some(&OsString::from("sh")));
+}
+
+#[test]
+fn interactive_mode_drops_new_session() {
+    let mut cfg = sample_config();
+    cfg.new_session = false;
+    let argv = build_bwrap_args(&cfg);
+    assert!(find(&argv, "--new-session").is_none());
+    assert!(find(&argv, "--unshare-net").is_some(), "still offline");
 }

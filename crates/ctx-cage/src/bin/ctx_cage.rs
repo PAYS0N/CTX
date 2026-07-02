@@ -1,7 +1,11 @@
 //! Host orchestrator for `ctx-cage`. Parses argv into a `Cli`,
 //! resolves it into a `lifecycle::Resolved`, and runs the lifecycle.
-//! Turn 4 wires only `--self-test stub`; the other modes return a
-//! clear "lands in turn N" error from `cli::resolve_mode`.
+//!
+//! Billed modes are gated behind `--allow-spend` /
+//! `CTX_CAGE_ALLOW_SPEND=1`; `ctx-run` is the convenient billed
+//! launcher (clean-tree default + post-run summary refresh). The
+//! always-available mode here is `--self-test stub` — the no-spend
+//! containment probe.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -9,7 +13,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use ctx_cage::cli::{mode_is_billed, resolve_mode, Cli, Mode, ResolveError};
+use ctx_cage::cli::{resolve_mode, Cli, Mode, ResolveError};
 use ctx_cage::error::CageError;
 use ctx_cage::lifecycle::{execute, Resolved};
 
@@ -22,10 +26,10 @@ fn emit<W: Write>(mut w: W, msg: &str) {
 }
 
 /// Errors the host binary surfaces. Distinct from `CageError` so the
-/// CLI's "not yet supported" messages render cleanly.
+/// CLI's rejection messages render cleanly.
 #[derive(Debug, thiserror::Error)]
 enum HostError {
-    /// Bubbled from the lifecycle / broker / bwrap stack.
+    /// Bubbled from the lifecycle / bwrap / proxy stack.
     #[error("{0}")]
     Cage(#[from] CageError),
     /// A `cli::resolve_mode` rejection (unsupported combo or conflict).
@@ -33,23 +37,25 @@ enum HostError {
     Resolve(#[from] ResolveError),
 }
 
-/// Sibling-binary paths a host run depends on.
-struct BinPaths {
-    /// Real `ctx-access` (the brokered source-access tool).
-    access: PathBuf,
-    /// Real `ctx-verify` (the brokered verification tool).
-    verify: PathBuf,
-    /// Real `ctx-summarize` (host-side pre/post auto-summarize).
-    summarize: PathBuf,
-    /// Real `ctx-cage-client` (bound into the cage as the forwarder).
-    client: PathBuf,
+/// Sibling CTX binaries bound into the cage under `/cage/bin`.
+pub struct BinPaths {
+    /// Real `ctx-verify` (the agent's checkpoint).
+    pub verify: PathBuf,
+    /// Real `ctx-context` (chain server; hook mode).
+    pub context: PathBuf,
+    /// Real `ctx-scan` (hash check / summary regeneration).
+    pub scan: PathBuf,
 }
 
 /// Resolve sibling-binary paths from `current_exe`, with env
-/// overrides (`CTX_ACCESS_BIN`, `CTX_VERIFY_BIN`,
-/// `CTX_SUMMARIZE_BIN`, `CTX_CAGE_CLIENT_BIN`) for installations that
-/// place the tools elsewhere.
-fn resolve_bin_paths() -> Result<BinPaths, CageError> {
+/// overrides (`CTX_VERIFY_BIN`, `CTX_CONTEXT_BIN`, `CTX_SCAN_BIN`)
+/// for installations that place the tools elsewhere.
+///
+/// # Errors
+///
+/// [`CageError::Protocol`] if the running binary's directory cannot
+/// be derived.
+pub fn resolve_bin_paths() -> Result<BinPaths, CageError> {
     let me = std::env::current_exe()?;
     let bin_dir = me
         .parent()
@@ -58,10 +64,9 @@ fn resolve_bin_paths() -> Result<BinPaths, CageError> {
         std::env::var_os(env_key).map_or_else(|| bin_dir.join(name), PathBuf::from)
     };
     Ok(BinPaths {
-        access: pick("CTX_ACCESS_BIN", "ctx-access"),
         verify: pick("CTX_VERIFY_BIN", "ctx-verify"),
-        summarize: pick("CTX_SUMMARIZE_BIN", "ctx-summarize"),
-        client: pick("CTX_CAGE_CLIENT_BIN", "ctx-cage-client"),
+        context: pick("CTX_CONTEXT_BIN", "ctx-context"),
+        scan: pick("CTX_SCAN_BIN", "ctx-scan"),
     })
 }
 
@@ -76,22 +81,18 @@ fn default_task_id() -> String {
     format!("cage-{}", std::process::id())
 }
 
-/// Build the `Resolved` from CLI + filesystem resolution. The
-/// `claude_runtime` flag is true when the user passed `--claude` OR
-/// the mode is billed (Task/Interactive both call the model).
-fn build_resolved(cli: Cli, mode: Mode, allow_spend: bool) -> Result<Resolved, CageError> {
+/// Build the `Resolved` from CLI + filesystem resolution. `ctx-cage`
+/// never carries an API key, so billed modes are refused downstream.
+fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError> {
     let bins = resolve_bin_paths()?;
-    let claude_runtime = cli.spend_flags.claude || mode_is_billed(&mode);
     Ok(Resolved {
         target_root: cli.target,
         task_id: cli.task_id.unwrap_or_else(default_task_id),
         mode,
-        ctx_access_bin: bins.access,
         ctx_verify_bin: bins.verify,
-        ctx_summarize_bin: bins.summarize,
-        client_bin: bins.client,
-        claude_runtime,
-        allow_spend,
+        ctx_context_bin: bins.context,
+        ctx_scan_bin: bins.scan,
+        allow_dirty: cli.spend_flags.allow_dirty,
     })
 }
 
@@ -101,7 +102,7 @@ fn run() -> Result<i32, HostError> {
     let cli = Cli::parse();
     let allow_spend = cli.spend_flags.allow_spend || env_allow_spend();
     let mode = resolve_mode(&cli, allow_spend)?;
-    let resolved = build_resolved(cli, mode, allow_spend)?;
+    let resolved = build_resolved(cli, mode)?;
     Ok(execute(&resolved)?)
 }
 

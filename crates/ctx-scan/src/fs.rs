@@ -65,4 +65,8 @@ impl Fs for ScanFs {
     fn is_ignored(&self, rel: &str) -> Result<bool, SummError> {
         self.inner.is_ignored(rel).or(Ok(false))
     }
+
+    fn remove(&self, rel: &str) -> Result<(), SummError> {
+        self.inner.remove(rel)
+    }
 }

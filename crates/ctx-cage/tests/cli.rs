@@ -34,9 +34,8 @@ fn base(target: &str) -> Cli {
             interactive: false,
         },
         spend_flags: SpendFlags {
-            claude: false,
-            net: false,
             allow_spend: false,
+            allow_dirty: false,
         },
     }
 }
