@@ -1,174 +1,89 @@
 # Status & Active Plan
 
 The live "where we are, what's next, and why." `SPEC.md` is the frozen
-design; `UNIMPLEMENTED.md` is the backlog; `DECISIONS.md` is the rationale
-log; this file is the moving part. Update it whenever the active focus
-changes.
+design (revision 4 = the lead-by-hooks re-spec); `UNIMPLEMENTED.md` is
+the backlog; `DECISIONS.md` is the rationale log; this file is the
+moving part. Update it whenever the active focus changes.
 
-Last updated: 2026-05-19.
+Last updated: 2026-07-02.
 
-## Done and verified
+## Current shape (post-pivot)
 
-- **Layer 1** lint regime: smoke-tested on toolchain 1.95.0 (ADR-004),
-  rustfmt nightly-options stripped (ADR-005), test exemptions via
-  clippy.toml (ADR-006). CTX dogfoods it.
-- **`ctx-core`** (`crates/ctx-core`): dependency-free leaf crate; the
-  single source of truth for the security-sensitive access gate
-  (secret/binary/gitignored deny) shared by ctx-access + ctx-summarize
-  (ADR-023). Unit-tested.
-- **`ctx-access`** (`crates/ctx-access`): init/read/write/list/end-task,
-  single-call bundled chain (ADR-007), `served_nodes` cache (ADR-008),
-  STALE-on-rewrite (ADR-009), soft absent-markers for missing scaffolding
-  (ADR-010). 8 tests; chain/verbosity/staleness verified by hand.
-- **`ctx-verify`** (`crates/ctx-verify`, was `ctx-check`): THE agent
-  checkpoint (ADR-011, scope ADR-022) — formats(apply)+builds+lints+
-  tests in one call; optional crate-name scopes cargo via `-p`;
-  all-pass collapses to `{"status":"pass"}` (per-check map omitted).
-  9 tests; dogfooded green; immediately caught a broken doc link the
-  earlier tight runs skipped.
-- **`ctx-summarize`** (`crates/ctx-summarize`): leaf-up, prompts from
-  files, subprocess agent contract (ADR-012); 6 tests.
-- **`agents/summarizer-claude.py`**: Anthropic API adapter, prompt-cached
-  system block (ADR-013); `.env` mechanism (gitignored).
-- **Prompts**: richer `files(9)/` set adopted (ADR-014); rollup
-  no-fence fix applied.
-- **Reference project**: `../meal-planning/` (relocated, ADR-015) — CLI
-  meal planner, integer/fixed-point (ADR-003), `ctx-verify` PASS, 13
-  tests, offline CLI exact, loop closed. Findings in
-  `../meal-planning/README.md` § Findings.
-- **Two real (billed) summarize+audit runs**: the reference project and
-  CTX's own tooling source. Summaries accurate; gaps surfaced (no
-  doctrine in tree without `intent.md` — now addressed for CTX).
-- **Handoff docs**: `CLAUDE.md`, `docs/DECISIONS.md`, this file,
-  `.context/intent.md`.
-- **Static checks made deterministic** (ADR-025): `rationale_check.py`,
-  `workspace_lints_check.sh`, `no_allow_check.sh` enumerate via
-  `git ls-files` (no FS walk) — root cause of a phantom
-  `{status:fail,count:0}` triple (walk racing a `target/` writer);
-  ADR-024 retained as defense-in-depth. Validated under heavy concurrent
-  `target/` churn (36 invocations, all clean) + detection intact.
-- **The cage (`sandbox/`) — DONE & proven** (Cage C/D below); `CAGE D
-  PASS`, no spend, reference tree unmutated.
-- **Agent-run wiring — DONE & proven no-spend** (ADR-028/029/030):
-  `agent-demo.sh` → `AGENT RUN PASS`; `--preflight` → `PREFLIGHT PASS`
-  (real `--claude` env); `--check-onboarding` → `ONBOARDING CHECK PASS`
-  (no wizard/key prompt, subscription auto-detected). Generalized broker
-  `{ctx-access, ctx-verify}`, egress 1a, `--clearenv`+synthesized
-  `~/.claude.json`, headless + PTY-isolated interactive.
-- **MVP VALIDATED end-to-end** (ADR-031/032/033): summary tree
-  regenerated via `ctx-summarize` (18 leaves + 6 rollups) and
-  **committed** (`meal-planning bfc7280`); a re-run caged billed agent
-  built `profile edit` (77 insertions) with the chain served,
-  `ctx-verify mealplan` = `{"status":"pass"}`, audit 0 divergences.
-  Harness fixes landed (ADR-027/031). The agent's deliverable remains
-  uncommitted in meal-planning (keep or discard).
-- **Cage promoted to Rust** (ADR-034): new `crates/ctx-cage` (lib + 2
-  bins) supersedes the Bash sandbox. Parameterized target (no default),
-  auto-discovered crate dirs, embedded cage-rules + nsswitch, real
-  framed UNIX-socket protocol, spend gate enforced. Delivered in 7
-  turns; each `ctx-verify` `{"status":"pass"}`. Parity smoke against
-  meal-planning: `ctx-cage --self-test stub` → `SELF-TEST-STUB-OK`.
-  All `sandbox/*.sh` + `pty-relay.py` retired (the README is now a
-  pointer). Dedicated-PTY isolation for `--interactive` deferred
-  (turn 6b backlog; current mode inherits parent tty, sound under
-  `legacy_tiocsti=0`).
+Agents use native Read/Edit. `ctx-context <path>` serves the
+rollup+intent chain (a directory or `.` serves directory summaries);
+the committed `.claude/settings.json` injects it on every Read/Grep/
+Glob via the fail-open `PostToolUse` hook, deduplicated per session.
+Freshness is content-hashed (`.context/<dir>/hashes.json`); the Stop
+hook reports staleness only; regeneration is post-session
+(`ctx-scan <dir> --update`, `--approve` past 50 targets) — one owner,
+ADR-043. The cage is safety-only: RW workspace, masked secrets
+(empty-file masks, ADR-042), offline with the host passthrough proxy
+as sole egress, subscription auth (ADR-041). `ctx-run <dir> "<task>"`
+is the billed launcher. `ctx-verify` is unchanged and remains THE
+checkpoint.
 
-## MVP VALIDATED end-to-end — chain present, committed, used (ADR-031/032/033)
+## Done and verified (this pivot — ADR-035..043)
 
-**The full thesis now holds, on a committed reproducible baseline.**
-History: a first billed run proved the **access/cage** layer
-(cage/broker/deny-gate/write-requires-prior-read/lifecycle/blinding;
-ADR-031) but — caught by inspection (ADR-032) — ran with **no summary
-tree** (wiped on git-init, never committed), so the agent built from
-raw source and CTX's *core thesis* (the summarized chain is useful
-context) was unproven. Corrective executed (ADR-033): regenerated
-`.context` via `ctx-summarize` (billed; 18 leaves + 6 rollups),
-**committed** it (`meal-planning bfc7280` — closes the
-stated-but-unfollowed "`.ctx` ARE committed" doctrine), and re-ran the
-caged billed agent. Result: clean `profile edit` (77 insertions),
-`ctx-verify mealplan` → `{"status":"pass"}` (re-verified host-side),
-audit **0 divergences**. The chain reached the agent (committed
-non-absent tree + brokered sole source path, reproduced host-side;
-implementation honors summary-stated invariants). Honest caveat:
-headless `claude -p` shows narration not raw tool stdout, so proof is
-environmental+corroborating, not a verbatim capture (a stream-json run
-could capture bytes if ever wanted — judged unnecessary, ADR-033).
+- **`ctx-context`** (was `ctx-access`): read-only chain CLI + `--hook`
+  mode (event-`cwd` rooted, session-deduped, fail-open with loud
+  markers). Write path/task lifecycle deleted. Hermetic tests; hook
+  verified firing in real GUI/CLI sessions (dedup state files are the
+  evidence — model self-reports are not, ADR-037).
+- **`ctx-scan`**: CACT hash tree + sidecars, `.ctxignore` scope,
+  `--check` (free) / `--update` (selective, gated) / `--stop-hook`
+  (report-only), orphan-leaf cleanup. Tests cover the
+  edit-one-file ⇒ one-leaf+ancestor-rollups delta.
+- **Prompts**: leaf + rollup rewritten cdoc-style (behavior-first,
+  `edit_notes`, invariants demoted; budgets unchanged). Leaves KEPT
+  (ADR-039).
+- **`ctx-cage` rework**: broker/protocol/client deleted; RW workspace,
+  toolchain RO binds, always-offline + passthrough proxy (pure header
+  rewrite, socat-TLS upstream seam, socketpair-tested); `ctx-run`
+  launcher (dirty-tree refusal, optional 0600 `~/.config/ctx/env` for
+  the summarizer only, post-run refresh that warns but never fails the
+  run). `--self-test stub` probes: workspace writable, masks readable-
+  as-empty, in-cage `git status` works, no egress — green.
+- **Interactive caged claude reached the TUI** on subscription auth
+  with no onboarding/key prompt (installer warning silenced by the
+  `/tmp/.local/bin/claude` bind).
+- **Docs**: SPEC revision 4, ADR-035..043, CLAUDE.md rewritten
+  cdoc-lean, cage-rules precedence clause, SANDBOX.md retired-banner.
+- Whole workspace `ctx-verify` = `{"status":"pass"}` at every step.
 
-Harness fixes also landed: `meal-planning/CLAUDE.md`,
-`--dangerously-skip-permissions`, and the ADR-027 scoped-revert +
-refuse-on-dirty guard (a blanket `git checkout crates` had destroyed a
-prior deliverable).
+Pre-pivot MVP validation (access/cage thesis, billed runs, reference
+project) stands as history: ADR-016..034 and git.
 
-**Open:** the agent's `profile edit` deliverable is uncommitted in
-meal-planning (validation output — keep or discard). Deferred:
-production `ctx`-uid/cache-owning broker, Layer 3 (`UNIMPLEMENTED.md`).
+## Open / next
 
-The cage substrate (kept as the record):
+1. **First billed headless `ctx-run`** (one small task): proves relay →
+   proxy → TLS passthrough with OAuth end-to-end. Free tests cover
+   everything up to the first real API request.
+2. **Seed this repo's summary tree** with the new prompts:
+   `ctx-scan . --update --approve` (~110 leaves + 34 rollups, billed).
+   Until then `.context/` is STALE (pre-pivot content, no sidecars):
+   chains still serve, but describe the old architecture below the
+   root level and are absent for the new crates.
+3. **Phase 5 — e2e smoke fixture**: throwaway workspace, buggy file +
+   failing test, generated tree, `--stub` (deterministic fake agent,
+   no billing) and billed modes; asserts hook injection, native Edit,
+   `ctx-verify` pass, post-session rollup regen, no egress beyond the
+   proxy, no writes outside the workspace.
 
-- **Cage A — DONE.** Reference project relocated to `../meal-planning/`;
-  CTX doc refs fixed; tooling verified from the new location.
-- **Cage B — DONE (all of it).** Deny-by-default gate
-  (secret/binary/gitignored, refused even if explicitly passed; ADR-017)
-  single-sourced in the new **`ctx-core`** crate (ADR-023, security
-  single-source) and wired into BOTH `ctx-access` (read/write/list +
-  `Env::tracked_files`/`is_ignored` + `manifest` module/command
-  materialized at `init-task`) and `ctx-summarize` (per-target gate +
-  `Fs::is_ignored` + `--approve` >`MAX_TARGETS` scope gate). e2e
-  verified on this repo: manifest excludes `.env`; `read`/`summarize`
-  of `.env`→denied(secret), gitignored→denied. Side work: rationale
-  guidance refactor-first (ADR-021); `ctx-verify` rename+extend
-  (ADR-022); `ctx-verify` `errored`≠`fail`/never-silent + deterministic
-  (ADR-024). Whole 4-crate workspace `{"status":"pass"}` via ctx-verify.
-- **Cage C — DONE.** `sandbox/` cage: `bwrap` mount+net ns,
-  `../meal-planning` mounted **read-only** with `crates/mealplan/{src,
-  tests}`+`target/` as empty `tmpfs` (source absent), `--unshare-net`.
-  In-cage `ctx-access` is a UNIX-socket forwarder to a host-side broker
-  running the real binary in the real tree — SANDBOX.md's client/broker
-  **transport seam** at the proving minimum (ADR-026; production
-  `ctx`-uid/cache-owning broker stays deferred).
-- **Cage D — DONE.** `sandbox/cage-demo.sh`: init-task (no spend) →
-  broker up → cage runs `stub-agent.sh` (reachability: `cat`/`find`/
-  `grep -r` all blocked, only `ctx-access` serves — 36-entry manifest,
-  profile.rs 4450 B) → cage runs `cage-adversary.sh` under a **fresh
-  zero-read task** (enforcement preserved through the forwarder: secret/
-  repo-boundary/blind-write/bogus-task all denied host-side) → integrity
-  gate (reference tree unmutated) → broker down → shutdown. `CAGE D
-  PASS`, no model called. An unsound first adversary draft overwrote
-  real source (recovered via git); fixed + integrity net added (ADR-027;
-  prereq: meal-planning is now a git repo, ADR-023/025).
+## Deferred / residuals (recorded in ADRs)
 
-**Result (ADR-031).** `CTX_CAGE_ALLOW_SPEND=1 sandbox/agent-demo.sh`
-ran a real billed `claude` in the cage; it used `ctx-access` for all
-source, hit and recovered from write-requires-prior-read, refactored to
-the length tiers (not `// rationale:`), and reached `ctx-verify
-mealplan` = `{"status":"pass"}`. The agent's deliverable is in
-`../meal-planning` (uncommitted): `cli/mod.rs`+`handlers.rs`,
-`ProfileEditArgs`/`ProfileCmd::Edit`/`apply_profile_edit`.
-
-**Re-run (clean conditions):** `CTX_CAGE_ALLOW_SPEND=1
-sandbox/agent-demo.sh` (add `--interactive` to watch). No API key
-(subscription auto-bound); house rules auto-loaded from
-`/work/CLAUDE.md`; no manual permission accept. Spend boundaries: the
-agent loop (that env switch) and `end-task` (audit→summarize) — still
-explicit-go.
-
-**Next (post-MVP):** commit the validated artifact if desired; write
-`../meal-planning` findings; the deferred production broker
-(`ctx`-uid/cache-owning, SANDBOX.md) and Layer-3 work remain in
-`UNIMPLEMENTED.md`.
-
-## Open decisions / risks
-
-- Spend gating: real model calls only on explicit go (ADR-013/016).
-- `ctx-core` extraction debt is recorded, not done (ADR-020).
-- Layer 2 is advisory until Cage C/D land — stated in SPEC and intent.md.
-- The CTX `.context` tree exists from a real summarize but predates
-  `.context/intent.md`; re-running the rollup summarizer would let the
-  root rollup align to the new doctrine (optional, costs a few calls).
+- seccomp filter for the cage (namespaces + `no_new_privs` + offline
+  stand today) — ADR-040.
+- OAuth refresh mid-session would miss the single-host proxy —
+  ADR-041.
+- Orphaned `.context` *directory* subtrees are not auto-pruned —
+  ADR-038.
+- Dedicated-PTY isolation for `--interactive` (ADR-034 backlog).
+- Production multi-agent broker + Layer 3: `UNIMPLEMENTED.md`,
+  unchanged.
 
 ## How to verify anything
 
-`target/debug/ctx-verify` from the relevant directory (optionally a
-crate name to scope). It formats+builds+lints+**tests** in one call;
-`{"status":"pass"}` = done. Don't run `cargo fmt`/`build`/`test`
-yourself; never raw `cargo` dumps (see `CLAUDE.md`).
+`target/debug/ctx-verify` (optionally a crate name to scope). It
+formats+builds+lints+**tests** in one call; `{"status":"pass"}` = done.
+Containment: `target/debug/ctx-cage <dir> --self-test stub`. Chain:
+`target/debug/ctx-context <path>`. Freshness: `ctx-scan <dir> --check`.

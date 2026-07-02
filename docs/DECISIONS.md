@@ -592,3 +592,172 @@ a hybrid "ship Bash now / port later" path (the user chose
 "single commitment"). **Supersedes** the Bash transport described by
 [[ADR-026]] (the cage's architecture and threat model from ADR-026
 stand; only the implementation language changed).
+
+## ADR-035 — Owner-authorized re-spec: lead-by-hooks replaces enforce-by-cage
+**Decision:** CTX stops *enforcing* top-down context reading via
+source-masking and a custom write tool, and starts *leading* it: agents
+use native Read/Edit; a Claude Code `PostToolUse` hook injects the
+context chain on every read; the cage survives purely as a safety
+boundary for autonomous runs. The context model (path-keyed `.context`
+mirror tree), `ctx-verify`, `ctx-core`, and the Layer-1 lint regime are
+unchanged. Authorized per [[ADR-001]]; executed 2026-07-01/02 as SPEC
+revision 4. **Context (the three frictions):** heavy init ceremony
+(task ids, cage-only tools), whole-file echo on every `write` (the
+"one file per turn" output-cap workaround), and leaf summaries that
+over-weighted invariants and didn't compose into task-level
+understanding. **Rejected:** keeping the enforcement cage — its
+environmental guarantee ([[ADR-016]]) was real but priced every edit;
+the pivot trades "impossible to skip context" for "free to receive
+context", betting the chain's *value* (validated in [[ADR-033]]) makes
+voluntary consumption sufficient. **Execution lesson:** stale doctrine
+actively misleads — a caged agent followed the old CLAUDE.md into the
+deleted `ctx-access` flow (a stale binary in `target/debug` completed
+the illusion). CLAUDE.md was rewritten (cdoc-lean, owner-trimmed),
+`cage-rules.md` gained an explicit "these rules win over stale project
+docs" precedence clause, and orphaned binaries were removed.
+
+## ADR-036 — `ctx-access` shrinks to `ctx-context`: read-only chain, no lifecycle
+**Decision:** the crate is renamed `ctx-context`; one command:
+`ctx-context <path>` prints the rollup+intent chain root→target (a
+directory target — or `.` — serves its own level, so directory
+summaries are on demand; a file target ends with its leaf `.ctx`). No
+source bytes, no `--task-id`. Deleted: the `write` path,
+`init-task`/`end-task`, the `served_nodes` cache, manifest and report
+modules. Soft absent-markers stay ([[ADR-010]]). Per-session
+deduplication — the useful remnant of `served_nodes` — relocates to
+the hook edge as `.context/.cache/hook-<session-id>.json`, keyed by the
+event's `session_id`, so repeated reads inject only the chain delta.
+**Rejected:** keeping write-needs-read enforcement in an advisory tool
+(without the cage's masking it enforces nothing and taxes everything).
+**Supersedes** the mechanisms of [[ADR-007]]/[[ADR-008]]/[[ADR-009]];
+ADR-007's principle (the chain passes through context before source is
+touched) survives, now delivered by injection rather than by gating.
+
+## ADR-037 — Hooks are the forcing function; the read hook is fail-open
+**Decision:** committed `.claude/settings.json` wires `PostToolUse`
+(`Read|Grep|Glob`) → `ctx-context --hook`, which reads the event JSON,
+resolves the repo root from the event's own `cwd` (harnesses differ in
+process cwd), and emits `hookSpecificOutput.additionalContext`.
+Failure posture (owner decision): **fail-open, loudly** — chain errors
+inject an explicit `(chain unavailable)` marker; unparseable input,
+out-of-repo targets, and `.context`/`.git` reads stay silent; nothing
+ever blocks the read. **Rejected:** fail-closed — a `PostToolUse` hook
+cannot block (content is already served), so true fail-closed means a
+`PreToolUse` deny that turns every gap in the summary tree (fresh
+dirs, docs, scratch) into a hard stop; ADR-032's lesson is honored by
+making absence *visible*, not fatal. **Operational notes:** hooks in
+project settings need one-time review via `/hooks`; verification is
+the transcript or the dedup state file — asking the model whether
+context "was injected" is unreliable (observed with a haiku agent
+denying an injection the state file proved).
+
+## ADR-038 — Freshness = content-hash tree (CACT) + `.ctxignore`, not git
+**Decision:** each mirrored directory carries
+`.context/<dir>/hashes.json`: leaf entries are the SHA-256 of source
+bytes, the directory hash is the SHA-256 of its sorted child entries,
+so any change propagates to the root. `ctx-scan <dir> --check` diffs
+stored vs recomputed with no model call; `--update` regenerates
+exactly the stale leaves and rollups (leaf-up), deletes orphaned leaf
+`.ctx` files, and rewrites sidecars — still behind the `MAX_TARGETS`
+`--approve` cost gate. Summarization scope is `.ctxignore` (gitignore
+syntax; falls back to `.gitignore`; built-in `target/`), evaluated by
+the `ignore` crate — git-independent, so the walker's
+`git check-ignore` subprocess is gone; the `ctx-core` secret/binary
+deny still applies on top and cannot be un-ignored. **Rejected:** git
+diff as the change signal — it couples summary freshness to commit
+state and misses gitignore-invisible edits. **Residual:** a deleted
+*directory's* `.context` subtree is not auto-pruned (delete `.context/`
+and rescan is the documented remedy). New deps: `sha2`, `ignore`
+(licenses allowlist-clean; no duplicate versions).
+
+## ADR-039 — Leaf summaries KEPT; both prompts rewritten cdoc-style
+**Decision:** leaf `.ctx` files stay in the pipeline (they remain the
+rollup assembler's input and the file target's chain tail), but both
+summarizer prompts are rewritten as *context documents* in the owner's
+Cdoc spec sense: lead with behavior in domain terms, then a new
+`edit_notes` section ("what you must know before changing this"),
+functions, then invariants demoted to load-bearing-only;
+self-contained facts, no history (the hash tree owns freshness),
+mandatory deduplication pass. Budgets unchanged (leaf 10/40, rollup
+15/40). **Context:** the pivot draft dropped leaves; review surfaced
+that rollups would then be synthesized from raw source (a real token
+and quality change), and the owner chose keep-but-restyle instead.
+**Supersedes** [[ADR-014]]'s prompt content, not its verbose-
+instructions-cheap principle.
+
+## ADR-040 — The cage is a safety boundary, not an enforcement mechanism
+**Decision:** `/work` is bound **read-write** (the agent edits the
+real tree with native tools); deleted: the broker, framed socket
+protocol, `ctx-cage-client` forwarder, tmpfs source-masking, and crate
+discovery. Containment: workspace-only writes (`/tmp` aside), RO
+toolchain binds (`~/.cargo`, `~/.rustup` at identical paths,
+`CARGO_NET_OFFLINE=true`), secrets masked inside the workspace
+([[ADR-042]]), nothing else from `$HOME`, fresh
+user/pid/ipc/uts/net namespaces, `--clearenv`, `--die-with-parent`,
+bwrap's unconditional `no_new_privs`. Recovery is plain git: billed
+runs refuse a dirty tree (`--allow-dirty` overrides) — no snapshot
+layer. `ctx-run <dir> "<task>"` is the one-command billed launcher
+(typing it *is* the explicit spend go; `ctx-cage` keeps the
+`--allow-spend` gate and the free `--self-test stub` containment
+probe). Host CTX tools are bound at `/cage/bin` as real binaries — no
+forwarders, since there is nothing left to broker. **Supersedes** the
+transport of [[ADR-026]] and the broker/protocol modules of
+[[ADR-034]] (its cage-is-a-lint-clean-Rust-crate decision stands).
+**Residuals (recorded, not wired):** no seccomp filter yet; dedicated
+PTY isolation for `--interactive` still deferred (ADR-034 backlog).
+
+## ADR-041 — Egress: offline cage + host passthrough proxy; auth = subscription
+**Decision:** the cage is always `--unshare-net`; the sole egress is a
+host-side proxy on a UNIX socket bind-mounted at `/run/ctx/api.sock`,
+reached from inside via a `socat` relay on `127.0.0.1:8080`
+(`ANTHROPIC_BASE_URL` points there). The proxy rewrites each request
+head (upstream `Host`, `Connection: close`) and dials
+`api.anthropic.com:443` through a verified-TLS `socat` child behind an
+injected `Upstream` seam — no TLS stack enters the crate; the pure
+header-rewrite is unit-tested over socketpairs. **Auth:** the agent
+uses the operator's Claude Code **subscription** ([[ADR-029]]
+reaffirmed): `~/.claude/.credentials.json` bound RO at the cage HOME,
+synthesized `~/.claude.json` carries only `oauthAccount` + onboarding
+pre-completion; the proxy passes `Authorization` through. A
+key-injection mode (`ProxyConfig.api_key: Some`) exists and is tested
+but unwired — the pivot brief specified it, the owner then corrected
+that no metered agent key exists; the env-file key is summarizer-only.
+**Rejected:** full network with direct API egress (the accepted 1a
+residual of [[ADR-028]] — strictly worse than a single-host relay).
+**Residuals:** an OAuth token refresh mid-session would target a host
+the single-endpoint proxy doesn't serve (credential is bound fresh at
+launch; observed lifetimes exceed sessions); the claude binary is
+additionally bound at `/tmp/.local/bin/claude` because the installer
+health-check probes `$HOME/.local/bin` and warned on every launch.
+
+## ADR-042 — Secret masks are an empty regular file, never `/dev/null`
+**Decision:** `.env` and `.git/config` (when present) are masked with
+an RO bind of an empty regular file minted in the run dir; masked
+paths must read as empty, not fail to open. **Context:** the first
+real caged run died in git — bwrap bind mounts carry `nodev`, so a
+`/dev/null` mask makes the path an unopenable device node (EACCES),
+and git parses config on nearly every command. **Rationale:** a mask
+that breaks its readers is a usability bug wearing a security costume;
+hiding content and preserving readability are both requirements. The
+`--self-test stub` probe now asserts mask readability and in-cage
+`git status` usability — same family as [[ADR-024]]/[[ADR-027]]:
+harnesses must assert the property they exist to provide, not a
+proxy for it.
+
+## ADR-043 — Summary regeneration has one owner: post-session
+**Decision (owner):** the Stop hook is **report-only** — it recomputes
+staleness (free) and emits a `systemMessage` naming what is stale and
+the exact refresh command (pre-hinting `--approve` when the backlog
+exceeds `MAX_TARGETS`, so following the suggestion never dead-ends on
+the cost gate). Regeneration happens in exactly one place: after the
+session — `ctx-run`'s post-run `ctx-scan --update`, or the same
+command run manually. The refresh never fails the run (the session's
+deliverable is not hostage to maintenance; failures warn with the
+manual command) and never passes `--approve` itself — the gate is
+crossed only by a human typing it. **Context:** the first wiring
+regenerated from the Stop hook when spend env vars were set, while
+`ctx-run` also refreshed post-run — two owners; and the Stop event
+fires at the end of *every turn*, so mid-session regeneration both
+bills repeatedly and races the agent's half-finished edits. The owner
+framed the fix: regenerate between sessions, with finalized states at
+both ends of the user's input→output loop.

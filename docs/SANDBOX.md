@@ -1,5 +1,19 @@
 # Sandbox Design (deployment layer)
 
+Status: **RETIRED** (2026-07-02, SPEC revision 4 / ADR-035, ADR-040,
+ADR-041). The enforcement premise below — make direct source reads
+impossible; broker `ctx-access` as the sole path — is no longer the
+design. The context chain is *led* by hooks (`ctx-context --hook`), and
+the cage (`crates/ctx-cage`, launched via `ctx-run`) is a safety
+boundary only: writable real workspace, masked secrets, offline with a
+host-side passthrough proxy as the sole egress. This file is kept as
+the historical record of the enforcement-era threat model and the
+client/broker seam it mandated.
+
+---
+
+Original text (historical):
+
 Status: design, not implemented at MVP. Referenced by `docs/SPEC.md`
 Layer 2. Without the sandbox deployed, Layer 2 is **advisory**, not
 enforced: an agent can read source directly and bypass `ctx-access`. This

@@ -20,6 +20,31 @@ exemption given `#[allow]` is banned). New component `ctx-verify` (a
 token-frugal verification broker) is sequenced BEFORE the reference
 project; see `docs/UNIMPLEMENTED.md`.
 
+Revision 4 (2026-07-02, owner-authorized re-spec — ADR-035..043).
+**Lead-by-hooks replaces enforce-by-cage.** Goal 2 is now *led*, not
+forced: agents read/edit source with native tools; a Claude Code
+`PostToolUse` hook (`ctx-context --hook`, fail-open) injects the
+rollup+intent chain on every read, deduplicated per session. This
+revision supersedes, in the body below: the **Access protocol**
+section entirely (`ctx-access`, task lifecycle, per-task cache,
+`served_nodes`, write-needs-read, stale banners — all removed;
+`ctx-context <path>` is the read-only chain server, and directory
+targets serve directory summaries on demand); the **summarization
+trigger** (no `end-task` — freshness is a content-hash tree,
+CACT-style `hashes.json` sidecars per mirrored directory, with
+`ctx-scan --check` free and `--update` regenerating only stale
+leaves/rollups behind the `--approve` gate, post-session only); the
+**scope rule** (`.ctxignore`, gitignore syntax, falls back to
+`.gitignore`; the ctx-core secret/binary deny is not overridable); and
+the **file-format prose** for `.ctx`/`rollup.ctx` (cdoc-style:
+behavior-first with `edit_notes`, invariants demoted; line budgets
+unchanged). The sandbox's role inverts: `docs/SANDBOX.md`'s
+broker/enforcement design is retired — the cage (`ctx-cage`, launched
+via `ctx-run`) is a *safety* boundary only: writable real workspace,
+masked secrets, offline with a host-side passthrough proxy as sole
+egress, subscription auth. Layer 1, `ctx-verify`, `ctx-core`, the
+mirror-tree layout, and the concurrency foundations are unchanged.
+
 ## Goals
 
 1. Make bad code unrepresentable or uncompilable, not merely discouraged.

@@ -37,7 +37,7 @@ import sys
 import urllib.error
 import urllib.request
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_MAX_TOKENS = 2048
 DEFAULT_TEMPERATURE = 0.0
 API_VERSION = "2023-06-01"
