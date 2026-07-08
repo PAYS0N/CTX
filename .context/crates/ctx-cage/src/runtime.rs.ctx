@@ -1,24 +1,9 @@
-file: crates/ctx-cage/src/runtime.rs
-behavior: Resolves the host's Claude Code binary and OAuth subscription credential, and synthesizes a minimal `~/.claude.json` written into the cage rundir so claude auto-detects the bound credential without a login prompt.
-edit_notes:
-  - Blinding-preserving design: only `.credentials.json` is bound from `~/.claude` (never the whole directory), and the synthesized config carries only `oauthAccount` plus onboarding pre-completion — no host projects/history enter the cage. Any change must preserve this minimality.
-  - API traffic depends on `CAGE_BASE_URL` (127.0.0.1:8080) being the in-cage `ANTHROPIC_BASE_URL`, routed through a host proxy relay that passes through the `Authorization` header; this file only prepares credentials/config, it does not configure the relay itself.
-  - `synth_claude_config` hardcodes onboarding metadata fields (version, timestamps, counts) that mimic a real Claude Code config; if claude's expected config shape changes, these literals need updating.
-functions:
-  - name: resolve_claude_runtime
-    signature: pub fn resolve_claude_runtime(rundir: &Path) -> Result<ClaudeRuntime, CageError>
-    purpose: Top-level entry point resolving claude binary, host credentials path, and synthesized config, for a billed cage launch.
-  - name: which_claude_realpath
-    signature: fn which_claude_realpath() -> Result<PathBuf, CageError>
-    purpose: Finds and fully resolves (symlinks) the `claude` binary via `command -v` + `readlink -f`.
-  - name: home_credentials_path
-    signature: fn home_credentials_path() -> Result<PathBuf, CageError>
-    purpose: Locates `$HOME/.claude/.credentials.json`, erroring if the operator hasn't logged in on the host.
-  - name: synth_claude_config
-    signature: fn synth_claude_config(rundir: &Path) -> Result<PathBuf, CageError>
-    purpose: Builds the minimal `~/.claude.json` replacement and writes it to `<rundir>/claude.json`.
-invariants:
-  - Only the `oauthAccount` field is carried from the host's real `~/.claude.json`; all other host config/project/history data is excluded.
-  - Requires `HOME` to be set and `claude` to be on `PATH`; returns `CageError::Protocol` otherwise rather than panicking.
-external_deps:
-  - serde_json: used both for host config parsing and for hand-building the synthesized config via the `json!` macro.
+Resolves and stages everything a "billed" (subscription-auth) cage launch needs on the host: locates the real `claude` binary, finds the host's OAuth credential file, and synthesizes a minimal `~/.claude.json` written into the run directory before container start. This is the piece that lets an offline cage authenticate as the operator's Claude Code subscription without ever seeing the rest of `~/.claude` or prompting for login.
+
+The core invariant is blinding: only `~/.claude/.credentials.json` is bound into the cage (read-only), and the synthesized config carries *only* the host's `oauthAccount` object plus onboarding/trust pre-completion fields — no project history, no other credentials. API calls still leave the cage exclusively through the host proxy relay at `CAGE_BASE_URL = "http://127.0.0.1:8080"` (set as `ANTHROPIC_BASE_URL` by the caller), which passes the `Authorization` header through untouched; this file doesn't set up that relay, just points claude at it implicitly via the constant it exports.
+
+`resolve_claude_runtime(rundir: &Path, target_root: &Path) -> Result<ClaudeRuntime, CageError>` is the sole entry point, returning a `ClaudeRuntime { claude_binary, credentials, claude_config_json }` — three host paths the caller binds/mounts into the cage. It errors via `CageError::Protocol` if `claude` isn't on `PATH`, `HOME` is unset, or `~/.claude/.credentials.json`/`~/.claude.json` are missing — all recoverable-but-fatal setup issues, never a panic.
+
+Non-obvious behavior worth knowing: `which_claude_realpath` shells out to `readlink -f "$(command -v claude)"` because Claude Code installs `bin/claude` as a symlink to a versioned ELF under `share/` — resolving the symlink is required for correct binding. `build_synth_config` keys the `projects` map by `target_root`'s exact string form (the workspace's real host path per ADR-046, no fixed alias) because that's the same key claude's own trust map checks — any mismatch between this path and where the cage actually mounts the project reopens the trust dialog and breaks headless operation. `random_anonymous_id` reads raw bytes from `/dev/urandom` directly (not `rand`) since only per-run freshness for telemetry is needed, not cryptographic randomness; failure to open the file silently falls back to an all-zero buffer rather than erroring.
+
+Depends on `serde_json` for building/parsing config values; no other unusual crates.

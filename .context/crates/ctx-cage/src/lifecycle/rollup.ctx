@@ -1,16 +1,7 @@
-directory: crates/ctx-cage/src/lifecycle
-domain: Implements the three-phase lifecycle of a single cage run — prepare (clean-tree gate, run-dir mint, rules/mask materialization, runtime resolution), run (bwrap exec with a backchannel), teardown (best-effort run-dir cleanup) — driven by `mod.rs::execute`. Consumers call only `execute(&Resolved) -> Result<i32, CageError>`; everything else here is private phase machinery operating on the shared `Resolved`/`Prep` structs.
-edit_notes:
-  - Two parallel phase-2 implementations exist: run.rs (`run_until_exit`, HTTPS passthrough proxy over a Unix socket, via crate::proxy) and serve.rs (`serve_until_exit`, tool-request broker over a Unix socket, via crate::broker). mod.rs::execute wires in only run::run_until_exit — serve.rs is not called from execute(); confirm intended status (dead code vs. planned replacement) before modifying either.
-  - run.rs and serve.rs each independently define `exec_cage` and `cage_cmd_for_mode` against the same `BwrapConfig`/Prep shape; a change to bwrap argv layout, cage sandbox paths, or Prep fields must be mirrored in both files or one will silently drift.
-  - teardown::teardown_run always runs after phase 2 finishes, success or failure, and its result never affects the returned exit code — do not add early returns between run/serve and teardown.
-children:
-  - mod.rs: Entry point; sequences prepare → (run) → teardown and owns the shared Resolved/Prep contract.
-  - prepare.rs: Phase 1 — gates billed modes, mints the run dir, materializes rules/mask files, resolves claude runtime.
-  - run.rs: Active phase-2 implementation — proxy-backed bwrap exec, wired into mod.rs::execute.
-  - serve.rs: Alternate phase-2 implementation — broker-backed bwrap exec, not currently invoked by mod.rs.
-  - teardown.rs: Phase 3 — deletes prep.rundir only, swallowing all errors.
-invariants:
-  - teardown never touches paths outside prep.rundir and never propagates errors or panics.
-  - Phase-2 implementations exit code 1 if the cage process was killed by signal rather than exiting normally.
-external_deps:
+`crates/ctx-cage/src/lifecycle/` is the orchestration core of a `ctx-cage` invocation: it sequences prepare → run → teardown for one sandboxed subprocess run and exposes the crate's real entry point, `execute(&Resolved) -> Result<i32, CageError>`. Depending on this subtree gets you a fully-provisioned, executed, and cleaned-up `bwrap` cage; callers never touch `bwrap`, proxy sockets, or run-dir paths directly.
+
+Data flows in one direction: `prepare::prepare_run` builds `Prep` (rundir path, rules file, mask file, optional claude runtime) from `Resolved`; the run phase consumes `Prep` to construct the `bwrap` invocation and environment; `teardown::teardown_run` then deletes exactly `prep.rundir` and nothing else, unconditionally and without observable failure, even if the run phase errored. `mode_is_billed(&r.mode)` (from `crate::cli`) is checked independently in both `prepare` (to gate on a clean git tree and resolve a claude runtime) and the run phase (to decide whether to start networking); a change to which modes count as billed must be checked against both sites. The rules file path (`prep.rules_file`, sourced from `CAGE_RULES_MD`) and the mask file written by `prepare` are consumed by the run phase's `bwrap` config and system-prompt injection — changing what `prepare` writes changes what gets mounted/appended in the run phase.
+
+There are two independently-maintained phase-2 implementations: `run.rs` (`run_until_exit`, wired into `mod.rs` per its own notes) runs an API-proxy model where the caged claude's OAuth header passes straight through a Unix-socket proxy (`ProxyConfig.api_key` always `None`), while `serve.rs` (`serve_until_exit`) runs a broker model instead, allowlisting only `ctx-access`/`ctx-verify` over a similarly-named Unix socket. `mod.rs`'s own edit notes list only `prepare.rs`/`run.rs`/`teardown.rs` as the phases it sequences, not `serve.rs` — an editor touching phase-2 behavior must confirm which of `run.rs` or `serve.rs` is actually invoked before assuming a change takes effect.
+
+`teardown.rs`'s scope invariant (never touch anything outside `prep.rundir`) and its silence on error are the only guarantees the rest of the crate can rely on for cleanup; nothing in `run.rs`/`serve.rs` performs its own socket-file removal beyond what teardown or their own stop/join sequences handle at exit.

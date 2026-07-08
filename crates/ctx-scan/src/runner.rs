@@ -10,14 +10,24 @@
 use std::path::Path;
 
 use ctx_summarize::agent::Agent;
-use ctx_summarize::fs::Fs;
-use ctx_summarize::runner as summ;
+use ctx_summarize::fs::{Fs, StdFs};
+use ctx_summarize::runner::{self as summ, Prompts};
 
 use crate::error::ScanError;
-use crate::fs::ScanFs;
 use crate::hash::{self, Staleness};
 use crate::readme::write_readme;
 use crate::walker::walk_dir;
+
+/// Load the prompt files from `prompts_dir`, resolved against the process
+/// cwd — deliberately independent of the scan target, which need not carry
+/// CTX's prompts.
+fn load_prompts(prompts_dir: &str) -> Result<Prompts, ScanError> {
+    let cwd = std::env::current_dir().map_err(|e| ScanError::Io {
+        path: ".".to_owned(),
+        detail: e.to_string(),
+    })?;
+    Ok(summ::load_prompts(&StdFs::new(cwd), prompts_dir)?)
+}
 
 /// Outcome of a full scan run.
 #[derive(Debug)]
@@ -30,11 +40,8 @@ pub struct ScanSummary {
     pub readme_written: bool,
 }
 
-/// Summarize `targets` leaf-up and write the README using `fs` and `agent`.
-///
-/// Prompts are read via `fs` — a [`ScanFs`] intercepts the well-known paths
-/// and returns embedded constants; a seeded in-memory fake works the same
-/// way in tests.
+/// Summarize `targets` leaf-up with pre-loaded `prompts`, writing the
+/// `.context/` tree and README through `fs` (the scan-target filesystem).
 ///
 /// # Errors
 ///
@@ -42,11 +49,12 @@ pub struct ScanSummary {
 pub fn summarize<F: Fs, A: Agent>(
     fs: &F,
     agent: &A,
+    prompts: &Prompts,
     targets: &[String],
     approve: bool,
 ) -> Result<ScanSummary, ScanError> {
     summ::scope_check(targets.len(), approve)?;
-    let s = summ::run(fs, agent, "prompts", targets)?;
+    let s = summ::run_with_prompts(fs, agent, prompts, targets)?;
     write_readme(fs)?;
     Ok(ScanSummary {
         leaves_written: s.leaves_written,
@@ -56,15 +64,22 @@ pub fn summarize<F: Fs, A: Agent>(
 }
 
 /// Full pipeline: walk `base`, summarize everything, write the hash
-/// sidecars and the README.
+/// sidecars and the README. Prompts are loaded from `prompts_dir` (cwd
+/// relative), not from `base`.
 ///
 /// # Errors
 ///
 /// Propagates walk, scope, summarization, hash, and README failures.
-pub fn scan_run<A: Agent>(base: &Path, agent: &A, approve: bool) -> Result<ScanSummary, ScanError> {
-    let fs = ScanFs::new(base.to_path_buf());
+pub fn scan_run<A: Agent>(
+    base: &Path,
+    prompts_dir: &str,
+    agent: &A,
+    approve: bool,
+) -> Result<ScanSummary, ScanError> {
+    let fs = StdFs::new(base.to_path_buf());
+    let prompts = load_prompts(prompts_dir)?;
     let targets = walk_dir(base)?;
-    let summary = summarize(&fs, agent, &targets, approve)?;
+    let summary = summarize(&fs, agent, &prompts, &targets, approve)?;
     hash::store(&fs, &hash::compute(base, &targets)?)?;
     Ok(summary)
 }
@@ -76,7 +91,7 @@ pub fn scan_run<A: Agent>(base: &Path, agent: &A, approve: bool) -> Result<ScanS
 ///
 /// Propagates walk and hash-computation failures.
 pub fn check_run(base: &Path) -> Result<Staleness, ScanError> {
-    let fs = ScanFs::new(base.to_path_buf());
+    let fs = StdFs::new(base.to_path_buf());
     let targets = walk_dir(base)?;
     let current = hash::compute(base, &targets)?;
     let stored = hash::load_stored(&fs, &current);
@@ -88,19 +103,19 @@ pub fn check_run(base: &Path) -> Result<Staleness, ScanError> {
 fn regenerate<F: Fs, A: Agent>(
     fs: &F,
     agent: &A,
+    prompts: &Prompts,
     stale: &Staleness,
     approve: bool,
 ) -> Result<(), ScanError> {
     summ::scope_check(stale.changed_files.len(), approve)?;
-    let prompts = summ::load_prompts(fs, "prompts")?;
     for f in &stale.changed_files {
-        summ::summarize_leaf(fs, agent, &prompts, f)?;
+        summ::summarize_leaf(fs, agent, prompts, f)?;
     }
     for leaf in &stale.orphan_leaves {
         fs.remove(leaf)?;
     }
     for d in &stale.stale_dirs {
-        summ::summarize_rollup(fs, agent, &prompts, d)?;
+        summ::summarize_rollup(fs, agent, prompts, d)?;
     }
     Ok(())
 }
@@ -112,8 +127,13 @@ fn regenerate<F: Fs, A: Agent>(
 /// # Errors
 ///
 /// Propagates walk, scope, summarization, and hash failures.
-pub fn update_run<A: Agent>(base: &Path, agent: &A, approve: bool) -> Result<Staleness, ScanError> {
-    let fs = ScanFs::new(base.to_path_buf());
+pub fn update_run<A: Agent>(
+    base: &Path,
+    prompts_dir: &str,
+    agent: &A,
+    approve: bool,
+) -> Result<Staleness, ScanError> {
+    let fs = StdFs::new(base.to_path_buf());
     let targets = walk_dir(base)?;
     let current = hash::compute(base, &targets)?;
     let stored = hash::load_stored(&fs, &current);
@@ -121,7 +141,8 @@ pub fn update_run<A: Agent>(base: &Path, agent: &A, approve: bool) -> Result<Sta
     if stale.is_fresh() {
         return Ok(stale);
     }
-    regenerate(&fs, agent, &stale, approve)?;
+    let prompts = load_prompts(prompts_dir)?;
+    regenerate(&fs, agent, &prompts, &stale, approve)?;
     hash::store(&fs, &current)?;
     write_readme(&fs)?;
     Ok(stale)

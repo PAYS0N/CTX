@@ -1,22 +1,7 @@
-directory: crates/ctx-scan/src
-domain: Standalone CLI tool (`ctx-scan`) that builds and maintains a `.context/` tree of AI-generated file/directory summaries via content-hash (Merkle-tree) change detection, independent of git. Provides full-scan, dry-run listing, check-only staleness reporting, incremental update, and a Claude Code Stop-hook integration, all built on ctx-summarize's generic summarization runner and Fs abstraction.
-edit_notes:
-  - Core pipeline is walk (walker.rs) → hash (hash.rs) → summarize (ctx_summarize::runner via runner.rs) → readme (readme.rs); runner.rs::regenerate() applies changes in fixed order (changed_files, then orphan_leaves, then stale_dirs), relying on hash::diff's deepest-first stale_dirs ordering.
-  - Freshness is defined solely by hash.rs's SHA-256 Merkle tree, never git state; walker.rs seeds `.ctxignore` from `.gitignore` once (never re-reads `.gitignore` after), and both hash.rs and walker.rs depend on ctx_summarize::cpath/scope_matcher staying in sync with how ctx-summarize itself paths and scopes files.
-  - CLI modes (dry-run, check, stop-hook, update, full scan) are mutually exclusive and dispatch in a fixed order in both cli.rs and main.rs; adding a mode means touching clap conflict attributes, dispatch order in both files, and exit-code conventions in main.rs.
-  - stop_hook must always fail open (never error out / never bill an agent session); main.rs swallows its Result unconditionally — any future logic there must preserve that.
-  - fs.rs's ScanFs intercepts only read() for two hard-coded embedded prompt paths (LEAF_PATH/ROLLUP_PATH), which must match both the runner's requested prompt paths and the actual `prompts/` layout; all other Fs ops pass through to StdFs.
-children:
-  - cli.rs: CLI arg parsing and mode dispatch (dry-run/check/update/stop-hook), including line-format contracts consumed by external scripts/hooks.
-  - error.rs: Shared ScanError type all other modules return/propagate into.
-  - fs.rs: Fs wrapper embedding compiled-in prompt text so scanning works without a prompts/ directory on disk.
-  - hash.rs: Sole staleness-detection engine — computes, persists, and diffs the content-hash tree that check/update/stop-hook all rely on.
-  - lib.rs: Module declarations and documented public entry points (runner::*, cli::dispatch).
-  - main.rs: Binary entry point; builds SubprocessAgent from env/.env and routes to cli.rs functions with defined exit codes.
-  - readme.rs: Generates the human-facing `.context/README.md` explaining the tree's conventions.
-  - runner.rs: Orchestrates full-scan/check/update pipelines, the seam between hash.rs/walker.rs and ctx_summarize's runner.
-  - walker.rs: File discovery — walks the tree honoring `.ctxignore` scope and always-excluded/secret/binary paths.
-invariants:
-  - update_run and stop_hook never call the agent or write any files when the hash tree is already fresh.
-  - `.context/`, `.git/`, secrets, and binaries are excluded from scanning regardless of `.ctxignore` contents.
-  - Output line prefixes (`stale-dir:`, `stale-leaf:`, `orphan-leaf:`, `fresh`) and the stop-hook JSON payload are stable formats consumed by external scripts/hooks.
+This is `ctx-scan`'s implementation crate root: a standalone tool that walks an arbitrary directory (git or not), maintains a `.context/` sidecar tree of generated summaries, and uses content-hashing (not git) to detect staleness cheaply. Depending on this crate gets you either a CLI binary (`main.rs`) or three programmatic entry points re-exported from `lib.rs` — `runner::scan_run`/`check_run`/`update_run` — plus `cli::dispatch` for embedding the CLI behavior elsewhere. Everything downstream of `runner.rs` is generic over `ctx_summarize::fs::Fs` and `ctx_summarize::agent::Agent`, so tests exercise real logic against fakes without touching disk or a model.
+
+The staleness pipeline is the crate's central coupling: `walker::walk_dir` produces the scoped file list, `hash::compute`/`load_stored`/`diff` turn that into a `Staleness` (stale dirs deepest-first, changed files, orphan leaves), and `runner::regenerate` consumes it in a fixed order — changed leaves, then orphan deletion, then stale-dir rollups — because rollups must postdate their children. `runner.rs` only calls `hash::store` and `readme::write_readme` on the "not fresh" path in `update_run`, but always on the `scan_run` path; `check_run` calls neither. Prompt loading is a second cross-cutting quirk: both `runner.rs` and `cli.rs` resolve prompts against the process cwd, never the scanned `base`/`dir`, so any caller that `chdir`s or embeds this crate must be aware prompts don't travel with the target repo.
+
+`cli.rs` and `main.rs` split cleanly: `cli.rs` owns flag parsing, mutual-exclusion enforcement, dispatch logic, and the plaintext output format (`leaves:`/`stale-dir:` etc., a de facto wire contract for scripts); `main.rs` is pure routing — agent construction, exit codes, and the stop-hook's always-succeed guarantee. The stop-hook path deliberately never regenerates (deferred to a later `--update`) and always fail-opens, both in `cli::stop_hook`'s design and reinforced by `main.rs` swallowing its result. `walker.rs` and `hash.rs` both depend on `ctx_summarize::cpath`/`fs::scope_matcher` to keep path-mapping and ignore-scope consistent with the sister `ctx-summarize` crate — changing scope or sidecar layout in one requires checking the other. `error.rs` is the shared `ScanError` all of the above funnel into via `?`, folding in `SummError` automatically.
+
+Invariant spanning the subtree: a fully fresh tree (per `hash::diff`) results in zero agent calls and zero filesystem writes anywhere in the pipeline — `update_run`'s early return is what guarantees this, but it depends on `walker`/`hash` producing correct staleness first.

@@ -1,8 +1,5 @@
-directory: crates/ctx-cage/assets
-domain: Static asset payloads embedded into the ctx-cage sandbox at build/run time: one config file bind-mounted into the container filesystem, one prompt text injected into the sandboxed agent's context. Neither file contains logic; both are read verbatim by ctx-cage's Rust code and their content directly determines sandbox networking behavior and agent tool-use behavior respectively.
-edit_notes:
-  - Both files are consumed by inclusion (bind-mount or include_str!-style embedding) rather than parsed/templated — any edit here changes runtime behavior immediately, not just documentation.
-  - Tool/command names and NSS source lists referenced in these files must stay in sync with what the cage container actually provides; neither file's correctness can be checked by reading this directory alone.
-children:
-invariants:
-  - Contents are static and environment-specific to the cage's minimal container (no systemd services, no scratch-copied filesystem); assumptions here don't transfer to full-host environments.
+crates/ctx-cage/assets/ holds static, non-Rust payloads that ctx-cage's sandbox setup mounts or injects verbatim at runtime — nothing here is parsed or executed as code, and edits are prompt/config content changes, not logic changes. Depending on this directory gets you the two artifacts a caged session is built from: the container's minimal NSS config and the fabricated "safety sandbox" narrative fed to the agent under test.
+
+The two files serve unrelated concerns and don't share format or lifecycle: cage-nsswitch.conf is infrastructure (bind-mounted read-only as /etc/nsswitch.conf, must keep `files dns` on the hosts line or hostname resolution inside the cage breaks) while cage-rules.md is eval content (pulled in via include_str! or equivalent by a Rust source elsewhere that assembles the agent's prompt, and asserts specific behavior for tools named `ctx-access`, `ctx-verify`, `ctx-scan --update`). The one cross-cutting fact: if the crate's real tool names/behavior for `ctx-access`/`ctx-verify`/`ctx-scan` change, cage-rules.md's claims about them go stale and must be updated in lockstep — that coupling lives in the Rust code that both defines the real tools and loads this file, not in this directory. Any rename of either asset must be fixed at its include/mount call site elsewhere in the crate.
+
+No intent.md exists for this directory.

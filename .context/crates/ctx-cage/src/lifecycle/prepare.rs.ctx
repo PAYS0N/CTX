@@ -1,18 +1,9 @@
-```
-file: crates/ctx-cage/src/lifecycle/prepare.rs
-behavior: Lifecycle phase 1 of a cage run: gates billed modes on a clean git tree, mints a per-run tempdir, materializes the rules file and a secret-mask file, and resolves the claude runtime when billed.
-edit_notes:
-  - Billed-mode detection via mode_is_billed(&r.mode) gates both the clean-tree check and claude runtime resolution; keep these two gated together since the read-write cage mount only makes "recovery is plain git" valid when starting from a clean commit.
-  - Mask file must be a real empty regular file, not /dev/null, because bind mounts carry nodev.
-  - Rundir path is deterministic (ctxcage-<task_id>-<pid>) and any pre-existing dir at that path is silently removed before recreation.
-functions:
-  - name: prepare_run
-    signature: pub fn prepare_run(r: &Resolved) -> Result<Prep, CageError>
-    purpose: Runs the full phase-1 setup sequence and returns the Prep bundle consumed by later lifecycle phases.
-    notes: Returns CageError::Protocol for dirty tree or missing claude runtime/credential; CageError::Io for filesystem failures.
-invariants:
-  - claude field is Some iff mode_is_billed(&r.mode) is true.
-  - ensure_clean_tree errors unless target_root is a git repo with a clean porcelain status or allow_dirty is set.
-external_deps:
-  - git (external binary via Command): sole mechanism for the dirty-tree check; failure to invoke or non-git-repo output is treated as CageError::Protocol.
-```
+Runs lifecycle phase 1 of a `ctx-cage` invocation: gates billed modes on a clean git tree, mints a per-run temp directory, and materializes the fixed files that get bind-mounted into the cage. Its output, `Prep`, is consumed by later lifecycle phases and torn down by `teardown_run` (not in this file).
+
+The billed-mode gate (`ensure_clean_tree`) exists because the cage mounts the target workspace read-write; the only recovery path for a billed session is `git` reset to the pre-run commit, so a dirty tree at launch would make recovery impossible. It shells out to `git status --porcelain` and treats a non-zero exit as "not a git repo" (hard error, no override), while a dirty-but-valid repo is only a hard error when `allow_dirty` is false. Billed-ness is decided by `mode_is_billed(&r.mode)` from `crate::cli` — this file doesn't itself know which modes are billed.
+
+`mint_rundir` builds a deterministic path `TMPDIR/ctxcage-<task_id>-<pid>`, force-removing any pre-existing directory at that path before recreating it — reruns of the same task_id/pid combo won't collide or leak stale state, but this is not concurrency-safe if two processes ever share a task_id.
+
+`write_mask_file` writes an empty regular file rather than using `/dev/null`, specifically because bind mounts of `/dev/null` onto secret paths would carry the `nodev` mount flag and behave wrong — this is the mask bound over secret paths elsewhere in the cage setup (coupling: whatever mounts `mask_file` over secrets relies on it being a plain empty file, not a device node).
+
+`prepare_run(r: &Resolved) -> Result<Prep, CageError>` is the sole entry point: gates, mints the rundir, writes rules and mask files, and — only for billed modes — resolves the claude runtime via `resolve_claude_runtime` from `crate::runtime`. The `Prep.claude` field is `Some` iff the mode is billed; downstream code should treat `None` as "no claude runtime bind needed," not as an error. `CAGE_RULES_MD` (from the crate root) is embedded rules content copied verbatim to `<rundir>/cage-rules.md`; changing that constant changes what's mounted into every cage.

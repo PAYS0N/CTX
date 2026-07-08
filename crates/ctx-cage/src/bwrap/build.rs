@@ -5,7 +5,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use super::config::{BwrapConfig, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR, WORK_DIR};
+use super::config::{BwrapConfig, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR};
 
 /// Build the bwrap argv. Output starts with `"bwrap"` so the caller
 /// can do `Command::new(&argv[0]).args(&argv[1..])`.
@@ -53,19 +53,21 @@ fn add_base_isolation(a: &mut Vec<OsString>, c: &BwrapConfig) {
     a.push("/tmp".into());
 }
 
-/// Target project: READ-WRITE bind at `/work`, then empty-file masks
-/// over each secret path so its contents are hidden (but still
-/// readable-as-empty — readers like git must not break) even though
-/// the workspace is writable.
+/// Target project: READ-WRITE bind at its own real host path (no fixed
+/// alias — see ADR-046), then empty-file masks over each secret path
+/// so its contents are hidden (but still readable-as-empty — readers
+/// like git must not break) even though the workspace is writable.
 fn add_workspace(a: &mut Vec<OsString>, c: &BwrapConfig) {
+    let root = c.target_root.clone().into_os_string();
     a.push("--bind".into());
-    a.push(c.target_root.clone().into_os_string());
-    a.push(WORK_DIR.into());
+    a.push(root.clone());
+    a.push(root.clone());
     for rel in &c.secret_masks {
-        push_ro_bind(a, &c.mask_file, &format!("{WORK_DIR}/{rel}"));
+        let mask_dest = c.target_root.join(rel);
+        push_ro_bind(a, &c.mask_file, &mask_dest.to_string_lossy());
     }
     a.push("--chdir".into());
-    a.push(WORK_DIR.into());
+    a.push(root);
 }
 
 /// Toolchain directories bound read-only at their host paths, so

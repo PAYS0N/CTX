@@ -3,10 +3,6 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-/// Cage-internal mount point of the target project (READ-WRITE — the
-/// cage is a safety boundary, not a source mask).
-pub const WORK_DIR: &str = "/work";
-
 /// Cage-internal bin directory the host tools are bound into.
 pub const CAGE_BIN: &str = "/cage/bin";
 
@@ -35,8 +31,9 @@ pub const CAGE_LOCAL_CLAUDE: &str = "/tmp/.local/bin/claude";
 /// Resolved configuration for one cage launch.
 #[derive(Debug, Clone, Default)]
 pub struct BwrapConfig {
-    /// Absolute host path of the target project root (bound RW at
-    /// [`WORK_DIR`]).
+    /// Absolute host path of the target project root, bound RW at this
+    /// same path inside the cage (no fixed alias — a compiled build
+    /// artifact must see the identical path in and out of the cage).
     pub target_root: PathBuf,
     /// Repo-relative paths masked with an RO bind of [`Self::mask_file`]
     /// so their contents are hidden inside the cage (e.g. `.env`,

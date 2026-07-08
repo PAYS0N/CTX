@@ -1,21 +1,17 @@
-file: crates/ctx-cage/tests/bwrap_build.rs
-behavior: Unit tests for the pure `bwrap` argv builder in `ctx_cage::bwrap`, asserting safety-cage semantics: writable workspace, masked secrets as regular files, unconditional network unshare, cleared env, explicit env re-injection, and RO toolchain/tool/rules/rundir binds.
-edit_notes:
-  - Exercises `build_bwrap_args`/`BwrapConfig` from ctx-cage::bwrap; any field renamed or removed there must be updated in `sample_config()`.
-  - Depends on `CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR` constants from the same module for expected cage-side paths.
-  - Secret masks must bind a regular empty file (not `/dev/null`), since bind mounts carry `nodev` and would break readers like git; `workspace_is_bound_read_write_with_regular_file_secret_masks` enforces this by asserting `/dev/null` is absent from argv.
-functions:
-  - name: sample_config
-    signature: fn sample_config() -> BwrapConfig
-    purpose: Builds a representative BwrapConfig exercising every bind family for reuse across tests.
-  - name: find
-    signature: fn find(argv: &[OsString], needle: &str) -> Option<usize>
-    purpose: Locates the index of a literal argv token.
-  - name: assert_bind
-    signature: fn assert_bind(argv: &[OsString], flag: &str, host: &str, cage: &str)
-    purpose: Asserts a contiguous `flag host cage` triple exists in argv.
-    notes: Panics via assert! if the triple is not found.
-invariants:
-  - build_bwrap_args must never emit `/dev/null` as a mask target.
-  - `--new-session` is emitted only when BwrapConfig.new_session is true; `--unshare-net` is always present regardless.
-external_deps:
+Integration test suite for `ctx_cage::bwrap::build_bwrap_args`, the pure argv builder that turns a `BwrapConfig` into the `bwrap` command line enforcing the safety-cage sandbox. Verifies argv shape only — no bwrap process is actually run.
+
+Central fixture `sample_config()` builds one representative `BwrapConfig` exercising every bind family (workspace, secret masks, toolchain, tool binds, rw binds, env, command); most tests call it fresh per-test rather than sharing state. Helpers `find` (locate a token) and `assert_bind` (assert a contiguous `flag host cage` triple via `windows(3)`) encode the argv layout convention: every bind is emitted as three consecutive argv entries with no separators between them — if `build_bwrap_args` ever changes to interleave flags differently, these helpers and thus most assertions here break.
+
+Key invariants pinned by these tests, each reflecting a deliberate design decision an editor must not regress:
+
+- The workspace is bound at its **same path** on both sides (`/home/u/proj` -> `/home/u/proj`), not a fixed `/work` alias — this is ADR-046, so code compiled inside the cage sees identical paths outside it.
+- Secret masks are `--ro-bind`s to a real regular file (`mask_file`, e.g. `/tmp/run/empty-mask`), never `/dev/null` — bind mounts carry `nodev`, so a masked device node breaks readers like git. `chdir_matches_the_workspace_bind` etc. assert `/dev/null` never appears in argv at all.
+- `--chdir` always equals the workspace target root.
+- `--unshare-net`, `--clearenv`, and `--die-with-parent` are unconditional regardless of config (network isolation and env clearing cannot be disabled).
+- `--new-session` is present only when `cfg.new_session` is true; toggling it off must not affect `--unshare-net` (tested explicitly in `interactive_mode_drops_new_session`).
+- Toolchain paths and tool binds are all `--ro-bind` (never writable); tool binds land under `CAGE_BIN` (e.g. `{CAGE_BIN}/ctx-verify`); `cage_rules_path` binds to `CAGE_RULES_PATH` and `rundir` binds to `CAGE_RUN_DIR` — these three constants are imported from `ctx_cage::bwrap` and must stay in sync with that module's definitions.
+- `rw_binds` entries use plain `--bind` (read-write), distinct from the read-only binds above.
+- Env vars are emitted as `--setenv KEY VALUE` triples.
+- The command argv follows a bare `--` separator, with the cage command's first token (`sh`) immediately after it.
+
+Any change to `build_bwrap_args`'s output ordering or flag conventions (e.g., switching bind emission to a different arity, renaming `CAGE_BIN`/`CAGE_RULES_PATH`/`CAGE_RUN_DIR`, or altering how `new_session` interacts with other unshare flags) requires updating this file in lockstep.

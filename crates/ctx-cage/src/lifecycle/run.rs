@@ -207,16 +207,16 @@ fn cage_cmd_for_mode(mode: &Mode) -> Vec<OsString> {
 
 /// Containment probe for `--self-test stub`: workspace writable,
 /// secrets masked *but readable-as-empty* (a mask that breaks readers
-/// broke git once), git usable, no network. Probe writes only under
-/// the gitignored `target/` dir (ADR-027 hygiene).
+/// broke git once), git usable, no network; writes only under the
+/// gitignored `target/` dir (ADR-027). Cwd-relative (ADR-046).
 fn self_test_stub_cmd() -> Vec<OsString> {
     let script = "\
 set -e\n\
-test -w /work\n\
-mkdir -p /work/target && touch /work/target/.cage-probe && rm /work/target/.cage-probe\n\
-if [ -e /work/.env ] && [ -n \"$(cat /work/.env 2>/dev/null)\" ]; then echo SECRET-LEAK; exit 1; fi\n\
-if [ -e /work/.git/config ] && ! cat /work/.git/config >/dev/null 2>&1; then echo MASK-UNREADABLE; exit 1; fi\n\
-if [ -d /work/.git ] && ! git -C /work status --porcelain >/dev/null 2>&1; then echo GIT-BROKEN; exit 1; fi\n\
+test -w .\n\
+mkdir -p target && touch target/.cage-probe && rm target/.cage-probe\n\
+if [ -e .env ] && [ -n \"$(cat .env 2>/dev/null)\" ]; then echo SECRET-LEAK; exit 1; fi\n\
+if [ -e .git/config ] && ! cat .git/config >/dev/null 2>&1; then echo MASK-UNREADABLE; exit 1; fi\n\
+if [ -d .git ] && ! git status --porcelain >/dev/null 2>&1; then echo GIT-BROKEN; exit 1; fi\n\
 if timeout 2 socat -u OPEN:/dev/null TCP:1.1.1.1:80,connect-timeout=1 2>/dev/null; then echo NET-LEAK; exit 1; fi\n\
 echo SELF-TEST-STUB-OK\n";
     vec!["sh".into(), "-c".into(), script.into()]

@@ -7,15 +7,12 @@
 //! `(chain unavailable)` marker — the hook must never block the agent's
 //! read (owner decision: the forcing function is fail-open, loudly).
 
-use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde::Deserialize;
 
 use crate::env::Env;
-use crate::error::CtxError;
-use crate::serve::{self, ServedNode};
-use crate::session;
+use crate::serve;
 
 /// The subset of the `PostToolUse` event this hook consumes.
 #[derive(Debug, Deserialize)]
@@ -82,29 +79,6 @@ fn target_of(input: &HookInput) -> Option<String> {
     ti.file_path.clone().or_else(|| ti.path.clone())
 }
 
-/// Serve the chain for `rel`, dropping nodes already injected this
-/// session; `None` when nothing new-and-present remains (nothing worth
-/// injecting — absent markers alone carry no context).
-fn fresh_nodes<E: Env>(
-    env: &E,
-    session: &str,
-    rel: &str,
-) -> Result<Option<Vec<ServedNode>>, CtxError> {
-    let mut served: BTreeSet<String> = session::load(env, session);
-    let nodes: Vec<ServedNode> = serve::chain_for(env, rel)?
-        .into_iter()
-        .filter(|n| !served.contains(&n.id))
-        .collect();
-    if !nodes.iter().any(|n| n.present) {
-        return Ok(None);
-    }
-    for n in &nodes {
-        served.insert(n.id.clone());
-    }
-    session::save(env, session, &served)?;
-    Ok(Some(nodes))
-}
-
 /// Run hook mode over the raw stdin `input`; `base` is the repo root the
 /// hook process runs in. Returns the JSON payload to print, or an empty
 /// string meaning "emit nothing". Never errors.
@@ -120,7 +94,7 @@ pub fn run<E: Env>(env: &E, base: &Path, input: &str) -> String {
         return String::new();
     };
     let session = parsed.session_id.unwrap_or_else(|| "default".to_owned());
-    match fresh_nodes(env, &session, &rel) {
+    match serve::fresh_chain_for(env, &session, &rel) {
         Ok(Some(nodes)) => payload(&serve::render(&nodes)),
         Ok(None) => String::new(),
         Err(e) => payload(&format!("(ctx-context: chain unavailable for {rel}: {e})")),

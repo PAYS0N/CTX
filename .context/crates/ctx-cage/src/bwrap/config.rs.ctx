@@ -1,12 +1,5 @@
-file: crates/ctx-cage/src/bwrap/config.rs
-behavior: Defines cage-internal path constants and the `BwrapConfig` struct that fully describes one bubblewrap cage launch (mounts, binds, env, command).
-edit_notes:
-  - Constants (WORK_DIR, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR, API_SOCK_NAME, CAGE_CLAUDE_CONFIG, CAGE_CLAUDE_CRED, CAGE_LOCAL_CLAUDE) are cage-side path literals consumed by the bwrap invocation builder elsewhere in this module tree; renaming any requires updating that builder in lockstep.
-  - mask_file must point to an empty regular file, not /dev/null — bwrap binds are nodev, so a masked device node returns EACCES and breaks readers (e.g. git reading masked .git/config).
-  - env plus --clearenv means BwrapConfig.env is the entire cage environment; nothing is inherited from the host.
-  - new_session defaults false via #[derive(Default)] but callers should set true for non-interactive runs (blocks TIOCSTI injection) and false only for interactive Claude Code TUI sessions.
-functions:
-invariants:
-  - CAGE_CLAUDE_CRED and CAGE_LOCAL_CLAUDE are rooted under /tmp because the cage HOME is /tmp.
-  - API_SOCK_NAME is a basename, always joined under CAGE_RUN_DIR, not a standalone path.
-external_deps:
+Defines the wire-facing shape of a single bubblewrap invocation for ctx-cage: a set of cage-internal path constants and the `BwrapConfig` struct that the sandbox-launching code (elsewhere in `bwrap/`) fills in and consumes to build the `bwrap` argv.
+
+The constants (`CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR`, `API_SOCK_NAME`, `CAGE_CLAUDE_CONFIG`, `CAGE_CLAUDE_CRED`, `CAGE_LOCAL_CLAUDE`) are the fixed in-cage paths other modules must bind mounts to match exactly — any code constructing bwrap args or writing synthesized config files must reference these rather than hardcoding strings, or the two will drift. `CAGE_CLAUDE_CRED` and `CAGE_LOCAL_CLAUDE` are rooted at `/tmp` specifically because the cage's `HOME` is set to `/tmp`; changing the cage `HOME` elsewhere breaks these paths silently.
+
+`BwrapConfig` is a plain data holder (`Debug, Clone, Default`) with no validation logic — all invariants are enforced by whatever constructs it. Notable non-obvious fields: `mask_file` must point to an empty *regular* file, not `/dev/null` — bwrap's bind mounts carry `nodev`, so masking a secret with a device node makes every open EACCES and breaks readers (git failing on a masked `.git/config` is the motivating case). `target_root` is bound at the identical host path inside the cage rather than some fixed alias, because compiled build artifacts embed absolute paths and must see the same path both in and outside the cage. `env` is the *entire* cage environment since bwrap is invoked with `--clearenv`, so omitting a variable here means it's unset in the cage, not inherited. `new_session` defaults to `true` for non-interactive safety (blocks TIOCSTI injection) but must be set `false` for interactive Claude Code TUI sessions.

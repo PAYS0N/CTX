@@ -1,15 +1,9 @@
-file: crates/ctx-context/tests/hook_session.rs
-behavior: Integration tests for hook::run's context injection, dedup within a session, and how CLI path-mode dispatch shares the same session ledger as the hook, all against an in-memory FakeEnv (no real filesystem).
-edit_notes:
-  - FakeEnv seeds a fixed tree under `.context/` (root, crates, crates/foo rollups/intents, bar.rs leaf) plus crates/foo/bar.rs and baz.rs; tests assert against these exact seeded strings ("foo rollup", etc.) so changing the seed data breaks multiple tests.
-  - Session state path convention `.context/.cache/hook-<session_id>.json` is asserted directly; must stay in sync with session module's actual path scheme.
-  - Assumes hook::run dedups by ancestor chain per session_id and that CLI path-mode dispatch records into the same session ledger via session::ENV_SESSION_ID env var.
-functions:
-invariants:
-  - hook::run returns empty string for events outside the repo root, under .context/ scaffolding, under .git/, unparseable JSON, or missing tool_input.file_path.
-  - Within one session_id, re-reading a sibling file only injects newly-unseen ancestor levels; fully-covered chains yield empty output.
-  - A different session_id starts with no dedup history (fresh injection).
-  - session::load returns empty for corrupt (non-JSON) session state files; hook::run still injects in that case (fail-open).
-  - CLI dispatch without session::ENV_SESSION_ID set writes no session state file.
-external_deps:
-  - clap: Cli::parse_from used to construct CLI args in-process for dispatch tests.
+Behavioral test suite covering `hook::run`, `hook::event_cwd`, and the interaction between Claude-Code hook events and CLI path-mode dispatch through the shared per-session ledger (`session` module). All tests run against an in-memory `FakeEnv` — no real filesystem is touched, and `/repo` is a purely notional base path.
+
+`FakeEnv` implements `ctx_context::env::Env` over a `RefCell<BTreeMap<String, Vec<u8>>>` keyed by repo-relative path strings; directory-ness (`is_dir`) is inferred from key prefixes rather than tracked explicitly, so tests must seed leaf files under a directory to make it "exist" as a dir. `FakeEnv::seeded()` builds a fixed fixture tree used by nearly every test: root and `crates/foo` each have a `.ctx` rollup and `intent.md`, plus a leaf `.ctx` for `bar.rs`, and two sibling source files `bar.rs`/`baz.rs` under `crates/foo`. Editors adding new tests should reuse this fixture rather than inventing paths, since the dedup assertions depend on its exact shape.
+
+The core coupling under test: `hook::run` and CLI `dispatch` (via `ctx-context <path>` invocations) both write to the same session-scoped cache file at `.context/.cache/hook-<session_id>.json` (loaded/saved through the `session` module), keyed by `session::ENV_SESSION_ID` env var or the event's `session_id` field. This file is what test `path_mode_records_into_session_so_hook_skips_repeat` and `path_mode_dedups_its_own_repeat_calls_within_session` exercise directly — a manual CLI call and a hook call in the same session must not re-inject already-shown ancestor context (root/crate rollups+intents), and repeat calls to the same target eventually emit "no new context". Without `ENV_SESSION_ID` set, path mode writes no session state at all (`path_mode_without_session_env_leaves_no_session_state`).
+
+`corrupt_session_state_reads_as_empty` documents a specific fail-open invariant: if the session cache file contains non-JSON garbage, `session::load` returns empty (not an error), and the hook proceeds to inject as if nothing had been shown — favoring duplicate injection over silent failure.
+
+`read_event(session, file_path)` builds a minimal `PostToolUse`-shaped JSON hook event with `tool_name: "Read"`; other hook event shapes (missing `tool_input.file_path`, non-JSON, `{}`) are asserted silent/empty via `hook::run`. `hook::event_cwd` is tested separately for extracting `cwd` from raw event JSON, independent of `hook::run`.

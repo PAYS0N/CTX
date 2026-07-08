@@ -1,8 +1,5 @@
-file: crates/ctx-scan/src/lib.rs
-behavior: Crate root for ctx-scan; declares module tree for a standalone directory-walking tool that builds and maintains a `.context/` summary tree using content-hash-based change detection, without requiring a git repository.
-edit_notes:
-  - Public entry points are runner::scan_run / check_run / update_run (programmatic) and cli::dispatch (CLI); keep doc comment in sync if these change.
-  - hash module is the sole source of truth for staleness detection used by --check and --update.
-functions:
-invariants:
-external_deps:
+This is the crate root: it re-exports the module surface (`cli`, `error`, `hash`, `readme`, `runner`, `walker`) and carries the crate-level doc comment — there's no executable logic here beyond `pub mod` declarations.
+
+The doc comment is the authoritative description of the crate's purpose and is worth reading in full when orienting: ctx-scan walks an arbitrary directory (not necessarily a git repo) and maintains a `.context/` tree of generated summaries, using content hashing (in `hash`) to detect staleness cheaply — `--check` does no model call, `--update` regenerates only changed entries. Prompt templates are loaded at runtime from a configurable directory (default `prompts/` relative to cwd), so prompt content is not embedded in the binary and can drift independently of crate versioning — check that directory's contents when prompt behavior seems wrong rather than searching this crate's source.
+
+Two public entry-point groups matter for callers: `runner::scan_run` / `runner::check_run` / `runner::update_run` for embedding this logic programmatically, and `cli::dispatch` for the CLI binary. Anyone adding a new module should add its `pub mod` line here and consider whether it belongs in the doc comment's summary of public surface.

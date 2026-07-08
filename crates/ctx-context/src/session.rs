@@ -63,20 +63,3 @@ pub fn save<E: Env>(env: &E, session: &str, served: &BTreeSet<String>) -> Result
     })?;
     env.write(&state_path(session), &bytes)
 }
-
-/// Merge `ids` into the served set already recorded for `session` and
-/// persist the result, so a later hook injection for the same session
-/// treats them as already shown.
-///
-/// # Errors
-///
-/// [`CtxError::Io`] if the state file cannot be written or encoded.
-pub fn record<E: Env>(
-    env: &E,
-    session: &str,
-    ids: impl IntoIterator<Item = String>,
-) -> Result<(), CtxError> {
-    let mut served = load(env, session);
-    served.extend(ids);
-    save(env, session, &served)
-}

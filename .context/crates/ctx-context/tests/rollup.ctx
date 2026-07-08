@@ -1,13 +1,7 @@
-directory: crates/ctx-context/tests
-domain: Integration/behavioral test suite for ctx-context's serve and hook/session subsystems, exercised entirely against an in-memory `FakeEnv` (no real filesystem). Verifies chain resolution order, absent-scaffolding handling, path-escape rejection, hook injection dedup, and CLI/hook session-ledger sharing.
-edit_notes:
-  - Both files rely on FakeEnv (flat path->bytes BTreeMap, directories implied by key prefixes); seeding must use exact relative paths the code under test will request.
-  - Chain traversal order (root rollup, root intent, per-level rollup+intent descending, then leaf .ctx) is asserted in chain_serve.rs and is a contract on serve::chain_for; hook_session.rs separately depends on the same scaffolding convention (.context/ rollups/intents) via its own seeded tree.
-  - Session state path convention `.context/.cache/hook-<session_id>.json` is asserted directly in hook_session.rs and must track the session module's real path scheme.
-children:
-  - chain_serve.rs: covers serve::chain_for/render — traversal order, missing-node markers, path-escape rejection.
-  - hook_session.rs: covers hook::run and CLI path-mode dispatch — injection dedup, session ledger sharing, fail-open on corrupt state.
-invariants:
-  - Absent scaffolding never errors; it yields present==false nodes with a fixed "(absent...)"/"no leaf" body marker.
-  - Source files (e.g. *.rs) never appear as chain node ids alongside .context/ scaffolding nodes.
-  - Path traversal (.., leading /, empty segments) is rejected with CtxError::PathEscape before any FakeEnv lookup.
+crates/ctx-context/tests/ is the integration-test surface for the chain-resolution and hook/session-dedup contracts that the rest of ctx-context depends on but that no single source file's unit tests exercise end-to-end. Nothing here is imported elsewhere; its value is pinning cross-module behavior (serve + hook + session) against a shared in-memory environment fake.
+
+Both test files define their own `FakeEnv` (flat `BTreeMap<path, bytes>` over `ctx_context::env::Env`, with `is_dir` inferred from key prefixes) rather than sharing one — an editor changing directory-detection semantics in one file's fake must mirror the change in the other's or the two suites will silently diverge on edge cases like empty-segment paths. chain_serve.rs pins the traversal contract of `serve::chain_for`/`serve::render` (rollup+intent per level, descending root-to-leaf, then leaf ctx; path-escape rejection; soft-missing markers instead of errors). hook_session.rs pins the session-ledger contract: hook events and CLI path-mode dispatch share one session cache file (`.context/.cache/hook-<session_id>.json`), deduping already-shown ancestor context, fail-open on corrupt cache, and no-op when no session env is set.
+
+A change to path-escape validation, chain ordering, or the absent-scaffolding sentinel strings must update chain_serve.rs; a change to session-cache location, keying, or fail-open behavior must update hook_session.rs — the two are independent contracts and rarely need joint edits. hook_session.rs's `FakeEnv::seeded()` fixture shape (root + crates/foo with rollup/intent/leaf ctx, sibling bar.rs/baz.rs) is load-bearing for its dedup assertions; new tests in that file should extend rather than replace it.
+
+No intent.md exists for this directory.

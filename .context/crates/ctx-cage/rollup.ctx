@@ -1,14 +1,7 @@
-directory: crates/ctx-cage
-domain: Sandbox launcher crate for running autonomous agent sessions inside a bwrap namespace, exposing two binaries (ctx-cage, ctx-run) built on a shared lib. The sandbox gives the agent a writable workspace and masked secrets, with a host-side HTTP proxy as the sole network egress path; assets/ supplies the static bwrap config and agent prompt that make this concrete.
-edit_notes:
-  - ctx_cage.rs and ctx_run.rs (src/bin) are thin entry points over one shared lib; new cross-binary behavior belongs in the lib so both stay consistent.
-  - Source is organized into broker, bwrap (argv builder + discovery), cli (mode/flag resolution), protocol (wire format), proxy (header rewriting/serving), and summarize (staleness) modules, each with a matching one-file-per-module test in tests/.
-  - assets/ files are embedded/bind-mounted verbatim (not templated); editing them changes sandbox networking or agent tool-use behavior immediately, and their tool/NSS names must stay in sync with what the cage container actually provides.
-children:
-  - Cargo.toml: Declares the lib + two-binary layout and pins clap/thiserror as the CLI/error-handling foundation.
-  - assets/: Static bwrap config and agent prompt consumed verbatim by the cage at runtime.
-  - src/: Implementation of the broker, bwrap sandbox builder, CLI mode resolution, wire protocol, proxy, and summarize logic shared by both binaries.
-  - tests/: Integration/unit coverage mirroring each src module, exercising real Unix sockets only for broker and proxy.
-invariants:
-  - Network egress from the sandboxed agent is only through the host-side API proxy; bwrap argv construction must enforce network isolation and secret masking, and tests assert this without touching real filesystem/network state outside broker_loopback.rs and proxy.rs.
-  - Filesystem paths needed by tests or the running sandbox that must be unique (sockets, tempdirs) are derived from pid + an atomic/process-unique counter, never fixed paths.
+crates/ctx-cage is a self-contained crate providing an offline sandbox for running an untrusted agent under `bwrap`, plus the host-side services (billed API proxy, allowlisted tool broker) needed for a caged process to do real work. Depending on it means shelling out to one of its three binaries (`ctx-cage`, `ctx-run`, `ctx-cage-client`) — there is no library API meant for other crates to call directly.
+
+The crate's real logic lives entirely in `src/`, whose entry point is `lifecycle::execute`; `Cargo.toml` just declares the lib+2-bin layout (a third bin, `ctx-cage-client`, is described in `src/rollup.ctx` but not separately called out in the manifest summary — check `Cargo.toml` before adding a fourth). `assets/` supplies two static payloads `src/` embeds or mounts verbatim: `cage-nsswitch.conf` (bind-mounted into the sandbox) and `cage-rules.md` (embedded via `include_str!` in `lib.rs` as `CAGE_RULES_MD` and passed to the caged `claude` process via `--append-system-prompt-file`). `cage-rules.md`'s claims about tool behavior (`ctx-access`, `ctx-verify`, `ctx-scan --update`) must track the real broker/tool implementations in `src/`; nothing enforces this automatically. `tests/` exercises `src/`'s public surface (`broker`, `bwrap`, `proxy`, `protocol`, `cli`, `summarize`) and pins the exact bwrap argv layout and in-cage path constants (`CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR`) that `src/bwrap` defines — renaming any of these breaks tests in lockstep with the source.
+
+Two independent egress models must stay distinct wherever this crate is touched: the OAuth/API-key proxy (`proxy.rs`, used by `lifecycle::run`) versus the allowlisted tool-broker (`broker.rs`+`protocol.rs`+`spawn.rs`, used by `lifecycle::serve`, with a wire format also spoken by `bin/ctx_cage_client.rs`). Billed-mode gating (`--allow-spend`/`CTX_CAGE_ALLOW_SPEND`) is checked independently in three places across `cli.rs` and `lifecycle`, so any change to which modes are "billed" needs verification in all three, not just the CLI.
+
+No intent.md exists for this directory, so no divergence can be assessed.

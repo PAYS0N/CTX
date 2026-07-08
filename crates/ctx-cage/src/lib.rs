@@ -5,11 +5,12 @@
 //! by hooks (`ctx-context`), and the agent uses its native Read/Edit
 //! inside the cage. What the cage contains is *blast radius*:
 //!
-//! - **Filesystem:** only the target workspace is writable (`/work`,
-//!   bound read-write); the toolchain is bound read-only; secrets are
-//!   masked even inside the workspace (`.env`, `.git/config`); nothing
-//!   from `$HOME` is mounted. Recovery is plain git — sessions start
-//!   from a clean committed tree.
+//! - **Filesystem:** only the target workspace is writable, bound
+//!   read-write at its own real host path (no fixed alias — ADR-046);
+//!   the toolchain is bound read-only; secrets are masked even inside
+//!   the workspace (`.env`, `.git/config`); nothing from `$HOME` is
+//!   mounted. Recovery is plain git — sessions start from a clean
+//!   committed tree.
 //! - **Host:** fresh user/pid/ipc/uts namespaces, `--die-with-parent`,
 //!   cleared environment; bwrap sets `no_new_privs` unconditionally.
 //!   (A seccomp filter is a documented residual, not yet wired.)

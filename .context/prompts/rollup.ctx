@@ -1,16 +1,5 @@
-directory: prompts
-domain: Holds the plain-markdown system prompts that drive the context-tree pipeline: two summarizer prompts (leaf `.ctx` generation, directory `rollup.ctx` generation) and one auditor prompt (intent-vs-rollup divergence check), plus a README documenting the contract. These files are loaded verbatim as LLM system prompts by runner code elsewhere; this directory has no executable logic of its own.
-edit_notes:
-  - The three prompts form one pipeline (leaf .ctx → rollup.ctx → auditor verdict); each stage's output schema is the next stage's input contract, so schema changes cascade: leaf field names feed rollup generation, and rollup's `intent_divergence:` field is specifically read by the auditor prompt.
-  - summarizer-leaf.md and summarizer-rollup.md must stay consistent on tone, banned-phrase list, and "facts only" philosophy — they are companion prompts in the same context tree.
-  - The 15-line/40-line rollup budget is sourced from docs/SPEC.md; change SPEC.md first, not the prompt in isolation.
-  - Per README: any meaningful edit to a prompt file requires re-running the existing summary tree through the (new) summarizer to match, since there's no in-file versioning.
-children:
-  - README.md: states the directory-level contract (prompts are runtime system prompts, verbatim, no runner-side logic leakage) that all three prompt files must honor.
-  - auditor.md: consumes rollup.ctx's `intent_divergence:` output; final stage of the pipeline, emits strict-schema JSON verdicts.
-  - summarizer-leaf.md: first stage, produces per-file `.ctx` documents that rollups later aggregate.
-  - summarizer-rollup.md: second stage, aggregates child `.ctx`/rollup.ctx into a directory-level rollup.ctx, including the `intent_divergence:` signal auditor.md relies on.
-invariants:
-  - All three prompt files require "no prose/no code fences, exact field names/order" in their own outputs — schema stability across the pipeline is load-bearing, not stylistic.
-  - No prompt file may contain model-specific instructions or task-specific dynamic data; that stays in runner-supplied user messages.
-intent_divergence: intent.md is absent for this directory, so no divergence can be assessed.
+prompts/ defines the LLM prompt files that drive the codebase-summarization pipeline itself: leaf summarization, rollup summarization, and auditing. Nothing here is executable code — these are system prompts loaded verbatim by runner code, and the directory's contract is that all task-specific dynamic data (file paths, diffs, directory contents) stays out of these files and lives only in the runner's user-message construction.
+
+The three prompts form a linear pipeline with strict output-format coupling: summarizer-leaf.md produces per-file `.ctx` docs, summarizer-rollup.md consumes those `.ctx` files plus subdirectory `rollup.ctx` files (never re-deriving from source) to produce a directory-level `rollup.ctx`, and auditor.md consumes `intent.md` + `rollup.ctx` to emit a JSON verdict. A change to the rollup's `intent_divergence:` label format must be mirrored in auditor.md, which greps for that exact signal. Changing the `.ctx` schema or tone in summarizer-leaf.md likewise requires checking summarizer-rollup.md for consistency, since a rollup sits alongside sibling leaf `.ctx` files at the same chain level.
+
+Both summarizer prompts share an anti-duplication discipline (facts stated once, banned filler phrases, present-tense/no-history) and a "facts only, no hedging" ethos that auditor.md extends into strict JSON-only output with a fixed enum (severity "none" only for "consistent" verdicts). README.md documents the meta-contract binding all three: prompts are portable across model upgrades, contain no embedded runner logic, and any meaningful edit to a prompt file requires re-running the existing summary tree so outputs match the new standard — there is no versioning inside these files, only git history.

@@ -1,15 +1,7 @@
-directory: template/scripts
-domain: Layer 1 CI checks for repos generated from this template: formatting, clippy, doc warnings, dependency policy, unused deps, per-function/file rationale comments, workspace-lints opt-in, absence of `#[allow(...)]`, and a module-cycle stub. ci.sh is the single entry point that runs all checks and reports the union of failures; individual scripts are also independently invokable with an optional repo-root argument.
-edit_notes:
-  - All git-based enumeration scripts (no_allow_check.sh, workspace_lints_check.sh, rationale_check.py) deliberately use `git ls-files -z --cached --others --exclude-standard` instead of a filesystem walk, to avoid racing concurrent cargo/rust-analyzer writes into target/; keep this enumeration strategy consistent across all three if changed in one.
-  - ci.sh locates sibling scripts via SCRIPTS_DIR (its own script directory), not CWD, and each check script takes the target repo root as optional $1 (default "."); adding a new check means wiring it into ci.sh's RUN/PHASE sequence and following the same non-short-circuiting pattern.
-  - rationale_check.py and cycle_check.sh are explicitly MVP placeholders for future dylint rules (see docs/DYLINT_RULES.md); workspace_lints_check.sh and no_allow_check.sh's manual/string-based parsing (awk state machine, line-based grep) are similarly approximate rather than real TOML/Rust parsers.
-children:
-  - ci.sh: Orchestrator invoked by CI; sequences all other scripts and aggregates pass/fail.
-  - cycle_check.sh: One check phase in ci.sh; currently a scaffold (verifies cargo-modules runs, doesn't detect cycles).
-  - no_allow_check.sh: One check phase in ci.sh; zero-tolerance gate on `#[allow(...)]` usage.
-  - rationale_check.py: One check phase in ci.sh; enforces size limits with rationale-comment escape hatch.
-  - workspace_lints_check.sh: One check phase in ci.sh; enforces workspace lint opt-in per crate manifest.
-invariants:
-  - Every check script exits 0 on pass, non-zero on failure, and is independent of build artifacts (no scanning of target/).
-  - Checks that scan source rely on git as the file-enumeration source of truth, not filesystem globbing, across the whole directory.
+template/scripts/ is the Layer-1 CI gate for template-derived projects: a set of independent shell/Python checks (formatting, lints, docs, dependency policy, unused deps, `#[allow]` bans, workspace-lint opt-in, module cycles) plus a one-time bootstrap script for installing external CTX tooling. Depending on this directory means invoking `ci.sh` as the single entry point; everything else here is either a check it orchestrates or an unrelated setup script.
+
+`ci.sh` is the only aggregator — it sources the other check scripts by path (via `SCRIPTS_DIR`, not CWD) and unions their pass/fail results using its RUN/PHASE helpers, never short-circuiting so a caller sees every failure in one run. Adding a new Layer-1 check means writing a script that follows this convention (exit 0/1, own error output) and adding a `RUN` line in `ci.sh`. `no_allow_check.sh`, `rationale_check.py`, and `workspace_lints_check.sh` all share one specific convention worth preserving across edits: file enumeration via `git ls-files -z --cached --others --exclude-standard` rather than a filesystem walk, deliberately to avoid racing concurrent writes into `target/`. If that enumeration strategy ever changes, it must change in all three together. `cycle_check.sh` and `rationale_check.py` are both explicit MVP placeholders for future dylint rules (see docs/DYLINT_RULES.md) — they check something real but weaker than their name implies (cycle_check only verifies `cargo modules dependencies` runs, not actual cycle absence; rationale_check uses regex/brace-counting, not a real parser).
+
+`install-tools.sh` is unrelated to CI correctness: it's a bootstrap step that builds `ctx-*` binaries from an external CTX repo and copies them plus prompt files into this project, coupled to fixed paths (`target/debug/<name>`, `./prompts/`) that Claude Code's hooks and `CLAUDE.md` also depend on.
+
+No intent.md exists for this directory.

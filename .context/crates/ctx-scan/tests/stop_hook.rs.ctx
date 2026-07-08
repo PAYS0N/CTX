@@ -1,13 +1,7 @@
-file: crates/ctx-scan/tests/stop_hook.rs
-behavior: Integration tests verifying Claude Code's Stop-hook mode is report-only: it emits a JSON systemMessage hint on stale trees, stays silent on fresh trees, and never regenerates context files itself.
-edit_notes:
-  - Asserts stop_hook() output is textual containing "systemMessage", "stale", and "--update"/"--update --approve" substrings; changing the hook's output format breaks these string-based checks.
-  - Regeneration is exclusively ctx-run's job (post-session); these tests enforce stop_hook never calls update_run and confirm the tree remains stale after invocation.
-  - Oversized-backlog test writes MAX_TARGETS+1 files to trigger the "--update --approve" hint path, coupling this test to ctx_summarize::runner::MAX_TARGETS.
-  - Each test uses a fixed tmpdir name per label (not per-process-unique); concurrent runs of the same test could collide.
-functions:
-invariants:
-  - stop_hook never changes tree freshness state (check_run().is_fresh() stays false on stale input).
-  - stop_hook produces empty output when the tree is already fresh.
-external_deps:
-  - ctx_summarize::agent::Agent: trait implemented by StubAgent to seed a fresh tree via update_run without invoking a real LLM.
+Integration tests for `ctx_scan::cli::stop_hook`, the Claude Code Stop-hook entry point, asserting it is strictly report-only: it must never call `update_run`'s regeneration path itself and must emit nothing when the tree is already fresh.
+
+Each test builds an isolated fixture tree under `std::env::temp_dir()` (`ctx-scan-stophook-<label>`), manually removing and recreating it — tests are not sandboxed via `tempfile`, so parallel runs across labels are safe but rerunning with the same label mid-crash could leave stale dirs. `prompts_path()` resolves the real workspace `prompts/` dir relative to `CARGO_MANIFEST_DIR`, coupling these tests to that directory's continued existence and layout.
+
+Three behaviors are locked in: (1) `stale_tree_reports_and_never_regenerates` — on a stale tree, `stop_hook` writes JSON containing `systemMessage`, `stale`, and a `--update` hint to its output writer, and critically, `check_run(&base)` must still report non-fresh afterward, proving the hook didn't side-effect a regeneration. (2) `fresh_tree_emits_nothing` — after seeding freshness via `update_run(&base, &prompts_path(), &agent, false)` with a stub agent, `stop_hook` must write zero bytes. (3) `oversized_backlog_hint_includes_approve` — when the number of stale targets exceeds `ctx_summarize::runner::MAX_TARGETS`, the hint text must include `--update --approve` instead of plain `--update`, signaling the CLI's approval-gating behavior for large backlogs.
+
+`StubAgent` is a minimal `Agent` impl (from `ctx_summarize::agent`) that always returns `Ok("SUMMARY")` and counts calls via `RefCell<usize>` — used only to seed a fresh tree cheaply, not to assert on call counts in these tests. Depends on `ctx_summarize::runner::MAX_TARGETS` as the exact threshold for backlog-size branching in the hint text; if that constant changes, the `for i in 0..=MAX_TARGETS` loop here still tracks it correctly since it's referenced directly rather than hardcoded.

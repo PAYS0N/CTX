@@ -1,7 +1,7 @@
 //! End-to-end tests for `cli::run`'s output modes: the default terse
-//! render (a single `{"status":"pass"}` line, or `FAIL:` blocks) and the
-//! `--json` machine contract, driven over a fake [`Runner`] — no real
-//! subprocess is spawned.
+//! render (a single `pass` line, or `FAIL:` blocks) and the `--json`
+//! machine contract, driven over a fake [`Runner`] — no real subprocess
+//! is spawned.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -60,7 +60,7 @@ fn terse_pass_is_a_single_status_line() {
     map.insert("fmt".to_owned(), Some(outcome(0, "")));
     let (passed, text) = render(&["ctx-verify", "--checks", "fmt"], map).expect("render");
     assert!(passed);
-    assert_eq!(text, "{\"status\":\"pass\"}\n");
+    assert_eq!(text, "pass\n");
 }
 
 #[test]

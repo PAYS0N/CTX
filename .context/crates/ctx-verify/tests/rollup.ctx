@@ -1,10 +1,7 @@
-directory: crates/ctx-verify/tests
-domain: Integration-level test suite for ctx-verify's diagnostic parsers and check-orchestration logic, exercised end-to-end through a fake command Runner instead of real subprocesses. Verifies serde output shapes and status-rollup precedence that other crates may rely on when consuming CheckReport JSON.
-edit_notes:
-  - FakeRunner keys canned outcomes by first arg via by_first_arg: BTreeMap<String, Option<CommandOutcome>>; unmatched or None keys simulate CheckError::ToolMissing.
-  - Tests assert exact JSON string shapes for CheckReport; any change to its Serialize impl or field names must update these tests in lockstep.
-children:
-  - checks.rs: sole test file, covering parser correctness and orchestration status/diagnostic-capping behavior.
-invariants:
-  - Status::Errored outranks Status::Fail in overall rollup; skipped-only reports yield Status::Pass.
-  - Non-zero exit with unparseable output still yields Status::Fail with a synthesized diagnostic, never an empty diagnostics list.
+intent_divergence: no intent.md exists for this directory.
+
+`crates/ctx-verify/tests/` is the behavioral contract for `ctx-verify`'s two layers — diagnostic parsing/check orchestration (`checks.rs`) and CLI rendering (`render.rs`) — exercised entirely through a fake `Runner` (`FakeRunner`, defined separately in each file) so no real `cargo fmt`/`clippy` subprocess ever runs. Both files key `FakeRunner` off the first CLI arg (`"fmt"`, `"clippy"`, etc.) mapped to `Option<CommandOutcome>`, with `None`/missing-key uniformly signaling `CheckError::ToolMissing` — this dispatch convention is duplicated in both files rather than shared, so a change to `CommandOutcome`'s shape or to how `Runner` is invoked must be updated in both fakes or one test file silently stops compiling/exercising the real path.
+
+The two files test adjacent halves of one pipeline: `checks.rs` locks down `CheckReport`'s JSON shape, status precedence (`Errored` > `Fail`), diagnostic capping/truncation counts, and parser edge cases (dedup, default line/file, null lint code); `render.rs` locks down how that same report is rendered — terse text must never contain the literal `"status"` (guards against JSON leaking into terse mode) while `--json` mode must produce a parseable `"status"` field, and truncation must surface as `"… +N more"`. Together they pin the full contract from raw tool output to both output formats. `render.rs`'s clippy fixture is hand-built literal JSON mirroring cargo's `compiler-message` wire format and will break silently if the crate's deserializing struct changes field names — the fixes for that live in the crate's `diagnostics.rs`, not here.
+
+No source-level coupling exists between the two test files beyond the shared fake-runner convention; a typical change starts in whichever file matches the layer being touched (parsing/orchestration vs. rendering) and only crosses into the other file if `CheckReport`'s shape itself changes.

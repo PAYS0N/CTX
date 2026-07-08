@@ -1,13 +1,11 @@
-file: docs/DECISIONS.md
-behavior: Append-only ADR log recording non-obvious architectural decisions and rejected alternatives for the CTX project (context-tree tooling, sandbox/cage, lint regime); the authoritative rationale source that `intent.md` files point to rather than restate.
-edit_notes:
-  - Append-only: never rewrite or delete a past ADR's content; supersede/amend by adding a new ADR that references the old one (e.g. "Amends ADR-024", "Supersedes ADR-011").
-  - Outcomes/current behavior live in SPEC.md and the code itself; this file holds only rationale and rejected alternatives, which are otherwise undiscoverable from source.
-  - ADR-001 governs this file's own legitimacy: SPEC.md is "sealed" but the owner may authorize re-specs, which must be recorded both as a dated SPEC.md revision note and an ADR here.
-  - Numbering is sequential and monotonic (currently through ADR-045); a superseding ADR keeps the old number's text intact and adds a new-numbered entry.
-  - Cross-references use `[[ADR-NNN]]` wiki-link style in later entries.
-functions:
-invariants:
-  - Every non-obvious project decision has exactly one ADR; rejected alternatives are recorded alongside the chosen option, not omitted.
-  - No ADR text is ever edited after later ADRs reference it; corrections take the form of a new ADR (e.g. ADR-032 corrects ADR-031 without altering ADR-031's text).
-external_deps:
+This is a document-of-record ADR log — I need to describe what it *is* and how to use it, not enumerate all 46 entries (that would just be restating the file).
+
+---
+
+Chronological decision log for the whole CTX project, in lightweight ADR format: one numbered entry per non-obvious choice, each stating what was decided, what was rejected, and why. This is the only place rejected alternatives and rationale live — `SPEC.md` and code capture the resulting *behavior*, but not why competing designs lost. `intent.md` files are expected to point here by ADR number rather than restate any of this content.
+
+Append-only: entries are never rewritten to reflect later changes. When a later decision changes or narrows an earlier one, it's recorded as a new ADR with **Status/Supersedes/Amends** cross-references back to the original (e.g. ADR-011's scope is superseded by ADR-022; ADR-024 is amended by ADR-025; ADR-036 supersedes ADR-007/008/009's mechanisms while keeping ADR-007's underlying principle). An editor searching for "why is X this way" should expect to walk a chain of ADRs, not find one final answer — the current behavior is whichever ADR in the chain is not yet superseded/amended, cross-checked against SPEC.md/code for the present-day fact.
+
+Content spans the whole project's evolution, not just the tooling: early ADRs cover meta-decisions about the reference project itself (ADR-002: meal-planner over config-validator; ADR-003: integer/fixed-point nutrition math over a `SafeFloat` newtype), toolchain/lint pinning (ADR-004, ADR-005), and the `ctx-*` CLI family's design (task lifecycle and caching in ADR-007/008/009, later replaced by a stateless read-only model in ADR-036). A long run (ADR-016 through ADR-034) documents the sandbox/cage experiment in detail — bwrap namespaces, a UNIX-socket broker, egress/auth decisions, and several sequenced fixes to that harness — before ADR-035/040 record the owner's pivot away from cage-based enforcement toward hook-based context injection as the primary mechanism, with the cage demoted to a safety boundary (ADR-040) rather than an enforcement gate. ADR-038/044/045 track the shift of freshness/scope tracking off git and onto a content-hash tree plus a self-seeding `.ctxignore`. Several ADRs (024, 025, 027, 032, 042) share a recurring theme worth knowing before editing verification or harness code: a check/harness must assert the precondition it exists to prove, not just report a result — multiple past incidents were "green" runs whose key input was silently absent or corrupted.
+
+There is no schema to follow mechanically beyond `## ADR-NNN — <title>` plus free-form **Decision/Rejected/Rationale/Context/Status** bolded labels used inconsistently across entries — don't infer a strict template from a few examples. When adding an entry, pick the next unused number, never edit older numbers' substance (typo fixes aside), and add explicit `[[ADR-NNN]]` backlinks in both directions if the new entry changes the meaning of an old one.

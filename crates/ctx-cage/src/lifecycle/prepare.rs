@@ -46,7 +46,7 @@ pub fn prepare_run(r: &Resolved) -> Result<Prep, CageError> {
     let rules_file = write_rules_file(&rundir)?;
     let mask_file = write_mask_file(&rundir)?;
     let claude = if billed {
-        Some(resolve_claude_runtime(&rundir)?)
+        Some(resolve_claude_runtime(&rundir, &r.target_root)?)
     } else {
         None
     };

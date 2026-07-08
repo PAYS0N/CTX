@@ -1,19 +1,7 @@
-file: crates/ctx-context/src/cli.rs
-behavior: Parses CLI argv into a `Cli` struct and dispatches to either hook mode (reads hook JSON from stdin, emits additional-context payload, fail-open) or path mode (resolves the context chain for a path and renders it), writing output to an injected writer instead of stdout.
-edit_notes:
-  - Path mode records served node ids into crate::session's ledger only when session::ENV_SESSION_ID is set in env, so manual invocation and the PostToolUse hook share one dedup record; keep this in sync with session.rs's ledger format.
-  - Never calls println!/print! directly (clippy::print_stdout stays enabled); all output goes through the `out: &mut W` writer.
-  - hook::run itself is fail-open (never returns Err); the only failure path in hook mode is a broken writer.
-functions:
-  - name: hook_mode
-    signature: pub const fn hook_mode(&self) -> bool
-    purpose: Reports whether stdin must be consumed before dispatch.
-  - name: dispatch
-    signature: pub fn dispatch<E: Env, W: Write>(env: &E, base: &Path, cli: Cli, stdin: &str, out: &mut W) -> Result<(), CtxError>
-    purpose: Routes parsed CLI args to hook::run or serve::chain_for + serve::render, folding path-mode results into session::record when a session id is present.
-    notes: Returns CtxError::Usage if neither a path nor --hook is given.
-invariants:
-  - In hook mode, an empty JSON string from hook::run means nothing is written and Ok(()) is returned (no trailing newline emitted for empty payload).
-  - Path mode never touches stdin; only hook mode consumes the stdin argument.
-external_deps:
-  - clap: derives Cli's argv parsing via #[derive(Parser)].
+Thin CLI layer: parses argv via `clap` into `Cli { path: Option<String>, hook: bool }` and dispatches to `crate::serve`/`crate::hook`, rendering to an injected `Write` rather than `println!` (so `clippy::print_stdout` stays enforced crate-wide). Contains no chain logic itself — it's a router that also decides, in path mode, whether to consult the session ledger.
+
+`dispatch<E: Env, W: Write>(env: &E, base: &Path, cli: Cli, stdin: &str, out: &mut W) -> Result<(), CtxError>` is the single entry point. If `cli.hook` is set, it calls `hook::run(env, base, stdin)` and writes the JSON only if non-empty — hook mode is fail-open, meaning it returns `Ok(())` silently on empty output and never surfaces chain errors, only writer I/O errors. Otherwise it requires `cli.path`, erroring `CtxError::Usage` if absent. In path mode, it checks `env.env_var(session::ENV_SESSION_ID)`: if unset, it calls `serve::chain_for` + `serve::render` (no ledger interaction); if set, it calls `serve::fresh_chain_for(env, session_id, path)`, folding served nodes into the session dedup ledger, and substitutes the constant `NOTHING_NEW` message when everything for that path was already shown this session. This session-var branch is the mechanism that lets a manual CLI invocation and a Claude Code hook invocation share one dedup record — editing the env-var name or the branch condition breaks that sharing.
+
+`Cli::hook_mode(&self) -> bool` is a small `const fn` accessor used by callers to decide whether stdin must be read before calling `dispatch` (hook mode consumes stdin; path mode ignores the `stdin` param entirely).
+
+`out_err` wraps any `std::io::Error` from the output writer as `CtxError::Io { path: "<stdout>", .. }` — the literal path string `"<stdout>"` is a synthetic marker, not a real path, and appears only here. All writer errors in both modes go through this wrapper, so any error path bypassing it would produce an inconsistent `CtxError::Io.path` value.

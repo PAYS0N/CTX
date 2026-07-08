@@ -7,14 +7,23 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use ctx_scan::error::ScanError;
-use ctx_scan::fs::ScanFs;
 use ctx_scan::hash;
 use ctx_scan::runner::{check_run, summarize, update_run};
 use ctx_scan::walker::walk_dir;
 use ctx_summarize::agent::Agent;
 use ctx_summarize::error::SummError;
-use ctx_summarize::fs::Fs;
+use ctx_summarize::fs::{Fs, StdFs};
 use ctx_summarize::runner;
+
+/// Absolute path to the workspace prompt files, independent of the test
+/// process cwd (prompts are loaded from cwd in production, but tests pass
+/// an absolute path so `StdFs` resolves it regardless of where cargo runs).
+fn prompts_path() -> String {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../prompts")
+        .to_string_lossy()
+        .into_owned()
+}
 
 // ── in-memory fakes ──────────────────────────────────────────────────────────
 
@@ -138,7 +147,9 @@ fn test_dir(label: &str) -> PathBuf {
 fn summarize_writes_leaves_rollups_and_readme() {
     let fs = FakeFs::with_source();
     let agent = recording();
-    let summary = summarize(&fs, &agent, &["src/lib.rs".to_owned()], false).expect("summarize");
+    let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
+    let summary =
+        summarize(&fs, &agent, &prompts, &["src/lib.rs".to_owned()], false).expect("summarize");
     assert!(summary.readme_written);
     assert_eq!(summary.leaves_written, vec![".context/src/lib.rs.ctx"]);
     assert!(fs.map.borrow().contains_key(".context/README.md"));
@@ -148,10 +159,11 @@ fn summarize_writes_leaves_rollups_and_readme() {
 fn scope_gate_blocks_unapproved_large_runs() {
     let fs = FakeFs::prompts_only();
     let agent = recording();
+    let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
     let targets: Vec<String> = (0..=runner::MAX_TARGETS)
         .map(|i| format!("{i}.rs"))
         .collect();
-    let err = summarize(&fs, &agent, &targets, false).expect_err("should be refused");
+    let err = summarize(&fs, &agent, &prompts, &targets, false).expect_err("should be refused");
     assert!(matches!(
         err,
         ScanError::Summarize(SummError::ScopeTooLarge { .. })
@@ -176,21 +188,8 @@ fn scope_gate_allows_approved_large_runs() {
         map: RefCell::new(m),
     };
     let agent = recording();
-    assert!(summarize(&fs, &agent, &targets, true).is_ok());
-}
-
-#[test]
-fn embedded_prompts_are_served_by_scan_fs() {
-    let base = test_dir("prompts");
-    std::fs::create_dir_all(&base).expect("mkdir");
-    let fs = ScanFs::new(base.clone());
-    let leaf = fs.read("prompts/summarizer-leaf.md").expect("read leaf");
-    let rollup = fs
-        .read("prompts/summarizer-rollup.md")
-        .expect("read rollup");
-    assert!(!leaf.is_empty());
-    assert!(!rollup.is_empty());
-    drop(std::fs::remove_dir_all(&base));
+    let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
+    assert!(summarize(&fs, &agent, &prompts, &targets, true).is_ok());
 }
 
 #[test]
@@ -199,7 +198,7 @@ fn is_ignored_follows_ctxignore_and_needs_no_git() {
     drop(std::fs::remove_dir_all(&base));
     std::fs::create_dir_all(&base).expect("mkdir");
     std::fs::write(base.join(".ctxignore"), "gen/\n").expect("write ctxignore");
-    let fs = ScanFs::new(base.clone());
+    let fs = StdFs::new(base.clone());
     assert!(!fs.is_ignored("any.rs").expect("in scope"));
     assert!(fs.is_ignored("gen/out.rs").expect("scoped out"));
     assert!(fs.is_ignored("target/debug/x.rs").expect("builtin default"));
@@ -323,7 +322,7 @@ fn check_reports_everything_stale_without_sidecars_then_fresh_after_store() {
     // Store the current state; the tree is then fresh.
     let files = walk_dir(&base).expect("walk");
     let current = hash::compute(&base, &files).expect("compute");
-    hash::store(&ScanFs::new(base.clone()), &current).expect("store");
+    hash::store(&StdFs::new(base.clone()), &current).expect("store");
     let second = check_run(&base).expect("recheck");
     assert!(second.is_fresh(), "stored -> fresh");
 
@@ -350,19 +349,19 @@ fn update_regenerates_only_stale_summaries_and_refreshes_hashes() {
     let agent = recording();
 
     // First update: everything is stale, all leaves + rollups produced.
-    let first = update_run(&base, &agent, false).expect("first update");
+    let first = update_run(&base, &prompts_path(), &agent, false).expect("first update");
     assert!(!first.is_fresh());
     assert_seeded(&base);
     let calls_after_first = agent.calls.borrow().len();
 
     // Second update with no source change: fresh, zero agent calls.
-    let second = update_run(&base, &agent, false).expect("second update");
+    let second = update_run(&base, &prompts_path(), &agent, false).expect("second update");
     assert!(second.is_fresh());
     assert_eq!(agent.calls.borrow().len(), calls_after_first);
 
     // Edit one file: exactly one leaf + two rollups regenerate.
     std::fs::write(base.join("src/main.rs"), "fn main() { edited(); }").expect("edit");
-    let third = update_run(&base, &agent, false).expect("third update");
+    let third = update_run(&base, &prompts_path(), &agent, false).expect("third update");
     assert_eq!(third.changed_files, vec!["src/main.rs".to_owned()]);
     assert_eq!(
         agent.calls.borrow().len(),
@@ -379,11 +378,11 @@ fn update_removes_orphan_leaf_when_source_is_deleted() {
     drop(std::fs::remove_dir_all(&base));
     create_hash_fixture(&base).expect("fixture");
     let agent = recording();
-    update_run(&base, &agent, false).expect("seed update");
+    update_run(&base, &prompts_path(), &agent, false).expect("seed update");
     assert!(base.join(".context/top.rs.ctx").is_file());
 
     std::fs::remove_file(base.join("top.rs")).expect("delete source");
-    let report = update_run(&base, &agent, false).expect("update after delete");
+    let report = update_run(&base, &prompts_path(), &agent, false).expect("update after delete");
     assert_eq!(report.orphan_leaves, vec![".context/top.rs.ctx".to_owned()]);
     assert!(!base.join(".context/top.rs.ctx").exists());
     assert!(check_run(&base).expect("final check").is_fresh());

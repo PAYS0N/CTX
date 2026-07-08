@@ -1,9 +1,9 @@
 //! Argv parsing and report rendering — the thin `cli` layer.
 //!
 //! Two output modes over the same [`Report`]: the default terse render
-//! (a single `{"status":"pass"}` line, or one `FAIL:`/`ERROR:` block per
-//! failing check with truncated diagnostics) and, behind `--json`, the
-//! full machine contract via `serde_json` for ctx-run/CI.
+//! (a single `pass` line, or one `FAIL:`/`ERROR:` block per failing
+//! check with truncated diagnostics) and, behind `--json`, the full
+//! machine contract via `serde_json` for ctx-run/CI.
 
 use std::io::Write;
 
@@ -18,7 +18,7 @@ use crate::runner::Runner;
 const MAX_MSG: usize = 100;
 
 /// The agent checkpoint: formats, builds, lints, and tests; emits one
-/// capped report (`{"status":"pass"}` when all-pass).
+/// capped report (`pass` when all-pass).
 #[derive(Debug, Parser)]
 #[command(
     name = "ctx-verify",
@@ -70,7 +70,7 @@ pub fn run<R: Runner, W: Write>(runner: &R, cli: &Cli, out: &mut W) -> Result<bo
 /// check. Pass/skipped checks contribute nothing.
 fn render_terse<W: Write>(report: &Report, out: &mut W) -> Result<(), CheckError> {
     if report.status == Status::Pass {
-        return line(out, r#"{"status":"pass"}"#);
+        return line(out, "pass");
     }
     for (name, check) in &report.checks {
         if matches!(check.status, Status::Pass | Status::Skipped) {

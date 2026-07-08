@@ -1,9 +1,5 @@
-file: crates/ctx-cage/src/bwrap/mod.rs
-behavior: Re-exports the pure `bwrap` argv builder for the ctx-cage sandbox: turns a resolved `BwrapConfig` into a deterministic `Vec<OsString>` for `Command::new("bwrap").args(...)`, with no I/O or filesystem access performed here.
-edit_notes:
-  - Actual logic lives in sibling modules build.rs (build_bwrap_args) and config.rs (BwrapConfig and path constants); this file only declares the mount-layout contract and re-exports.
-  - Mount layout is part of the security boundary: /work is RW bind of target_root, secret paths (.env, .git/config) are masked RO with /dev/null, toolchain dirs are RO at identical host paths, /cage/bin is a tmpfs RO bind of host CTX tools, /opt/cage/rules.md is RO, and /run/ctx (holding the API proxy socket) is the sole egress path since the cage has no network — changes to this layout must stay consistent with the lifecycle module that fills BwrapConfig from CLI flags/environment.
-functions:
-invariants:
-  - This module performs no I/O, no bwrap exec, and no filesystem access; it is pure argv construction over BwrapConfig.
-external_deps:
+Module root that documents and re-exports the `bwrap` argv-building subsystem for the safety cage; contains no logic itself beyond `mod`/`pub use` declarations. Actual argv construction lives in `build.rs` (`build_bwrap_args`) and config types/constants live in `config.rs` (`BwrapConfig` plus path constants `API_SOCK_NAME`, `CAGE_BIN`, `CAGE_CLAUDE_CONFIG`, `CAGE_CLAUDE_CRED`, `CAGE_LOCAL_CLAUDE`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR`).
+
+The doc comment is the load-bearing spec for the whole subsystem's mount layout — anyone editing `build.rs` or `config.rs` must keep the actual bind-mount set in sync with what's described here: target project RW-bound at its real host path (not a fixed alias — this is ADR-046, required so a build compiled inside the cage sees the identical path outside it), secret files masked with empty-file RO binds, toolchain dirs RO-bound at identical host paths, `/cage/bin` as a tmpfs holding RO-bound host CTX tools plus `claude`, `/opt/cage/rules.md` RO-bound, and `/run/ctx` RO-bound as the run dir containing the API proxy socket — the cage's only egress path, since the cage has no network access otherwise.
+
+This module and its children (`build.rs`, `config.rs`) are pure: no I/O, no filesystem access, no subprocess execution. They only transform an already-resolved `BwrapConfig` into a `Vec<OsString>`. The caller (in the lifecycle module elsewhere in the crate) is responsible for resolving the config from CLI flags and environment, then actually invoking `Command::new("bwrap").args(...)` with the output of `build_bwrap_args`.

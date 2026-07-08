@@ -1,16 +1,7 @@
-directory: crates/ctx-cage/src/bwrap
-domain: Pure, I/O-free construction of a bubblewrap sandbox invocation: `BwrapConfig` (config.rs) describes the mount/env/command layout, `build_bwrap_args` (build.rs) turns it into a deterministic argv for `Command::new("bwrap")`. `discover.rs` separately walks a target repo's `crates/*` to find `src`/`tests` dirs for tmpfs overlay configuration; its output is consumed by whatever caller (outside this module) populates `BwrapConfig`.
-edit_notes:
-  - build.rs and config.rs are tightly coupled: build.rs consumes config.rs's path constants (CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR, WORK_DIR) and BwrapConfig fields directly; renaming a constant or field in one requires updating the other.
-  - Cross-file contradiction to resolve before relying on either: mod.rs's mount-layout description says secret paths are "masked RO with /dev/null," while config.rs/build.rs specify mask_file must be an empty regular file (never /dev/null, since bwrap binds are nodev and /dev/null triggers EACCES for readers like git). Treat config.rs/build.rs as authoritative and correct mod.rs's description when touched.
-  - Mount layout (in mod.rs) is the security boundary spec that build.rs/config.rs implement; changes to layout must stay consistent with whatever lifecycle code fills BwrapConfig from CLI flags/env (lives outside this directory).
-  - discover.rs has no direct dependency on config.rs/build.rs in this subtree — the wiring from DiscoveredCrates into BwrapConfig happens elsewhere; changing discover.rs's output shape requires updating that external caller.
-children:
-  - build.rs: Implements the argv assembly that mod.rs re-exports; the only place bwrap CLI flag ordering is decided.
-  - config.rs: Defines the input contract (BwrapConfig, path constants) that build.rs consumes.
-  - discover.rs: Standalone filesystem scanner feeding crate src/test paths into sandbox tmpfs overlay setup; not otherwise wired to build.rs/config.rs.
-  - mod.rs: Public surface and mount-layout/security-boundary documentation for the module; no logic.
-invariants:
-  - Sandbox network is always fully unshared; the only egress is the API proxy socket under CAGE_RUN_DIR (/run/ctx) — no code path in build.rs/config.rs permits host network access.
-  - Sandbox environment is exactly BwrapConfig.env (build.rs applies --clearenv unconditionally); nothing inherited from host.
-  - No file in build.rs, config.rs, or mod.rs performs I/O or filesystem access — only discover.rs touches the filesystem.
+This subtree is the pure, side-effect-free translation layer between a resolved sandbox configuration and the actual `bwrap` command line — it produces a `Vec<OsString>` argv and nothing else. Depending on it gets you a single entry point, `build_bwrap_args(&BwrapConfig) -> Vec<OsString>`, plus the `BwrapConfig` type and the fixed in-cage path constants; no filesystem or subprocess work happens here, that's the caller's job elsewhere in the crate.
+
+The coupling to watch: `config.rs` defines the in-cage path constants (`CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR`, `API_SOCK_NAME`, `CAGE_CLAUDE_*`) and `build.rs` consumes them to emit bind-mount args at those exact paths — any other code in the crate that writes synthesized config files or expects specific in-cage paths must reference these same constants, since drift here fails silently inside the sandbox rather than at compile time. `mod.rs`'s doc comment is the authoritative spec for the whole mount layout (target RW at real host path per ADR-046, secret masking via empty-file RO binds, toolchain RO at identical paths, `/cage/bin` tmpfs, `/opt/cage/rules.md` RO, `/run/ctx` RO as the sole network egress via the API proxy socket) — `build.rs` must stay in sync with it on any change. `discover.rs` is a separate, non-pure concern (it does walk the filesystem) that feeds crate `src`/`tests` paths into the same tmpfs-overlay configuration story, but doesn't touch `BwrapConfig`/`build_bwrap_args` directly.
+
+Subtree-spanning invariants: every bind target that the build side wires up traces to a constant in `config.rs`, never a hardcoded string; `mask_file` must be an empty regular file (not `/dev/null`, per bwrap's `nodev` bind behavior) or masked-secret reads fail with EACCES; and the cage always has `--unshare-net` + `--clearenv`, so `config.rs`'s `env` field is the complete cage environment and `/run/ctx`'s socket is the only egress path.
+
+`config.rs` is the data/contract layer, `build.rs` is the argv-construction logic, `discover.rs` is a filesystem-walking helper for tmpfs overlay input, and `mod.rs` is the public surface plus the spec doc comment binding the other two together.

@@ -1,22 +1,7 @@
-```
-file: crates/ctx-context/src/session.rs
-behavior: Tracks which context node ids have already been injected for a given Claude session, backed by one gitignored JSON file per session under `.context/.cache/`, to prevent duplicate hook injections on repeated Read/Grep/Glob calls.
-edit_notes:
-  - CLI path mode reads ENV_SESSION_ID to share the same served-node ledger as `--hook` mode; keep the state file format/location compatible with both.
-  - load() treats missing or corrupt state files as empty (fail-open by design) — never make this path return an error or block.
-functions:
-  - name: load
-    signature: pub fn load<E: Env>(env: &E, session: &str) -> BTreeSet<String>
-    purpose: Reads the set of node ids already served for `session`, defaulting to empty on any failure.
-  - name: save
-    signature: pub fn save<E: Env>(env: &E, session: &str, served: &BTreeSet<String>) -> Result<(), CtxError>
-    purpose: Persists the full served-node set for `session` as JSON.
-  - name: record
-    signature: pub fn record<E: Env>(env: &E, session: &str, ids: impl IntoIterator<Item = String>) -> Result<(), CtxError>
-    purpose: Merges new node ids into the session's served set and persists the result.
-invariants:
-  - state_path sanitizes session ids to [A-Za-z0-9._-], replacing all other characters with '_'.
-  - load() never panics or errors; missing/corrupt files yield an empty BTreeSet.
-external_deps:
-  - serde_json: (de)serializes the served-id set to/from the cache file.
-```
+Tracks which context-tree node ids have already been injected into a given Claude session, so the Read/Grep/Glob hook doesn't re-inject the same chain on every tool call.
+
+State is one JSON file per session at `.context/.cache/hook-<sanitized-session-id>.json`, holding a `BTreeSet<String>` of served node ids. `state_path` sanitizes the session id to `[A-Za-z0-9._-]` (non-matching chars become `_`) before building the path — two session ids differing only in special characters will collide on the same file. `load` is deliberately fail-open: a missing file, unreadable file, or corrupt JSON all silently return an empty set rather than erroring, since the worst acceptable outcome is a redundant re-injection, never a blocked hook. `save` is the only fallible entry point, returning `CtxError::Io` (with the literal placeholder path `"<session-state>"`) if JSON encoding or the write fails.
+
+`ENV_SESSION_ID` (`"CLAUDE_CODE_SESSION_ID"`) is the env var the harness sets for the current session; CLI path mode reads it to share the same per-session ledger that `--hook` mode writes, so a node manually served via CLI won't be re-shown by the hook and vice versa — this cross-mode coupling depends on both paths agreeing on this constant and on `state_path`'s sanitization/location logic.
+
+`load<E: Env>(env: &E, session: &str) -> BTreeSet<String>` and `save<E: Env>(env: &E, session: &str, served: &BTreeSet<String>) -> Result<(), CtxError>` are generic over the `Env` trait (from `crate::env`), which abstracts filesystem access — likely for test injection.

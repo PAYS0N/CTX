@@ -38,10 +38,13 @@ pub struct ClaudeRuntime {
 /// [`CageError::Protocol`] when `claude` is not on `PATH` or the
 /// credential/host config are missing; [`CageError::Io`] /
 /// [`CageError::Json`] on config read/write.
-pub fn resolve_claude_runtime(rundir: &Path) -> Result<ClaudeRuntime, CageError> {
+pub fn resolve_claude_runtime(
+    rundir: &Path,
+    target_root: &Path,
+) -> Result<ClaudeRuntime, CageError> {
     let claude_binary = which_claude_realpath()?;
     let credentials = home_credentials_path()?;
-    let claude_config_json = synth_claude_config(rundir)?;
+    let claude_config_json = synth_claude_config(rundir, target_root)?;
     Ok(ClaudeRuntime {
         claude_binary,
         credentials,
@@ -98,26 +101,40 @@ fn read_host_claude_config() -> Result<serde_json::Value, CageError> {
 
 /// Build a minimal `~/.claude.json` and drop it at `<rundir>/claude.json`.
 ///
-/// Onboarding is pre-completed, `/work` is pre-trusted, and the host's
+/// Onboarding is pre-completed, `target_root` (the workspace's real
+/// host path — ADR-046, no fixed alias) is pre-trusted, and the host's
 /// `oauthAccount` object is carried so the bound credential
 /// auto-detects with no login prompt. No projects or history enter the
 /// cage.
-fn synth_claude_config(rundir: &Path) -> Result<PathBuf, CageError> {
+fn synth_claude_config(rundir: &Path, target_root: &Path) -> Result<PathBuf, CageError> {
     let host_config = read_host_claude_config()?;
     let oauth = host_config
         .get("oauthAccount")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
-    let cfg = build_synth_config(&oauth);
+    let cfg = build_synth_config(&oauth, target_root);
     let path = rundir.join("claude.json");
     std::fs::write(&path, serde_json::to_string_pretty(&cfg)?)?;
     Ok(path)
 }
 
 /// The synthesized config body, given an already-extracted `oauth`
-/// object. Takes by reference + clones inside (clippy's
+/// object and the workspace's real host path (the key claude's own
+/// trust map uses — it must match wherever the cage places the
+/// project, or the trust dialog reappears and breaks headless mode).
+/// Takes by reference + clones inside (clippy's
 /// `needless_pass_by_value` doesn't trace through `json!`).
-fn build_synth_config(oauth: &serde_json::Value) -> serde_json::Value {
+fn build_synth_config(oauth: &serde_json::Value, target_root: &Path) -> serde_json::Value {
+    let mut projects = serde_json::Map::new();
+    projects.insert(
+        target_root.to_string_lossy().into_owned(),
+        serde_json::json!({
+            "hasTrustDialogAccepted": true,
+            "projectOnboardingSeenCount": 9,
+            "hasClaudeMdExternalIncludesWarningShown": true,
+            "allowedTools": [],
+        }),
+    );
     serde_json::json!({
         "hasCompletedOnboarding": true,
         "lastOnboardingVersion": "2.1.123",
@@ -127,14 +144,7 @@ fn build_synth_config(oauth: &serde_json::Value) -> serde_json::Value {
         "theme": "dark",
         "anonymousId": random_anonymous_id(),
         "oauthAccount": oauth.clone(),
-        "projects": {
-            "/work": {
-                "hasTrustDialogAccepted": true,
-                "projectOnboardingSeenCount": 9,
-                "hasClaudeMdExternalIncludesWarningShown": true,
-                "allowedTools": [],
-            }
-        }
+        "projects": projects,
     })
 }
 

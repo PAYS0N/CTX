@@ -51,17 +51,32 @@ fn assert_bind(argv: &[OsString], flag: &str, host: &str, cage: &str) {
 #[test]
 fn workspace_is_bound_read_write_with_regular_file_secret_masks() {
     let argv = build_bwrap_args(&sample_config());
-    assert_bind(&argv, "--bind", "/home/u/proj", "/work");
+    // Bound at its own real host path — no fixed `/work` alias
+    // (ADR-046): a build compiled inside the cage must see the
+    // identical path outside it.
+    assert_bind(&argv, "--bind", "/home/u/proj", "/home/u/proj");
     // Masks must be a regular file, never /dev/null: bind mounts carry
     // nodev, so a masked device node breaks every reader (git).
-    assert_bind(&argv, "--ro-bind", "/tmp/run/empty-mask", "/work/.env");
     assert_bind(
         &argv,
         "--ro-bind",
         "/tmp/run/empty-mask",
-        "/work/.git/config",
+        "/home/u/proj/.env",
+    );
+    assert_bind(
+        &argv,
+        "--ro-bind",
+        "/tmp/run/empty-mask",
+        "/home/u/proj/.git/config",
     );
     assert!(!argv.iter().any(|a| a == "/dev/null"));
+}
+
+#[test]
+fn chdir_matches_the_workspace_bind() {
+    let argv = build_bwrap_args(&sample_config());
+    let idx = find(&argv, "--chdir").expect("--chdir present");
+    assert_eq!(argv.get(idx + 1), Some(&OsString::from("/home/u/proj")));
 }
 
 #[test]

@@ -158,6 +158,37 @@ fn path_mode_records_into_session_so_hook_skips_repeat() {
 }
 
 #[test]
+fn path_mode_dedups_its_own_repeat_calls_within_session() {
+    let env = FakeEnv::seeded();
+    env.set_var(session::ENV_SESSION_ID, "s1");
+
+    // First manual call at the root: only the root rollup/intent.
+    let mut first_out = Vec::new();
+    let first_cli = Cli::parse_from(["ctx-context", "."]);
+    dispatch(&env, Path::new("/repo"), first_cli, "", &mut first_out).expect("dispatch");
+    let first = String::from_utf8(first_out).expect("utf8");
+    assert!(first.contains("root rollup"));
+
+    // Second manual call, nested under the first: the root levels were
+    // already shown this session and must not be re-shelled.
+    let mut second_out = Vec::new();
+    let second_cli = Cli::parse_from(["ctx-context", "crates/foo"]);
+    dispatch(&env, Path::new("/repo"), second_cli, "", &mut second_out).expect("dispatch");
+    let second = String::from_utf8(second_out).expect("utf8");
+    assert!(!second.contains("root rollup"));
+    assert!(!second.contains("root intent"));
+    assert!(second.contains("crates rollup"));
+    assert!(second.contains("foo rollup"));
+
+    // A third call repeating the same target has nothing left to add.
+    let mut third_out = Vec::new();
+    let third_cli = Cli::parse_from(["ctx-context", "crates/foo"]);
+    dispatch(&env, Path::new("/repo"), third_cli, "", &mut third_out).expect("dispatch");
+    let third = String::from_utf8(third_out).expect("utf8");
+    assert!(third.contains("no new context"));
+}
+
+#[test]
 fn path_mode_without_session_env_leaves_no_session_state() {
     let env = FakeEnv::seeded();
     let mut out = Vec::new();

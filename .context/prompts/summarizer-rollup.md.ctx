@@ -1,11 +1,11 @@
-file: prompts/summarizer-rollup.md
-behavior: Defines the prompt template used to generate `rollup.ctx` for a directory, instructing an LLM to summarize a subtree's domain, cross-child coupling, and per-child roles from the parent's perspective for consumption by other LLMs under context budget.
-edit_notes:
-  - Companion to prompts/summarizer-leaf.md (per-file `.ctx` generation); the two prompts must stay consistent on tone, banned-phrase list, and "facts only" philosophy since rollups sit above leaf summaries in the same context tree.
-  - The 15-line target / 40-line ceiling is stated here but is sourced from docs/SPEC.md (rule 10); changing the budget must be done in SPEC.md first, not by editing this prompt alone.
-  - Output format is strict: no code fences, no markdown headings, exact section order (directory/domain/edit_notes/children/invariants/intent_divergence) — downstream parsing likely depends on this shape.
-  - `intent_divergence:` is the only line that is conditionally omitted; every other section header must be emitted even when empty.
-functions:
-invariants:
-  - The example output block always ends with a divergence line to illustrate rule 5; the prompt's own instructions require omitting that line when no divergence exists.
-external_deps: to fill in later, if any deps identified in the file exist
+# Rollup Summarizer Prompt
+
+Generates the top-of-chain context document for a directory: what the subtree does for the system, the coupling that spans its children, and invariants that hold across them, followed by an intent-divergence check against `intent.md`.
+
+Its non-obvious behavior is that it's built entirely from already-summarized inputs — `intent.md`, each child's `<file>.ctx`, and each subdirectory's `rollup.ctx` — and must not re-derive facts from source. This makes it structurally paired with `prompts/summarizer-leaf.md`: leaf produces the per-file `.ctx` that rollup consumes, and the two prompts must stay consistent in tone/format since a rollup for a parent directory sits alongside sibling leaf `.ctx` files at the same level in the chain readers see.
+
+The load-bearing rule is anti-duplication: any sentence in the rollup that's interchangeable with a child's own `.ctx` opening line is flagged as waste and must be deleted rather than restated. This makes the prompt self-adversarial by design — it explicitly instructs a final re-read pass to catch fact repetition across the opening and child descriptions, or across two children's descriptions, calling this "the single largest source of wasted lines in rollups."
+
+The closing `intent_divergence:` line is a literal, greppable label read by an external auditor — the prompt is explicit that this exact string must be preserved when divergence is found, and omitted entirely (not hedged) when the subtree satisfies its stated intent. There's no partial-credit mode: either silence or that exact prefix.
+
+No unusual dependencies; this is a prompt-text file, not code, and pairs with `docs/SPEC.md` (source of the fixed line budget it references) and `prompts/summarizer-leaf.md` (the child-level counterpart it builds on).

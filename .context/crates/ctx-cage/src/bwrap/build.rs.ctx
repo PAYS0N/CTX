@@ -1,18 +1,9 @@
-file: crates/ctx-cage/src/bwrap/build.rs
-behavior: Pure builder that composes a deterministic bwrap argv (`Vec<OsString>`) from a `BwrapConfig`, isolating a target project directory in a sandboxed, network-disabled bubblewrap invocation.
-edit_notes:
-  - Output vec starts with "bwrap" by convention; callers do `Command::new(&argv[0]).args(&argv[1..])`.
-  - Argument order is fixed: base isolation, workspace, toolchain, tools/rules, envs, then "--" and cage_cmd; bwrap applies binds/masks in argv order so reordering can change semantics (e.g. mask binds must follow the workspace bind they mask).
-  - `--unshare-net` is unconditional — network egress only via the proxy socket under CAGE_RUN_DIR; do not make this configurable without updating that guarantee.
-  - `--clearenv` is unconditional, so add_envs is the only source of env vars in the sandbox; any new env requirement must go through BwrapConfig.env.
-  - secret_masks are RO-bound over c.mask_file (an empty file) inside WORK_DIR so paths remain readable-as-empty rather than absent, to avoid breaking tools like git that stat them.
-  - Depends on constants CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR, WORK_DIR from super::config; changing those constants changes in-cage paths this file writes into argv.
-functions:
-  - name: build_bwrap_args
-    signature: pub fn build_bwrap_args(c: &BwrapConfig) -> Vec<OsString>
-    purpose: Assembles the full bwrap argv from config by calling the add_* helpers in sequence.
-invariants:
-  - Network is always unshared regardless of BwrapConfig contents; there is no code path that omits --unshare-net.
-  - Environment inside the sandbox contains only the key/value pairs in c.env (due to unconditional --clearenv).
-  - Every path in c.secret_masks is bound read-only to an empty file, never removed or made unreadable.
-external_deps:
+Builds the deterministic `bwrap` argv used to launch a sandboxed ("caged") process — the sole place that translates a `BwrapConfig` into actual bubblewrap CLI arguments. Output is a `Vec<OsString>` starting with `"bwrap"`, so callers invoke it via `Command::new(&argv[0]).args(&argv[1..])`.
+
+Key invariant: `--unshare-net` is always present, unconditionally — the cage has no network access, and the only egress path is the API proxy socket bound in via `CAGE_RUN_DIR`. `--clearenv` is also unconditional, so `add_envs` must set every variable the caged command needs; nothing leaks from the host environment.
+
+The workspace bind (`add_workspace`) is read-write at the target's *own real host path* — there is no fixed in-cage alias (referenced as ADR-046 elsewhere). Secret paths under the workspace are masked by binding `c.mask_file` (an empty file) read-only over each `c.secret_masks` entry — masked paths remain readable-as-empty rather than absent, since tools like git may stat/read them. This masking happens even though the surrounding workspace bind is writable, so mask order matters (masks must be applied after the base bind to take effect over it).
+
+Toolchain and tool directories are bound read-only at their *identical* host paths (not remapped), so cargo/rustup/etc. resolve paths exactly as the host has them configured, while everything else under `$HOME` stays invisible. `CAGE_BIN` is a tmpfs, not a real bind, populated only by whatever's added via `tool_binds`.
+
+Argument order is meaningful and fixed by `build_bwrap_args`: base isolation → workspace → toolchain → tools/rules → envs → `--` → the actual cage command (`c.cage_cmd`). Each `add_*` helper is kept intentionally small/short per the module's stated style convention (each helper "well under the length tier") — if extending, prefer adding a new `add_*` function over growing an existing one. Constants `CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR` come from `super::config` and must match whatever the in-cage code (proxy client, rules loader) expects at those exact paths — drift here breaks the sandboxed process silently rather than at build time.

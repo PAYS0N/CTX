@@ -1,25 +1,9 @@
-file: crates/ctx-scan/src/runner.rs
-behavior: Orchestrates the full scan pipeline (walk → summarize → hash → README) plus staleness-check and incremental-update variants, delegating summarization to ctx-summarize's generic runner.
-edit_notes:
-  - update_run is check_run + regenerate(): it reuses the same walk/hash/diff sequence as check_run, so keep both in sync if the staleness algorithm changes.
-  - regenerate() processes changed_files, then orphan_leaves removal, then stale_dirs, relying on stale_dirs already being ordered deepest-first by hash::diff.
-  - Prompts are loaded from the "prompts" path via Fs, intercepted by ScanFs for real runs and by in-memory fakes in tests; summarize() is the seam used by both scan_run and tests.
-functions:
-  - name: summarize
-    signature: pub fn summarize<F: Fs, A: Agent>(fs: &F, agent: &A, targets: &[String], approve: bool) -> Result<ScanSummary, ScanError>
-    purpose: Runs scope check, full leaf-up summarization via ctx_summarize::runner::run, and writes the README.
-  - name: scan_run
-    signature: pub fn scan_run<A: Agent>(base: &Path, agent: &A, approve: bool) -> Result<ScanSummary, ScanError>
-    purpose: Walks base, summarizes everything, then persists the hash sidecars.
-  - name: check_run
-    signature: pub fn check_run(base: &Path) -> Result<Staleness, ScanError>
-    purpose: Recomputes the hash tree and diffs it against stored sidecars without calling any model.
-  - name: update_run
-    signature: pub fn update_run<A: Agent>(base: &Path, agent: &A, approve: bool) -> Result<Staleness, ScanError>
-    purpose: Recomputes hashes, regenerates only stale leaves/rollups and removes orphan leaves, then persists the fresh hash tree and README.
-    notes: Returns early with an unchanged Staleness (no writes) when the tree is already fresh.
-invariants:
-  - update_run never calls agent or writes hash/README when hash::diff reports fresh (stale.is_fresh() true).
-  - regenerate() applies changes in fixed order: changed_files, then orphan_leaves, then stale_dirs.
-external_deps:
-  - ctx_summarize::runner: supplies scope_check, load_prompts, summarize_leaf, summarize_rollup, and the top-level run() used for full scans.
+Orchestrates the three top-level scan operations for CTX: `scan_run` (full summarize from scratch), `check_run` (staleness detection only, no model calls), and `update_run` (check-then-regenerate-only-what's-stale). This is the entry point crate callers (CLI) invoke; it wires together `ctx-summarize`'s generic `summarize`/`summarize_leaf`/`summarize_rollup` engine with this crate's `walker`, `hash`, and `readme` modules.
+
+Key non-obvious detail: prompts are always loaded from `prompts_dir` resolved against the process's current working directory via `load_prompts`, never from the scan target `base` — this is deliberate so the target repo doesn't need to carry CTX's own prompt files, but it means tests or callers that `chdir` unexpectedly will load the wrong prompts.
+
+`summarize<F: Fs, A: Agent>(fs, agent, prompts, targets, approve) -> Result<ScanSummary, ScanError>` is the reusable inner step (generic over fake `Fs`/`Agent` for testing): it runs scope check, delegates to `ctx_summarize::runner::run_with_prompts`, then always writes the README, returning `ScanSummary { leaves_written, rollups_written, readme_written }`. `scan_run` wraps this with a real `StdFs`, walks `base`, and additionally persists the hash tree via `hash::store` after summarizing — note hashes are stored only in `scan_run`, not in bare `summarize`.
+
+`regenerate` (private) is the core of `update_run`'s selective-rebuild logic: it processes `stale.changed_files` (re-summarize leaves), then `stale.orphan_leaves` (delete `.ctx` files whose source vanished), then `stale.stale_dirs` (re-summarize rollups) — order matters because rollups must run after their child leaves are current, and `Staleness.stale_dirs` is documented (in `hash.rs`) as already deepest-first. `update_run` short-circuits and returns early without calling `load_prompts`, `regenerate`, `hash::store`, or `write_readme` when `stale.is_fresh()` — a fresh tree makes zero model calls and touches no files, which is the whole point of the check-first design. When not fresh, it persists the new hash tree and rewrites the README even though `regenerate` doesn't do either.
+
+All three public run functions propagate errors as `ScanError` from walk, scope-check (`approve`-gated to prevent oversized/unintended scans), summarization, hash, and README-write failures — none of them panic on expected failure paths.

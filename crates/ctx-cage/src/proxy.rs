@@ -82,7 +82,7 @@ impl Upstream for SocatUpstream {
             .args(["-t", "86400", "-", &addr])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()?;
         let tx = child
             .stdin
@@ -234,7 +234,10 @@ pub fn serve<U: Upstream + 'static>(
                 let cfg_conn = Arc::clone(cfg);
                 let up = Arc::clone(upstream);
                 thread::spawn(move || {
-                    let _ = serve_conn(stream, &cfg_conn, up.as_ref());
+                    if let Err(e) = serve_conn(stream, &cfg_conn, up.as_ref()) {
+                        let _ =
+                            writeln!(std::io::stderr(), "ctx-cage proxy: connection failed: {e}");
+                    }
                 });
             },
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => thread::sleep(ACCEPT_IDLE),

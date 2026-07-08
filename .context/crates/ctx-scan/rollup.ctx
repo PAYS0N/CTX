@@ -1,13 +1,7 @@
-directory: crates/ctx-scan
-domain: Standalone CLI crate (`ctx-scan`) that builds and maintains a `.context/` tree of AI-generated file/directory summaries via content-hash (Merkle-tree) change detection, independent of git state. Ships as both a library (runner, cli::dispatch entry points) and a binary, layered on top of ctx-core and ctx-summarize for shared types and the generic summarization runner.
-edit_notes:
-  - Freshness is entirely git-independent: hash.rs's SHA-256 Merkle tree is the sole source of truth, seeded once from `.gitignore` into `.ctxignore` at first scan and never re-synced.
-  - CLI modes (dry-run, check, update, stop-hook, full scan) are mutually exclusive with fixed dispatch order enforced in both cli.rs and main.rs; stop_hook must always fail open (main.rs swallows its Result).
-  - Integration tests bind against ctx_summarize's Fs/Agent trait fakes, not ctx-scan's own types, and assert exact agent-call counts and literal output substrings — changing staleness propagation or hint text requires updating both src/ and tests/ together.
-children:
-  - src: Implementation — walk/hash/summarize/readme pipeline, CLI dispatch, and the embedded-prompt Fs wrapper.
-  - tests: End-to-end integration tests covering summarize/check_run/update_run/walk_dir/stop_hook against fake and real filesystem fixtures.
-invariants:
-  - `.context/`, `.git/`, secrets, and binaries are always excluded from scanning regardless of `.ctxignore` contents.
-  - Output line prefixes (`stale-dir:`, `stale-leaf:`, `orphan-leaf:`, `fresh`) and the stop-hook JSON payload are stable formats consumed by external scripts/hooks.
-  - stop_hook never mutates freshness state or calls update_run; regeneration happens only through explicit update/full-scan runs.
+`crates/ctx-scan` is a standalone crate providing both a CLI binary and a library for maintaining a `.context/` sidecar summary tree over an arbitrary directory (git or not), using content hashing rather than git state to detect staleness. Depending on the library gets three entry points — `scan_run`/`check_run`/`update_run` — plus `cli::dispatch`; depending on the binary gets a ready CLI including a fail-open Stop-hook mode. The crate is built on `ignore` for gitignore-aware walking and `sha2` for hashing, and consumes `ctx-core`/`ctx-summarize` (the latter supplying the `Fs`/`Agent` traits that the whole staleness pipeline is generic over, and the `cpath`/`scope_matcher` logic that `walker.rs`/`hash.rs` must stay consistent with).
+
+The implementation (`src/`) and its behavioral spec (`tests/`) are tightly bound: `tests/scan.rs` pins the exact staleness/regeneration order (changed leaves → orphan deletion → stale-dir rollups, deepest-first) and the "fully fresh ⇒ zero agent calls, zero writes" invariant that `src/`'s `update_run` early-return exists to guarantee; `tests/stop_hook.rs` pins the Stop-hook's report-only, always-succeed contract that `main.rs`/`cli.rs` implement. Both test files share `runner::MAX_TARGETS` as the scope-gating threshold and both stub `ctx_summarize::agent::Agent`, so any change to that constant's semantics or to the `Agent` trait signature must be re-validated across both files, not just one.
+
+A crate-wide quirk to know before editing either side: prompt files are resolved against the process cwd in `src/` (never the scanned target) and against `CARGO_MANIFEST_DIR` in `tests/` — the two use different mechanisms to reach the same directory of prompt files, and neither travels with a scanned repo if this crate is embedded elsewhere. `Cargo.toml` ties bin and lib to the same `ctx_scan` target name, so restructuring one requires checking the other stays buildable.
+
+No `intent.md` exists for this directory, so no divergence check applies.

@@ -28,6 +28,14 @@ fn test_dir(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("ctx-scan-stophook-{label}"))
 }
 
+/// Absolute path to the workspace prompt files, independent of cwd.
+fn prompts_path() -> String {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../prompts")
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// One source file fixture.
 fn fixture(base: &std::path::Path) -> Result<(), std::io::Error> {
     drop(std::fs::remove_dir_all(base));
@@ -57,7 +65,7 @@ fn fresh_tree_emits_nothing() {
     let agent = StubAgent {
         calls: RefCell::new(0),
     };
-    update_run(&base, &agent, false).expect("seed");
+    update_run(&base, &prompts_path(), &agent, false).expect("seed");
     let mut out = Vec::new();
     stop_hook(&base, &mut out).expect("hook");
     assert!(out.is_empty(), "fresh tree must stay silent");

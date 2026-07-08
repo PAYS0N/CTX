@@ -1,23 +1,5 @@
-directory: crates/ctx-context/src
-domain: Implements the ctx-context binary: computes the ordered chain of context-node paths (rollup.ctx/intent.md ancestors plus a leaf .ctx) above any repo file or directory, serves their contents with soft-absent handling, and injects unseen portions of that chain into Claude Code sessions via a fail-open PostToolUse hook. External consumers get two entry points: the CLI (path mode, manual invocation) and hook mode (stdin JSON, automatic injection), both funneled through `cli::dispatch`.
-edit_notes:
-  - All filesystem/env access in serve, session, chain, and hook goes through the `Env` trait (env.rs), never std::fs directly, so tests can substitute fakes; StdEnv is the only real impl, rooted at an absolute repo base path.
-  - Chain node ordering/kind (chain.rs) is a protocol depended on by serve.rs (rendering) and hook.rs (fresh-node filtering); changing node kinds, order, or leaf-path derivation requires updating both consumers.
-  - Session dedup ledger (session.rs, keyed by ENV_SESSION_ID or hook event's session_id) is shared between CLI path mode and hook mode — the JSON state file format/location must stay consistent across both call sites, and hook.rs's "fresh nodes" logic depends on it.
-  - Untrusted path strings must enter the system only through `RepoPath::parse` (repo_path.rs); `child`/`under` are unchecked and assume pre-trusted segments — serve.rs's `parse_target` is the CLI-facing gate.
-  - Crate-wide lint bans println!/eprintln!/print!; main.rs and cli.rs route all output through injected writers instead.
-children:
-  - lib.rs: Declares the module tree and states the crate's read-only, hook-injecting purpose; no logic.
-  - main.rs: Process shell — argv/stdin/exit-code plumbing around cli::dispatch; only place allowed to touch real process I/O outside StdEnv.
-  - cli.rs: Argv parsing and mode dispatch (hook vs path), wiring session recording to path-mode output.
-  - hook.rs: PostToolUse hook logic — event parsing, path resolution, fail-open fresh-context injection.
-  - serve.rs: Turns a resolved chain into rendered, absence-tolerant text output; defines the CLI/hook display contract.
-  - chain.rs: Computes chain structure/ordering (rollup/intent/leaf nodes) consumed by serve.rs and hook.rs.
-  - session.rs: Per-session served-node ledger backing hook dedup and CLI `--hook`-equivalent tracking.
-  - repo_path.rs: Validated repo-relative path type; sole gate for untrusted path strings.
-  - env.rs: `Env` trait + `StdEnv`, the filesystem/env-var abstraction all above modules depend on.
-  - error.rs: Shared `CtxError` taxonomy; no `Box<dyn Error>`/anyhow anywhere in the crate.
-invariants:
-  - Hook-mode code paths (hook.rs, and cli::dispatch's hook branch) never propagate errors that would block the agent — failures degrade to empty/marker output, not process failure.
-  - Chain resolution never reads or exposes source file bytes — only rollup.ctx, intent.md, and leaf `.ctx` contents flow through serve/hook.
-  - All cross-module errors are `CtxError` variants (error.rs); no module introduces its own error type or dyn-Error boxing.
+`crates/ctx-context/src/` is the whole `ctx-context` binary crate: a read-only context server that, given a repo path, computes the ordered chain of rollup/intent/leaf `.ctx` files above it and either prints it (CLI mode) or injects the unseen portion of it as `additionalContext` into a Claude Code tool-use hook. Depending on this crate means depending on its two entry points, `cli::dispatch` and `hook::run`, both generic over the `Env` trait so all filesystem/env-var access is fake-able in tests; nothing outside `main.rs` touches `std::fs`/`std::env` directly.
+
+The crate is organized as a straight pipeline shared by both modes: `repo_path` validates untrusted path strings into `RepoPath` (the sole gate for path-escape safety), `chain` turns a validated path into an ordered list of `ChainNode`s (rollup/intent/leaf, top-down), `serve` resolves those nodes to actual file content or a soft `(absent: …)` marker and renders the `=== id [kind] ===` text format, and `session` deduplicates served node ids per Claude session so repeated hook/CLI calls don't re-show the same node. `cli.rs` and `hook.rs` are the two callers of this pipeline — `cli::dispatch` for manual/path invocations, `hook::run` for the harness's `PostToolUse` event — and both go through `serve::fresh_chain_for` when a session id is available, which is what makes CLI and hook invocations share one dedup ledger via the `CLAUDE_CODE_SESSION_ID` env var (`session::ENV_SESSION_ID`). Changing that env var name, `session::state_path`'s sanitization, or the served-node id format breaks that cross-mode sharing.
+
+Error handling is asymmetric by design: `chain`/`repo_path`/`serve` treat missing scaffolding files as a normal, non-error state (absent marker), while `session::load` and `hook::run` are fail-open even on corrupt state or malformed input — the crate's only hard errors are unreadable-but-present files, invalid paths, or a broken output writer. `error.rs` centralizes every failure mode as a `CtxError` variant (no `anyhow`/`Box<dyn Error>`), so a new failure path requires a new variant there rather than a wrapped error elsewhere. `env.rs` is the sole abstraction boundary for I/O, used by `serve`, `session`, and `hook`; `lib.rs`/`main.rs` just wire the module tree and keep all process/argv/stdin I/O in the binary shell, per the crate's print-stdout lint restriction (`main.rs`/`cli.rs` route everything through injected writers, never `println!`).

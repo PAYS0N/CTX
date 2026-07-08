@@ -1,16 +1,7 @@
-directory: crates/ctx-summarize
-domain: Binary+library crate implementing the `ctx-summarize` runner: turns leaf source files into `.ctx` summaries and rolls them up bottom-up into `rollup.ctx`, via a pluggable Agent (LLM completion, subprocess-based) and Fs (filesystem) seam. Consumed as a CLI that resolves targets from either a ctx-access task cache or an explicit path list.
-edit_notes:
-  - Layering is fixed: cli (argv/io) -> runner (pure orchestration) -> fs/agent (seams); runner must never depend on cli.
-  - cpath.rs's `.context/<src>.ctx` / `.context/<dir>/rollup.ctx` layout is duplicated in ctx-access pending a planned ctx-core unification — changes there must be mirrored.
-  - fs.rs's scope_matcher (`.ctxignore` + `target/`) must stay in sync with ctx-scan's walker; it defines what runner/cli treat as in-scope.
-  - agent.rs's SubprocessAgent stdin/stdout JSON contract is the model-agnostic boundary any CTX_AGENT_CMD script must implement.
-  - Depends on ctx-core via relative path "../ctx-core"; must stay in the same workspace layout.
-children:
-  - src/: Crate implementation — CLI, runner orchestration, Fs/Agent seams, path/cache utilities, error types.
-  - tests/: Integration suite exercising runner ordering, gating, and Fs/Agent contracts via fakes and a real subprocess.
-invariants:
-  - intent.md is read-only everywhere in this crate — read as rollup input, never written.
-  - All fallible operations return SummError variants; no panics on malformed input, missing files, or bad task ids.
-  - runner writes leaves before rollups in strict leaf-to-root order; runs over 50 targets are blocked unless explicitly approved via `--approve`.
-  - Path validation rejects absolute/empty/`.`/`..`/null-byte paths before any file is touched.
+`crates/ctx-summarize` is the leaf-then-rollup context-generation engine: given a repo-relative target list (or a ctx-access task cache id), it walks up to `.context/` and writes `.ctx`/`rollup.ctx` files in strict leaf-up order, gated by scope/access checks. Depending on it (as a lib) or invoking its binary is the only sanctioned way to (re)generate context files — callers never need to know the write order, the `.context` mirror-path scheme, or the prompt format, all of which are internal to `src/`.
+
+`src/` is the entire implementation: a fixed `main`/`cli` → `runner` → `fs`/`agent`/`cache` layering, with `cpath` defining the on-disk mirror convention and `fs::scope_matcher` defining "in scope" — the latter must stay consistent with ctx-scan's independent walker. Prompts are always loaded from external files at runtime, never embedded in source. `tests/` is the sole verification of this crate's external contract: it exercises `runner::run` end-to-end against fake and real (subprocess) `Fs`/`Agent` implementations, asserting the leaf-before-rollup ordering and the full set of `SummError` rejection cases (path traversal, missing prompts, oversized unapproved scope, secret-like paths). Any change to the `Fs`/`Agent` trait signatures in `src/` requires updating `FakeFs`/`RecordingAgent` in `tests/summarize.rs` in lockstep — that's the one cross-directory coupling in this crate.
+
+Cargo.toml pins the crate to `../ctx-core` via relative path, so the workspace layout is load-bearing; the `ignore` dependency is what lets `fs`'s scope matcher honor `.gitignore`/`.ctxignore` semantics.
+
+No `intent.md` exists for this directory, so no divergence check is possible.

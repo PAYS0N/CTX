@@ -1,0 +1,5 @@
+`template/.claude/` is a project scaffold for consumers of this tool: it seeds a new repo's `.claude/settings.json` so Claude Code auto-injects `ctx-context` output on every `Read`, `Grep`, or `Glob`.
+
+The single file here hard-codes the hook command to `"$CLAUDE_PROJECT_DIR"/target/debug/ctx-context --hook`, a debug-build path — this template assumes consumers build the binary locally rather than install a release. Anyone changing `ctx-context`'s CLI surface (renaming `--hook`, moving the release artifact to a different path) must update this template in lockstep, since failures here are swallowed (`2>/dev/null || true`) and produce no visible symptom other than context silently not appearing.
+
+No intent.md exists for this directory to check against.

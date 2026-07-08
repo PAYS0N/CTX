@@ -1,0 +1,5 @@
+Configures Claude Code's hook system to auto-inject repo context on file exploration: after any `Read`, `Grep`, or `Glob` tool use, it runs the `ctx-context` binary in hook mode.
+
+The command invokes `"$CLAUDE_PROJECT_DIR"/target/debug/ctx-context --hook`, meaning it depends on a locally built debug binary at that path rather than an installed/released version — if the binary hasn't been built (`cargo build`) or is stale, the hook silently does nothing, since the command is suffixed with `2>/dev/null || true` to swallow errors and prevent hook failures from blocking tool use. This means failures here are invisible; there's no signal to the user or model that context injection failed. Editors changing `ctx-context`'s CLI flags must keep `--hook` working, and anyone relocating the built binary (e.g., to a release profile path) must update this command to match, or context injection silently stops working after the switch.
+
+This is part of a `.claude/settings.json` template, so it's the shipped/default configuration for projects using this tool — copied into consuming repos rather than a one-off local config.

@@ -30,6 +30,11 @@ pub struct Cli {
     #[arg(long)]
     approve: bool,
 
+    /// Directory holding the prompt files, resolved against the process
+    /// cwd (not the scanned directory).
+    #[arg(long, default_value = "prompts")]
+    prompts: String,
+
     /// Claude Code Stop-hook mode: check staleness and emit a
     /// report-only `systemMessage`. Never calls the agent —
     /// regeneration is a post-session concern (`ctx-run`'s refresh or
@@ -90,6 +95,12 @@ impl Cli {
     #[must_use]
     pub fn dir(&self) -> &std::path::Path {
         &self.dir
+    }
+
+    /// The prompt-files directory (cwd-relative).
+    #[must_use]
+    pub fn prompts(&self) -> &str {
+        &self.prompts
     }
 }
 
@@ -221,9 +232,9 @@ pub fn stop_hook<W: Write>(dir: &std::path::Path, out: &mut W) -> Result<(), Sca
 pub fn dispatch<A: Agent, W: Write>(agent: &A, cli: &Cli, out: &mut W) -> Result<(), ScanError> {
     let base = validate_dir(&cli.dir)?;
     if cli.update() {
-        let staleness = update_run(&base, agent, cli.approve)?;
+        let staleness = update_run(&base, cli.prompts(), agent, cli.approve)?;
         return render_staleness(out, &staleness);
     }
-    let summary = scan_run(&base, agent, cli.approve)?;
+    let summary = scan_run(&base, cli.prompts(), agent, cli.approve)?;
     render(out, &summary)
 }

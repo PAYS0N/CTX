@@ -1,15 +1,16 @@
-file: crates/ctx-scan/tests/scan.rs
-behavior: Integration test suite for ctx-scan covering summarize()/check_run()/update_run()/walk_dir() against both an in-memory fake filesystem+agent and real tmpdir filesystem fixtures.
-edit_notes:
-  - FakeFs and RecordingAgent implement ctx_summarize's Fs and Agent traits, not ctx-scan's own; summarize() bridges the two crates.
-  - Tests assume prompts/summarizer-leaf.md and prompts/summarizer-rollup.md exist (embedded or seeded); FakeFs variants seed these manually while ScanFs serves them from embedded resources.
-  - .ctxignore/.gitignore hand-off semantics are asserted here: .gitignore only seeds .ctxignore on first contact, then is ignored — changing that seeding logic in the walker breaks walk_seeds_ctxignore_from_gitignore_once_then_decouples.
-  - target/ exclusion by built-in default and .context/ exclusion are load-bearing assumptions checked directly against walk_dir output.
-  - Hash/update lifecycle tests assert exact stale-dir and agent-call counts (e.g. "one leaf + src rollup + root rollup" = 3 calls), so runner staleness propagation logic must keep these counts in sync.
-  - All filesystem-backed tests use a fixed tmpdir naming scheme (test_dir(label) = std::env::temp_dir()/ctx-scan-test-<label>) and manually remove_dir_all before and after; no shared harness enforces isolation between parallel test runs beyond unique labels.
-functions:
-invariants:
-  - RecordingAgent::complete always succeeds, returning "SUMMARY[{system}]"; used to assert call counts, not content.
-  - FakeFs::is_ignored always returns Ok(false); ignore-pattern behavior is only tested against real ScanFs.
-external_deps:
-  - ctx_summarize: summarize() in ctx-scan delegates to this crate's runner/Fs/Agent traits; fakes here satisfy that crate's trait contracts, not ctx-scan's.
+Integration test suite for ctx-scan, exercising `walk_dir`, `hash::compute/store`, `check_run`, `update_run`, and `runner::summarize` both hermetically (in-memory) and against the real filesystem in OS tmpdirs. It's the executable spec for how staleness detection, ignore-file semantics, and scope gating are supposed to behave — an editor changing behavior in `runner.rs`, `walker.rs`, or `hash.rs` should expect these tests to catch drift.
+
+Two fake implementations back the hermetic half: `FakeFs` (an in-memory `BTreeMap<String,String>` implementing `ctx_summarize::fs::Fs`, with `with_source()` seeding `prompts/summarizer-{leaf,rollup}.md` plus `src/lib.rs`, and `prompts_only()` seeding just prompts) and `RecordingAgent` (implements `ctx_summarize::agent::Agent::complete`, records every `(system, user)` call and always returns `format!("SUMMARY[{system}]")`, never erroring). Anything asserting on agent call counts relies on `RecordingAgent` never failing — it's not a fault-injection double.
+
+Filesystem-backed tests use `test_dir(label) -> PathBuf` (a fixed path under `std::env::temp_dir()` per label, not per-run-unique) and always `drop(std::fs::remove_dir_all(&base))` both before and after, so tests are not safely parallel-clean if a previous run crashed mid-test without cleanup — a leftover dir from an aborted run could leak into the next run's fixture. `prompts_path()` resolves prompts via `CARGO_MANIFEST_DIR` rather than relying on cwd, since production code loads prompts relative to the process's cwd but tests need an absolute path independent of where `cargo test` is invoked from.
+
+Key behavioral facts pinned by these tests (coupling to `walker.rs`/`hash.rs`/`runner.rs` internals):
+- `walk_dir` always excludes `.context/` and binary-looking files (e.g. `.png`), and applies a built-in default ignore for `target/`.
+- `.ctxignore` is seeded from `.gitignore` **once**, on first `walk_dir` contact with a directory lacking `.ctxignore`; after seeding, `.gitignore` is never consulted again — a test explicitly grows `.gitignore` post-seed and asserts no effect (`walk_seeds_ctxignore_from_gitignore_once_then_decouples`).
+- `check_run` reports the root directory as stale via the empty string `""` in `stale_dirs`, not a path like `"."`.
+- Editing one file marks exactly that file's leaf and its ancestor directory rollups stale, not the whole tree (`stale_dirs == ["src", ""]` for `src/main.rs`).
+- `update_run` regenerates only what's stale: one leaf edit triggers exactly 3 agent calls (leaf + parent rollup + root rollup); a no-op second run makes zero agent calls.
+- Deleting a source file causes the next `update_run` to report it in `orphan_leaves` and physically remove the stale `.ctx` file.
+- `runner::MAX_TARGETS` is the scope-gate threshold; `summarize(..., approved: bool)`'s last bool param bypasses `ScopeTooLarge` when `true`.
+
+Depends on `ctx_summarize` (`agent::Agent`, `error::SummError`, `fs::{Fs, StdFs}`, `runner::load_prompts`) as well as `ctx_scan`'s own `error`, `hash`, `runner`, `walker` modules — this file is as much a contract test between the two crates as it is a unit test of `ctx-scan`.

@@ -1,18 +1,7 @@
-directory: crates/ctx-cage/tests
-domain: Integration and unit test suite for ctx-cage, exercising the broker protocol/loopback flow, bwrap sandbox argv construction, crate-dir discovery, CLI mode resolution, the HTTP proxy's header rewriting, and the summarize module's staleness logic. No test touches real subprocesses or network sockets except broker_loopback.rs and proxy.rs, which use real Unix sockets with fakes/threads standing in for the process and upstream.
-edit_notes:
-  - Tests are organized one-file-per-source-module (broker_loopback↔broker, bwrap_build/bwrap_discover↔bwrap, cli↔cli, protocol↔protocol, proxy↔proxy, summarize↔summarize); renaming or reshaping a public function/struct in the corresponding ctx-cage source module requires updating its test file's fixtures (e.g. sample_config in bwrap_build.rs, cfg in proxy.rs, base() in cli.rs).
-  - Tests needing a filesystem path (sockets, tempdirs) derive a unique path from pid + a process-global atomic counter to avoid collisions under parallel test execution; this pattern recurs in broker_loopback.rs, bwrap_discover.rs, and cli.rs.
-  - common/ is the only shared fixture module; it supplies canned BwrapConfig/ClaudeBinds and argv predicates reused by bwrap-related test files.
-children:
-  - broker_loopback.rs: Exercises the broker over live Unix sockets with a FakeSpawner substituting subprocess execution.
-  - bwrap_build.rs: Asserts the sandboxing invariants (secret masking, network isolation, RO binds) that the bwrap argv builder must uphold.
-  - bwrap_discover.rs: Verifies crate-dir discovery error/success paths independent of bwrap_build.rs.
-  - cli.rs: Verifies flag-to-Mode resolution and spend/conflict gating, purely in-memory except one tempdir-backed test.
-  - common/: Shared, pure, I/O-free fixture and argv-predicate helpers for the bwrap-related tests.
-  - protocol.rs: Validates the wire protocol purely over in-memory byte buffers, no sockets.
-  - proxy.rs: Validates header-rewriting rules and one full serve_conn exchange against a fake upstream over socketpairs.
-  - summarize.rs: Validates path-mapping and staleness computation in the summarize module.
-invariants:
-  - Tests requiring unique filesystem resources (sockets/tempdirs) always derive the name from pid + an atomic counter, never a fixed path, to remain parallel-safe.
-  - Sandbox-related tests (bwrap_build.rs, common/) never assert against real filesystem state — all paths and configs are synthetic.
+intent_divergence: intent.md is absent, so no divergence can be assessed.
+
+`crates/ctx-cage/tests/` is the integration test suite for ctx-cage's sandboxing broker, proxy, wire protocol, bwrap argv construction, and CLI mode resolution — depending on it gets you nothing (it's a leaf test crate), but editing any public surface in `ctx_cage::{broker, bwrap, proxy, protocol, cli, summarize}` requires checking the matching file here.
+
+Tests are split strictly by transport reality: `broker_loopback.rs` and one test in `proxy.rs` use real `UnixListener`/`UnixStream` pairs (with per-test unique socket paths via a shared pid+atomic-counter pattern to dodge parallel-test collisions), while `protocol.rs` uses pure in-memory `Vec<u8>` buffers and `bwrap_build.rs`/`cli.rs`/`summarize.rs` test pure functions with no I/O at all. `bwrap_build.rs` is the most load-bearing file for cross-cutting changes: it pins the exact three-token argv layout (`flag host cage`) that `common/`'s predicates and its own `assert_bind` helper both assume, plus the `CAGE_BIN`/`CAGE_RULES_PATH`/`CAGE_RUN_DIR` constants imported directly from `ctx_cage::bwrap` — renaming any of these breaks both this file and `common/mod.rs` in lockstep. `common/` supplies the only shared fixtures (synthetic `BwrapConfig`/`ClaudeBinds` plus argv predicates) used across the bwrap-related tests; everything else in this directory is self-contained per file with its own local fixtures (e.g. `proxy.rs`'s `cfg()`/`FakeUpstream`, `broker_loopback.rs`'s `drive`/`spawn_broker_thread`).
+
+A shared discipline holds across all files: tests avoid real subprocesses and real sockets where possible (FakeSpawner in broker tests, UnixStream::pair in proxy tests, byte buffers in protocol tests), and any test touching the real filesystem uses a unique per-process/counter path to stay parallel-safe (`unique_socket` in broker_loopback.rs, the tempdir path in `cli.rs`'s `task_file_is_read_from_disk`, `bwrap_discover.rs`'s per-test tempdirs).

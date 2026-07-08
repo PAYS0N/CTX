@@ -1,25 +1,11 @@
-file: crates/ctx-cage/src/proxy.rs
-behavior: Host-side HTTP/1.1 proxy that is the offline cage's sole egress: accepts connections on a UNIX socket, rewrites the request head (Host, Connection: close, optional x-api-key injection), dials the upstream API over TLS, and pumps bytes bidirectionally per connection.
-edit_notes:
-  - Socket path `/run/ctx/api.sock` and in-cage relay forwarding `127.0.0.1:8080` to it are conventions enforced elsewhere (cage bind-mount setup); this file only implements the listener side.
-  - TLS/socket I/O is quarantined behind the `Upstream` trait specifically so no TLS stack is linked into this crate; `SocatUpstream` shells out to `socat` with cert verification instead.
-  - `socat` invoked with `-t 86400` (long half-close timeout) per ADR-028 lesson — do not shorten without checking that ADR.
-  - Two auth postures are mutually exclusive and selected by `cfg.api_key.is_some()`: key-injection strips client `x-api-key`/`Authorization` and injects the real key; `None` passes client `Authorization` through unchanged (subscription-OAuth posture).
-functions:
-  - name: rewrite_head
-    signature: pub fn rewrite_head(head: &str, cfg: &ProxyConfig) -> String
-    purpose: Pure rewrite of an HTTP/1.1 request head, dropping owned headers and re-emitting Host/Connection/x-api-key per config.
-    notes: head must exclude the trailing blank line; output always ends with a bare "\r\n\r\n".
-  - name: serve_conn
-    signature: pub fn serve_conn<U: Upstream>(mut client: UnixStream, cfg: &ProxyConfig, upstream: &U) -> Result<(), CageError>
-    purpose: Handles one client connection end-to-end: read head, rewrite, dial upstream, forward leftover body, pump both directions until close.
-  - name: serve
-    signature: pub fn serve<U: Upstream + 'static>(listener: &UnixListener, cfg: &Arc<ProxyConfig>, upstream: &Arc<U>, stop: &AtomicBool) -> Result<(), CageError>
-    purpose: Nonblocking accept loop spawning one thread per connection until `stop` is set.
-    notes: Polls at ACCEPT_IDLE (20ms) intervals; per-connection errors are swallowed, only listener-level I/O errors propagate.
-invariants:
-  - Each request opens a fresh upstream connection (Connection: close is always forced), so head-reuse/keep-alive never happens.
-  - Request head larger than MAX_HEAD (64 KiB) yields CageError::Protocol, never a panic or silent truncation.
-  - is_owned_header only strips x-api-key/Authorization when inject is true; in pass-through mode client Authorization is never touched.
-external_deps:
-  - socat (external binary, not a crate): performs the actual TLS dial with cert verification; its absence/misconfig surfaces as CageError from Command::spawn.
+Host-side API proxy — the offline cage's sole egress path. It listens on a UNIX socket bind-mounted into the cage at `/run/ctx/api.sock` (the in-cage relay forwards `127.0.0.1:8080` there); per connection it reads the HTTP/1.1 request head, rewrites it, dials upstream over TLS, and pumps bytes both directions.
+
+Two auth postures determined by `ProxyConfig.api_key`: `Some(key)` strips any client-supplied `x-api-key`/`Authorization` header and injects the real key host-side (the cage never sees the real credential); `None` passes the client's `Authorization` through untouched (subscription-OAuth posture, where the bound credential itself authenticates and the proxy's only job is being the sole controlled egress). This branching lives in `is_owned_header`/`rewrite_head`.
+
+TLS and process/socket plumbing are quarantined behind the `Upstream` trait (`connect(&self) -> Result<UpstreamIo, CageError>`) specifically so no TLS stack has to enter this crate — the real implementation, `SocatUpstream`, shells out to `socat - OPENSSL:<host>:443,verify=1,cafile=...` with a long `-t 86400` half-close timeout, called out in a comment as "the ADR-028 lesson" (i.e. a prior bug where premature socket closure truncated responses). Tests/other callers can substitute a fake `Upstream`.
+
+`rewrite_head(head: &str, cfg: &ProxyConfig) -> String` is a pure function (no I/O) over the request head text, easy to unit-test in isolation: it drops any `Host:`/`Connection:` header (and `x-api-key:`/`Authorization:` when `api_key.is_some()`), then appends proxy-controlled `Host`, optional `x-api-key`, and always `Connection: close` — every request gets its own upstream connection, so keep-alive is intentionally never used. `head` is expected to exclude the trailing blank line.
+
+`read_head` enforces `MAX_HEAD = 64 * 1024` and returns `CageError::Protocol` on EOF-before-terminator or oversized head — this is the request-smuggling/DoS guard, not deducible from the type signature alone. `serve_conn` propagates errors from head-read/dial/initial-write but treats pump-phase failures as a silent connection close (best-effort, not error-propagated) — `pump` swallows all read/write errors by design. `serve` runs a nonblocking accept loop polled every `ACCEPT_IDLE` (20ms), spawning one thread per connection and checking `stop: &AtomicBool` each iteration for cooperative shutdown; connection failures are logged to stderr but don't stop the loop.
+
+No async runtime — everything is blocking I/O plus raw `std::thread` spawns, one thread per connection plus one extra thread per connection for the reverse-direction pump in `serve_conn`.

@@ -6,8 +6,11 @@
 # lives in the CTX repo this template was copied from. The Claude Code
 # hook and CLAUDE.md both call these by their target/debug path, so a
 # freshly copied project needs them built and placed there before first
-# use. Run this once after copying template/, and again whenever the
-# tooling repo updates.
+# use. ctx-scan and ctx-summarize also read their summarizer prompt files
+# from ./prompts at runtime (cwd-relative), so those are copied in too.
+# Both binaries and prompts are refreshed on every run, so re-run this
+# once after copying template/, and again whenever the tooling repo
+# updates.
 #
 # Usage:
 #   scripts/install-tools.sh [path-to-CTX-repo]
@@ -43,4 +46,14 @@ mkdir -p target/debug
 for bin in "${BINARIES[@]}"; do
     cp "$CTX_REPO/target/debug/$bin" "target/debug/$bin"
     echo "OK: installed target/debug/$bin"
+done
+
+# Summarizer prompts: ctx-scan/ctx-summarize load these from ./prompts at
+# runtime, resolved against cwd (the project root), not the tooling repo.
+PROMPTS=(summarizer-leaf.md summarizer-rollup.md)
+
+mkdir -p prompts
+for prompt in "${PROMPTS[@]}"; do
+    cp "$CTX_REPO/prompts/$prompt" "prompts/$prompt"
+    echo "OK: installed prompts/$prompt"
 done

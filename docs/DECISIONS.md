@@ -799,3 +799,44 @@ files (two authorities again — [[ADR-044]]). **Tradeoff (accepted):**
 even read-shaped modes (`--check`, `--dry-run`) write the seed file on
 first contact — a visible one-time artifact beats results that depend
 on which file happens to exist. Amends [[ADR-038]]/[[ADR-044]].
+
+## ADR-046 — The workspace is bound at its own real host path, not a fixed alias
+**Decision:** `add_workspace()` binds the target project RW at its own
+`target_root` (source path == destination path — the same pattern
+`add_toolchain()` already used for `~/.cargo`/`~/.rustup`), and
+`--chdir`/secret-mask destinations move with it. The fixed cage-internal
+alias `WORK_DIR = "/work"` is deleted; the synthesized `~/.claude.json`
+trust-map key and the `--self-test stub` probe follow suit (the latter
+made cwd-relative instead, so it never needs to know the path at all).
+**Context:** under [[ADR-040]] the agent runs `cargo`/`rustc` natively
+inside the cage against the RW-mounted tree, and `target/` persists
+across sessions as part of that same tree (not tmpfs). Rust's
+`env!("CARGO_MANIFEST_DIR")` bakes the cage-internal path into compiled
+test binaries at build time; when a binary built under the `/work`
+alias was later run outside the cage (or vice versa), a runtime path
+lookup relative to that baked-in value silently resolved wrong —
+observed concretely on an external project where a fixture-count
+assertion passed inside the cage and failed outside it against the
+identical, correctly-staged file. The `/work` alias itself predates
+this hazard: it was designed under [[ADR-026]]/[[ADR-028]], where
+source was tmpfs-masked and all building/verification ran host-side
+through a broker, so nothing ever compiled against the cage-internal
+path. [[ADR-040]] deleted that broker and moved compilation inside the
+cage without revisiting whether the fixed alias was still safe to
+carry forward. **Rationale:** a compiled artifact must see the same
+path in and out of the cage, or its build-time assumptions are
+silently invalid outside the sandbox that produced it — a correctness
+fix, not a hardening measure; the cage's actual containment (offline,
+RO toolchain, secret masks, cleared env, unshared namespaces) is
+unaffected by what string names the mount point. **Tradeoff
+(accepted):** the agent's cwd (and anything it prints or bakes into
+build output) now reveals the real host path — e.g. the OS username or
+directory layout — instead of a blinded `/work` label. This was never
+a deliberate, documented blinding guarantee ([[ADR-029]]/[[ADR-030]]
+scope blinding to `~/.claude`'s other projects/history/settings, not
+to the target project's own path); it was an incidental byproduct of
+the pre-[[ADR-040]] broker design. **Rejected:** keeping the alias and
+isolating `target/` under a per-session tmpfs instead — smaller diff,
+but loses incremental build caching across cage sessions and leaves
+the cosmetic path-leakage (and the same class of hazard for any other
+env-baked or cwd-baked absolute path) unfixed.

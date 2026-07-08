@@ -1,10 +1,5 @@
-file: prompts/summarizer-leaf.md
-behavior: Prompt template instructing an LLM to generate a `.ctx` context document for a single non-leaf-tree source file, replacing an existing one, under a strict machine-consumable schema.
-edit_notes:
-  - Output schema (file/behavior/edit_notes/functions/invariants/external_deps) is contract-like; downstream tooling likely parses these fields, so field names, ordering, and "no prose/no fences" rule must stay stable if changed here.
-  - Companion prompt likely exists for non-leaf (directory/aggregate) summaries; this one is specifically for single-source-file leaves.
-functions:
-invariants:
-  - Emitted output must include all section headers even when empty (no omission).
-  - Target length 10 lines, hard ceiling 40 lines.
-external_deps:
+Instruction prompt (not source code) defining the LLM task of generating `.ctx` context documents for individual leaf source files in this codebase-summarization pipeline.
+
+Specifies that output is prose (no fixed schema), must lead with the file's domain-level purpose, and then cover only: non-obvious behavior, coupling to other files/formats, signatures of functions callers need, verifiable invariants, and non-obvious dependencies. Bans filler phrases ("This file contains…", "safely", "Note that…") and requires facts stated once, described in present tense (no diffs/history). Includes a worked example (a session-token module) showing the expected density and tone — roughly 4 short paragraphs mixing prose and inline signatures.
+
+Companion file to expect alongside it: a sibling prompt for non-leaf (directory/aggregate) summaries almost certainly exists (e.g. `prompts/summarizer-node.md`) — check for it since this file's conventions (banned phrases, "facts only" rule, freshness-via-hash-tree note) likely need to match/complement it. No code, functions, or types are defined here; nothing to call or import. If editing, preserve the example block since it anchors the expected output calibration (length, structure, signature-quoting style) for whatever model consumes this prompt.

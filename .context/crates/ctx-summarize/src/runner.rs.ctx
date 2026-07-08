@@ -1,29 +1,11 @@
-file: crates/ctx-summarize/src/runner.rs
-behavior: Orchestrates context-doc generation over an injected Fs + Agent: summarizes leaf source files into `.ctx` files, then rolls up affected directories bottom-up into `rollup.ctx`, gating oversized runs behind an approval flag.
-edit_notes:
-  - Rollup input assembly reads `intent.md` (never writes it) plus each child's `.ctx`/`rollup.ctx` from `cpath::context_dir_of(dir)`, skipping `rollup.ctx`/`intent.md` entries themselves; changing directory layout conventions requires updating `cpath` in lockstep.
-  - `affected_dirs` computes the union of `cpath::ancestor_dirs` for all targets and sorts deepest-first (ties broken lexically) so children's rollups are always written before their parents in `run`.
-  - `run` always processes all leaves before any rollups; a target's rollup ordering assumes `summarize_leaf` already wrote sibling `.ctx` files it depends on.
-functions:
-  - name: load_prompts
-    signature: pub fn load_prompts<F: Fs>(fs: &F, prompts_dir: &str) -> Result<Prompts, SummError>
-    purpose: Loads `summarizer-leaf.md` and `summarizer-rollup.md` from `prompts_dir`.
-  - name: summarize_leaf
-    signature: pub fn summarize_leaf<F: Fs, A: Agent>(fs: &F, agent: &A, prompts: &Prompts, src: &str) -> Result<String, SummError>
-    purpose: Validates and access-checks `src`, sends its contents to the agent with the leaf prompt, writes the result to its `.ctx` path.
-    notes: Rejects unsafe paths (PathEscape) and gated targets (AccessDenied) before reading.
-  - name: summarize_rollup
-    signature: pub fn summarize_rollup<F: Fs, A: Agent>(fs: &F, agent: &A, prompts: &Prompts, dir: &str) -> Result<String, SummError>
-    purpose: Builds the rollup input for `dir` via assemble_rollup_input and writes the agent's output to `rollup.ctx`.
-  - name: scope_check
-    signature: pub const fn scope_check(count: usize, approve: bool) -> Result<(), SummError>
-    purpose: Blocks runs exceeding MAX_TARGETS unless explicitly approved.
-  - name: run
-    signature: pub fn run<F: Fs, A: Agent>(fs: &F, agent: &A, prompts_dir: &str, targets: &[String]) -> Result<Summary, SummError>
-    purpose: Full pipeline entry point—loads prompts, summarizes all leaf targets, then all affected rollups leaf-up.
-invariants:
-  - `intent.md` is never written by this file, only read as rollup context.
-  - affected_dirs always orders deeper directories before shallower ones, with repo root (`""`) last.
-  - scope_check errors with ScopeTooLarge iff count > MAX_TARGETS (50) and approve is false.
-external_deps:
-  - ctx_core::access: supplies deny_reason() gating logic for which source paths are off-limits to summarize.
+Orchestrates a full summarization run over an abstract `Fs` + `Agent`: writes one `.ctx` file per leaf source file, then walks affected directories leaf-up (deepest first, repo root last) writing `rollup.ctx` per directory. `intent.md` files are read as rollup input but never written by this file.
+
+The core sequencing fact: `run_with_prompts` first summarizes *all* leaves, then computes `affected_dirs(targets)` and summarizes rollups in that fixed leaf-up order — each rollup's prompt input (`assemble_rollup_input`) is assembled by re-reading whatever `.ctx`/`rollup.ctx` files currently exist on `fs` for that directory's children, so it depends on earlier writes in the same run having already landed; reordering the loop breaks correctness silently rather than erroring. `affected_dirs` computes every ancestor directory of every target via `cpath::ancestor_dirs`, dedupes with a `BTreeSet`, then sorts by `(-depth, name)` — repo root (`depth 0`, `""`) is always last. `dir_label` maps `""` to `"."` only for display in the prompt text, not for path construction.
+
+`assemble_rollup_input` skips `rollup.ctx` and `intent.md` when scanning a directory's context-dir children, includes `.ctx`-suffixed files as leaf sections, and for non-`.ctx` entries checks for a nested `rollup.ctx` (i.e. subdirectories) and inlines that instead — so it silently ignores subdirectories that have no rollup yet (no error, just omission). Path construction relies on `cpath::context_dir_of`, `cpath::intent_of`, `cpath::rollup_of`, and `cpath::leaf_ctx`/`cpath::ancestor_dirs` from the sibling `cpath` module — the on-disk `.ctx`/rollup layout convention lives there, not here.
+
+`summarize_leaf` enforces access control before reading: `cpath::validate_rel` rejects unsafe relative paths, and `ctx_core::access::deny_reason(src, fs.is_ignored(src)?)` gates ignored/denied targets, returning `SummError::AccessDenied` with the reason — this is the only place in the module that checks gating; `summarize_rollup` has no equivalent check and trusts its caller.
+
+`scope_check(count, approve) -> Result<(), SummError>` is a pure guard (not wired to any fs/agent call here) that blocks runs touching more than `MAX_TARGETS` (50) targets unless `approve` is true; callers elsewhere must invoke this explicitly before calling `run`/`run_with_prompts`, since neither of those enforces it internally.
+
+`load_prompts` reads `<prompts_dir>/summarizer-leaf.md` and `summarizer-rollup.md`, mapping any read failure to `SummError::MissingPrompt(path)` — the actual prompt text is never embedded in this crate. `run` loads prompts from `prompts_dir` via the same `fs`, while `run_with_prompts` accepts pre-loaded `Prompts` so the prompt source and the summarized tree can use different filesystem roots (documented as intentional decoupling, e.g. prompts from process cwd vs. a scanned target tree).

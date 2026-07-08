@@ -1,24 +1,7 @@
-file: crates/ctx-context/src/serve.rs
-behavior: Resolves a repo path (file or directory) to its full context chain and serves each node's contents, substituting a soft `(absent: …)` marker for missing files instead of erroring.
-edit_notes:
-  - Relies on chain::for_dir/for_file (crate::chain) to compute node ordering/kinds; this file only resolves target type and fetches contents.
-  - Depends on Env trait (exists/read/is_dir) for all filesystem access, enabling test doubles.
-  - render() output format ("=== id [kind] ===\n<body>") is a de facto CLI/consumer contract; changing it affects downstream display.
-functions:
-  - name: parse_target
-    signature: fn parse_target(raw: &str) -> Result<RepoPath, CtxError>
-    purpose: Parses a CLI target string, treating "." as repo root and tolerating a trailing slash.
-  - name: serve_one
-    signature: fn serve_one<E: Env>(env: &E, node: &ChainNode) -> Result<ServedNode, CtxError>
-    purpose: Serves a single chain node's contents or an absent marker if the backing file doesn't exist.
-  - name: chain_for
-    signature: pub fn chain_for<E: Env>(env: &E, raw: &str) -> Result<Vec<ServedNode>, CtxError>
-    purpose: Computes the chain for a target path and serves every node in it.
-    notes: Directory targets (including root) omit the leaf `.ctx`; file targets append it via chain::for_file.
-  - name: render
-    signature: pub fn render(nodes: &[ServedNode]) -> String
-    purpose: Formats served nodes into labeled text sections for display.
-invariants:
-  - Only a genuinely unreadable present file produces CtxError::Io; a missing node never errors, it yields present=false with a marker body.
-  - render() output always ends each section's body with a trailing newline, inserting one if absent.
-external_deps:
+Resolves a chain's nodes (rollups, intent, leaf) to actual content for CLI/hook consumption, substituting a soft one-line `(absent: …)` marker for any missing file rather than erroring — sparse scaffolding (no per-directory rollup/intent guarantee) is a normal state, not a failure. The only hard error is an unreadable-but-present file or an invalid path.
+
+`chain_for<E: Env>(env: &E, raw: &str) -> Result<Vec<ServedNode>, CtxError>` parses `raw` (via `parse_target`, where `"."` means repo root and trailing `/` is stripped), decides directory-vs-file chain shape by calling `env.is_dir`, then delegates to `chain::for_dir`/`chain::for_file` and serves each returned `ChainNode` with `serve_one`. A directory target yields rollup+intent chain down to itself; a file target appends its leaf `<file>.ctx`.
+
+`fresh_chain_for<E: Env>(env: &E, session_id: &str, raw: &str) -> Result<Option<Vec<ServedNode>>, CtxError>` layers session-dedup on top: loads the set of node ids already shown this session via `session::load`, filters them out of the freshly computed chain, and returns `Ok(None)` if nothing *present* remains (absent markers alone don't count as worth showing, even if they're "new"). On any remaining present node it updates and persists the served-set via `session::save`. This is the shared gate ensuring hook-mode and CLI-mode invocations never redundantly re-show the same node within a session, and repeat calls are idempotent no-ops once everything's been served — the coupling here is with `session.rs`'s ledger format/load/save semantics.
+
+`ServedNode` carries `id` (repo-relative string), `kind: NodeKind`, `body` (UTF-8-lossy file contents or the absent marker), and `present: bool` (false iff body is a marker). `render(nodes: &[ServedNode]) -> String` formats each as a `=== id [kind-label] ===` header followed by body, force-appending a trailing newline if the body lacks one — this is the actual on-disk/stdout text format consumers see, so changing the header format affects any downstream parsing of ctx output.

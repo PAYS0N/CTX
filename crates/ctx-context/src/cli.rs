@@ -39,6 +39,11 @@ impl Cli {
     }
 }
 
+/// Shown in path mode when every node for the requested path was already
+/// injected this session — the ledger has nothing left to add.
+const NOTHING_NEW: &str =
+    "(no new context: everything for this path was already shown this session)\n";
+
 /// Wrap a writer error as [`CtxError::Io`].
 fn out_err(e: &std::io::Error) -> CtxError {
     CtxError::Io {
@@ -73,9 +78,13 @@ pub fn dispatch<E: Env, W: Write>(
     let Some(raw) = cli.path else {
         return Err(CtxError::Usage("a path (or --hook) is required".to_owned()));
     };
-    let nodes = serve::chain_for(env, &raw)?;
-    if let Some(session_id) = env.env_var(session::ENV_SESSION_ID) {
-        session::record(env, &session_id, nodes.iter().map(|n| n.id.clone()))?;
-    }
-    write!(out, "{}", serve::render(&nodes)).map_err(|e| out_err(&e))
+    let text = env.env_var(session::ENV_SESSION_ID).map_or_else(
+        || serve::chain_for(env, &raw).map(|nodes| serve::render(&nodes)),
+        |session_id| {
+            serve::fresh_chain_for(env, &session_id, &raw).map(|fresh| {
+                fresh.map_or_else(|| NOTHING_NEW.to_owned(), |nodes| serve::render(&nodes))
+            })
+        },
+    )?;
+    write!(out, "{text}").map_err(|e| out_err(&e))
 }

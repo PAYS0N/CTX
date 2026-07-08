@@ -7,10 +7,13 @@
 //! every chain level stays visible. Nothing here is a hard error except
 //! a genuinely unreadable file.
 
+use std::collections::BTreeSet;
+
 use crate::chain::{self, ChainNode, NodeKind};
 use crate::env::Env;
 use crate::error::CtxError;
 use crate::repo_path::RepoPath;
+use crate::session;
 
 /// One context node as served.
 #[derive(Debug, Clone)]
@@ -68,6 +71,38 @@ pub fn chain_for<E: Env>(env: &E, raw: &str) -> Result<Vec<ServedNode>, CtxError
         chain::for_file(&target)?
     };
     nodes.iter().map(|n| serve_one(env, n)).collect()
+}
+
+/// Compute and serve the chain for `raw`, dropping any node already
+/// injected for `session_id` this session.
+///
+/// `None` means nothing new-and-present remains (nothing worth showing —
+/// absent markers alone carry no context). Shared by hook mode and CLI
+/// path mode so a node shown by one is never re-shown by the other, or
+/// by a repeat call of either.
+///
+/// # Errors
+///
+/// [`CtxError::PathEscape`] for an invalid path; [`CtxError::Io`] if a
+/// present node or the session ledger cannot be read/written.
+pub fn fresh_chain_for<E: Env>(
+    env: &E,
+    session_id: &str,
+    raw: &str,
+) -> Result<Option<Vec<ServedNode>>, CtxError> {
+    let mut served: BTreeSet<String> = session::load(env, session_id);
+    let nodes: Vec<ServedNode> = chain_for(env, raw)?
+        .into_iter()
+        .filter(|n| !served.contains(&n.id))
+        .collect();
+    if !nodes.iter().any(|n| n.present) {
+        return Ok(None);
+    }
+    for n in &nodes {
+        served.insert(n.id.clone());
+    }
+    session::save(env, session_id, &served)?;
+    Ok(Some(nodes))
 }
 
 /// Render served nodes as labeled sections.

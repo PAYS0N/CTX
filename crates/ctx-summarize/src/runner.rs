@@ -193,7 +193,8 @@ pub const fn scope_check(count: usize, approve: bool) -> Result<(), SummError> {
     Ok(())
 }
 
-/// Run the full leaf-up summarization over `targets`.
+/// Run the full leaf-up summarization over `targets`, loading prompts
+/// from `prompts_dir` via `fs`.
 ///
 /// # Errors
 ///
@@ -205,13 +206,32 @@ pub fn run<F: Fs, A: Agent>(
     targets: &[String],
 ) -> Result<Summary, SummError> {
     let prompts = load_prompts(fs, prompts_dir)?;
+    run_with_prompts(fs, agent, &prompts, targets)
+}
+
+/// Run the full leaf-up summarization over `targets` with already-loaded
+/// `prompts`.
+///
+/// `fs` is the scan/write filesystem; `prompts` may have been loaded from
+/// a different root (e.g. the process cwd) so the prompt source stays
+/// decoupled from the tree being summarized.
+///
+/// # Errors
+///
+/// Propagates filesystem, path, and agent failures.
+pub fn run_with_prompts<F: Fs, A: Agent>(
+    fs: &F,
+    agent: &A,
+    prompts: &Prompts,
+    targets: &[String],
+) -> Result<Summary, SummError> {
     let mut leaves_written = Vec::new();
     for src in targets {
-        leaves_written.push(summarize_leaf(fs, agent, &prompts, src)?);
+        leaves_written.push(summarize_leaf(fs, agent, prompts, src)?);
     }
     let mut rollups_written = Vec::new();
     for dir in affected_dirs(targets) {
-        rollups_written.push(summarize_rollup(fs, agent, &prompts, &dir)?);
+        rollups_written.push(summarize_rollup(fs, agent, prompts, &dir)?);
     }
     Ok(Summary {
         leaves_written,
