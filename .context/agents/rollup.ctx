@@ -1,11 +1,5 @@
-directory: agents
-domain: Reference implementation and contract definition for the model-adapter seam that bridges ctx-summarize's Rust core to a concrete LLM provider via stdin/stdout JSON over `sh -c $CTX_AGENT_CMD`. Anything implementing this contract can replace the default adapter; the Rust core never talks to a provider API directly.
-edit_notes:
-  - Adapters are thin transports only: no added instructions, reformatting, or prompt wrapping — prompt content lives entirely in prompts/summarizer-leaf.md and prompts/summarizer-rollup.md, passed verbatim as the "system" field.
-  - Directory is outside the Rust lint regime, same as prompts/; changes here are plain scripts, not lint-checked.
-  - Any new provider adapter must replicate summarizer-claude.py's stdin/stdout/exit contract exactly for CTX_AGENT_CMD to remain swappable.
-children:
-  - README.md: Defines the stdin/stdout/exit contract all adapters must satisfy.
-  - summarizer-claude.py: Default adapter implementation, calls Anthropic Messages API with cached system prompt.
-invariants:
-  - Adapter stdout is exactly the model's completion text; exit code 0 only on success, non-zero with stderr message on any failure (empty stdout counts as failure).
+`agents/` is the model-adapter boundary between `ctx-summarize`'s Rust core and whatever LLM actually generates summaries. Depending on this directory gets you one guarantee: invoke `$CTX_AGENT_CMD` via `sh -c`, feed it `{"system": <string>, "user": <string>}` JSON on stdin, and get back either raw completion text on stdout with exit 0, or nothing usable and a non-zero exit — no other error signal exists. Everything about model choice, prompting behavior, and provider quirks is isolated here so the Rust side never needs to change to swap providers.
+
+The two files are spec and implementation of the same contract: README.md documents it, summarizer-claude.py is the reference adapter fulfilling it against Anthropic's Messages API. They must stay in sync — changing the stdin/stdout shape in one means updating the other. Both enforce the same non-obvious invariant: adapters are pure transport, adding no instructions of their own (prompt content lives in `prompts/summarizer-leaf.md` and `prompts/summarizer-rollup.md`), and both pin reasoning effort low / disable extended thinking as a deliberate cost/latency choice for this low-intelligence, strict-format workload — revisit only if task requirements change. Both scripts are intentionally outside the Rust lint regime.
+
+A new provider adapter is a new sibling script honoring the same contract, not a modification to existing files or to Rust code; if adding one requires touching the Rust core, the decoupling has broken.

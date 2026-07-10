@@ -1,4 +1,41 @@
-directory: .
-domain: Root of the CTX workspace — an opinionated agentic coding system providing (1) a strict Rust lint regime shared with template/, (2) a context-tree pipeline (.context/ ctx/rollup.ctx generation, scan, access-gating) that forces top-down reading before edits, and (3) a deferred architecture-audit layer whose prompt/hook scaffolding already exists. Depending on the root means getting the dogfooded lint config, the six ctx-* crates, and the docs/prompts that define their contracts.
-edit_notes:
-  - Root Cargo.toml, clippy.toml, deny.toml, rust-toolch
+`.` is the CTX repository root: an MVP scaffold for an opinionated
+agentic coding system, combining a Rust-lint enforcement layer, a
+context-tree pipeline, and (deferred) architecture-audit hooks. Depending
+on the repo root gets you the workspace manifest and its lint/CI/toolchain
+pins, the six-crate implementation, the prompt/agent layers that drive
+summarization, and the docs that record why it's built this way — nothing
+here is itself consumed by other code; this is the top of the tree.
+
+The dogfood invariant threads through most top-level files: `Cargo.toml`'s
+workspace lint table must stay byte-identical to `template/Cargo.toml`
+(the scaffold this repo hands out to consumers), and `clippy.toml`,
+`rust-toolchain.toml`, `rustfmt.toml`, and `deny.toml` are each pinned
+twice — once here, once in `template/` — with the same soft/hard-tier
+split (clippy.toml's 80-line/25-complexity hard fail backed by
+`scripts/rationale_check.py`'s softer thresholds). Changing any of these
+five files means checking whether `template/`'s copy needs the same edit.
+`crates/` is where the actual pipeline lives (`ctx-core`'s deny-rule gate,
+`ctx-access`, `ctx-summarize`, `ctx-scan`, `ctx-context`, `ctx-check`,
+`ctx-verify`, `ctx-cage`); `prompts/` and `agents/` are its two
+decoupled-content boundaries (prompt text, model-adapter transport)
+that `ctx-summarize` and future auditing depend on without embedding
+either in Rust code. `docs/` is the authority on why the architecture
+looks this way (SPEC frozen, DECISIONS append-only, STATUS the only
+intentionally-stale file); `sandbox/` is fully retired in favor of
+`crates/ctx-cage`; `scripts/` supplies the CI checks that `template/`
+also copies out; `.claude/` wires `ctx-context` into the live editing
+session via a hook.
+
+Two invariants hold repo-wide, not just per-crate: no `#[allow(...)]`
+anywhere and no `unsafe`, enforced by lint config with no override
+mechanism; and prompt/agent content is never embedded in Rust source —
+`ctx-summarize` and any future auditor load `prompts/*.md` and shell out
+to `agents/*` rather than hardcoding either. The `intent_divergence:`
+label used by rollups/auditor is shared vocabulary between
+`prompts/summarizer-rollup.md` and `prompts/auditor.md`; renaming it
+in one breaks the other.
+
+README.md's quickstart describes `ctx-access init-task/end-task` as
+"once implemented," and Layer 2 is stated as advisory-only pending a
+sandbox deploy — both match intent.md's explicit staging, so no
+divergence to report at the root level.

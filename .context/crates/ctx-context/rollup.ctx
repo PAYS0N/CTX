@@ -1,7 +1,27 @@
-`crates/ctx-context/` is the standalone `ctx-context` crate: a read-only context server that computes the rollup/intent/leaf `.ctx` chain above a repo path and either prints it (CLI) or injects the unseen portion as `additionalContext` in a Claude Code `PostToolUse` hook. Depending on this crate means depending on `cli::dispatch` and `hook::run` (under `src/`), both generic over the `Env` trait so no caller needs real filesystem/env access to exercise the logic.
+`crates/ctx-context` is the crate root: a binary+lib that computes and
+delivers the rollup/intent/`.ctx` context chain for a path, either via
+direct CLI invocation or a fail-open Claude Code hook mode. Depending on
+this crate as a library gets you exactly two entry points —
+`cli::dispatch` and `hook::run` — everything else is internal.
 
-The manifest (`Cargo.toml`) defines both a `src/main.rs` binary and a `src/lib.rs` library target from the same source tree; the two must stay in sync when either entry point's module wiring changes. `src/` holds the full implementation as a single pipeline (`repo_path` → `chain` → `serve` → `session`) shared by `cli.rs` and `hook.rs`; `tests/` is the only place that exercises that pipeline end-to-end, since no source file's unit tests cover the serve+hook+session interaction. A change to path-escape validation, chain ordering, or absent-scaffolding sentinels in `src/` must be mirrored in `tests/chain_serve.rs`; a change to session-cache location, keying, or fail-open behavior must be mirrored in `tests/hook_session.rs`. Both test files maintain independent `FakeEnv` fixtures rather than sharing one, so directory-detection semantics changed in `src/env.rs` need matching updates in both fakes or the suites can silently diverge.
+The manifest (`Cargo.toml`) fixes the two binary/lib entry points that
+must stay in sync with `src/lib.rs`/`src/main.rs`, and pulls in `clap`
+(CLI parsing) and `thiserror` (the `CtxError` taxonomy used crate-wide
+instead of `anyhow`). `src/` holds the actual pipeline — path validation,
+chain assembly, rendering, session-scoped dedup, and the two callers
+(hook and CLI) that must agree on `session::ENV_SESSION_ID` and the
+"nothing new" `Option<Vec<Node>>` convention. `tests/` exercises that
+pipeline end-to-end against an in-memory `FakeEnv`, never real disk I/O,
+and is split so that chain/render behavior and hook/session dedup
+behavior are pinned in separate files that must be updated together
+whenever a change touches code both traverse (e.g. `chain_for` inside
+`hook::run`).
 
-Crate-wide invariant: all process/argv/stdin I/O and all `std::fs`/`std::env` access stays behind the `Env` trait and the binary shell (`main.rs`), never called directly from library modules — this is what makes the `tests/` fakes valid stand-ins and is enforced by the workspace's print-stdout lint restriction.
+The crate-spanning invariant carried from `src/`: hook mode must never
+error or panic, only degrade to empty/placeholder output — this is
+enforced in `src/` and independently checked in `tests/hook_session.rs`.
+Any change to `Env::is_dir`/path lookup semantics in `src/env.rs` must
+preserve the prefix-inference convention both test fakes depend on, or
+`tests/` breaks wholesale.
 
-No `intent.md` exists for this directory, so no divergence check applies.
+No intent.md exists for this directory, so no divergence check applies.

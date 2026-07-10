@@ -1,15 +1,7 @@
-file: crates/ctx-cage/src/lifecycle/mod.rs
-behavior: Orchestrates one cage run end-to-end in three phases — prepare (gate billed modes, mint run dir, materialize cage-rules, resolve runtime), run (start API proxy, exec cage via bwrap, stop proxy), teardown (best-effort run-dir cleanup) — delegating each phase to a private submodule.
-edit_notes:
-  - Phase logic lives in prepare.rs, run.rs, teardown.rs; this file only sequences them and defines the shared Resolved input struct.
-  - teardown::teardown_run always runs after run::run_until_exit, even on failure, so run dirs are not stranded on cage/proxy crash; do not add early returns between run and teardown.
-  - Submodule split is driven by a workspace file-length-tier policy, not by logical boundaries alone.
-functions:
-  - name: execute
-    signature: pub fn execute(r: &Resolved) -> Result<i32, CageError>
-    purpose: Runs prepare, then run, then teardown, returning the cage's exit code.
-    notes: Teardown errors are swallowed; only prepare/run errors propagate.
-invariants:
-  - teardown::teardown_run is always invoked after run::run_until_exit regardless of its Result.
-  - Billed modes require a clean tree unless allow_dirty is set, and require an API key (enforced in prepare, not here).
-external_deps:
+Orchestrates one full cage run — prepare → run → teardown — for `ctx-cage`, the sandboxing tool that execs Claude inside `bwrap`. This is the single public entry point (`execute`) that host binaries call after resolving CLI args and tool paths into a `Resolved` struct.
+
+The three phases are split into private submodules (`prepare`, `run`, `teardown`) purely to satisfy a workspace file-length policy; logic and behavior are effectively part of this orchestrator, not independent components. `execute` guarantees teardown always runs, even if `run` fails or the proxy thread/`bwrap` crashes — teardown errors are swallowed (best-effort), while `prepare`/`run` errors propagate as `CageError`.
+
+Critical, easy-to-miss step: before doing anything else, `execute` canonicalizes `target_root` via `canonicalize_target`. This is load-bearing, not cosmetic — `bwrap` binds `target_root` at an identical path inside the cage (per ADR-046) alongside other always-absolute binds (`/cage/bin`, `/opt/cage/rules.md`, `/run/ctx`). A relative `target_root` (e.g. `.` from `ctx-run .`) mixed with those absolute binds causes `bwrap` to create real directories on the host disk at the mount points instead of using the sandboxed root. Any caller constructing `Resolved` must not assume `target_root` needs pre-canonicalization — this function does it unconditionally.
+
+`Resolved` is the sole input contract: target root, task id (names the run dir, exported as `TASK=`), `Mode`, absolute paths to the real `ctx-verify`/`ctx-context`/`ctx-scan` binaries, and `allow_dirty` (default false — billed modes refuse a dirty git tree unless overridden). Billed-mode gating (API key presence, tree cleanliness) happens inside `prepare::prepare_run`, not here.

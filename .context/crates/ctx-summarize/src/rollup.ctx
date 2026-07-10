@@ -1,7 +1,43 @@
-Orchestrates leaf-then-rollup context generation on top of an abstract `Fs`/`Agent` pair, and exposes it as a CLI (`ctx-summarize`). Consumers get a single entry point — `runner::run`/`run_with_prompts` via `cli::dispatch` or the `main` binary — that takes a repo-relative target list (or a ctx-access task cache id) and produces `.ctx`/`rollup.ctx` files under `.context/`, gated by access control and a blast-radius approval check; nothing outside this crate needs to know the write order or the prompt format.
+`crates/ctx-summarize/src` is the summarization runner: it turns a set of
+repo-relative source paths into leaf `.ctx` files and leaf-up `rollup.ctx`
+files by driving an `Agent` completion over prompts loaded from disk, gated
+by an `Fs` abstraction and an access/scope check. Depending on this crate
+(or invoking its CLI) gets you `dispatch`/`run`/`run_with_prompts` as the
+only supported entry points; everything else is an implementation seam
+swappable for tests.
 
-The layering is fixed and load-bearing: `main`/`cli` handle argv and I/O only, `runner` is pure orchestration, and `fs`/`agent`/`cache` are the only seams touching disk or a subprocess — new logic should slot into one of these, not blur the boundary. `cpath` defines the `.context` mirror-path convention (leaf `.ctx`, `rollup.ctx`, `intent.md`, ancestor dirs) that both `runner` and `cache`/`cli` rely on; changing that mapping means updating every caller, and it duplicates equivalent logic in `ctx-access` pending a shared `ctx-core` crate. `fs::scope_matcher` (gitignore-syntax, `.ctxignore` + built-in `target/`) is the single definition of "in scope," reused by both the per-target deny gate in `runner::summarize_leaf` (via `ctx_core::access::deny_reason`) and externally by ctx-scan's walker — the two must stay consistent. `error.rs` is the shared vocabulary of failure modes across all of the above; a new failure path elsewhere in the crate should add a variant here rather than repurpose one.
+The crate is layered strictly cli → runner → {fs, agent, cache, cpath,
+error}, enforced in lib.rs's doc comment: runner.rs must never depend on
+cli.rs, and prompt strings must never be embedded in code — they're loaded
+at runtime from `prompts/summarizer-{leaf,rollup}.md` via `load_prompts`,
+which fails closed (`SummError::MissingPrompt`) rather than falling back to
+a default. cpath.rs owns the one true mapping from source path to
+`.context` artifact paths (`leaf_ctx`, `rollup_of`, `intent_of`,
+`context_dir_of`, `ancestor_dirs`); runner.rs's rollup-input assembly and
+ordering (`affected_dirs`, deepest-first traversal) both depend on this
+mapping and would break silently if it changed shape. fs.rs's
+`scope_matcher` (`.ctxignore` + built-in `target/`) is the single
+definition of "in scope for summarization," consulted by both the runner's
+per-target access check and reused by ctx-scan's walker — do not add a
+second ignore-rule source. cache.rs is read-only against ctx-access's task
+cache and is the only place `paths_written` is parsed for the `FromCache`
+CLI mode.
 
-Runtime order matters and is centralized in `runner`: all leaves are summarized before any rollup, and rollups run strictly leaf-up (deepest directories first, repo root last, per `cpath::ancestor_dirs`/`affected_dirs`), because each rollup read reconstructs its input by re-reading files this same run may have just written — reordering silently corrupts rollups rather than erroring. `runner::scope_check`'s `MAX_TARGETS` guard is not called internally by `run`/`run_with_prompts`; `cli::dispatch` is the one caller that invokes it (bypassable via `--approve`). Prompt text (`summarizer-leaf.md`/`summarizer-rollup.md`) is always external, loaded at runtime by `runner::load_prompts` — no prompt strings live in source anywhere in this crate. `intent.md` is read-only input throughout; nothing in this crate ever writes it. `agent.rs`'s `SubprocessAgent` and `fs.rs`'s `StdFs`/`Fs` trait are the two swappable seams that `main.rs` wires together for real runs and that tests replace with fakes.
+Each child's role: agent.rs defines the model-agnostic subprocess wire
+contract (stdin JSON `{system,user}`, stdout text) and enforces request
+spacing; cli.rs is the argv surface with the two target modes
+(`FromCache`/`Paths`) and the `--approve` bypass of `scope_check`; cpath.rs
+is the path-mapping source of truth (duplicated in ctx-access pending a
+future `ctx-core` unification); error.rs is the shared `SummError` enum all
+fallible paths return into; fs.rs is the disk/ignore seam; runner.rs is the
+orchestration core; main.rs wires real `StdFs`/`SubprocessAgent` and
+exit-code discipline (2 = setup, 1 = dispatch, 0 = success).
 
-No `intent.md` exists for this directory, so no divergence check is possible.
+Invariant spanning the subtree: `intent.md` is read everywhere it's
+relevant (rollup assembly) but written nowhere in this crate — no code path
+here ever produces or modifies an `intent.md`. Another: `SummError` is the
+only error type crossing module boundaries in this subtree; no module
+here returns a raw `std::io::Error` or third-party error type to a caller
+outside its own file.
+
+No `intent.md` exists for this directory, so no divergence can be assessed.

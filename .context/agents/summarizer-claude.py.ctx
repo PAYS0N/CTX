@@ -1,33 +1,9 @@
-```
-file: agents/summarizer-claude.py
-behavior: CLI adapter that reads a {"system","user"} JSON object from stdin, sends it as one Anthropic Messages API call, and writes the model's completion text verbatim to stdout; the default target for CTX_AGENT_CMD.
-edit_notes:
-  - Not under the Rust lint regime; deliberately a thin transport with no added prompt instructions, per prompts/README.md decoupling rule.
-  - system prompt is sent as a cached ephemeral block (list form with cache_control) because callers reuse the identical system prompt across every leaf/rollup call in a task; changing system into a plain string would break caching.
-  - Any provider adapter must follow the same stdin/stdout/exit contract (see agents/README.md) so CTX_AGENT_CMD is swappable across providers.
-functions:
-  - name: die
-    signature: def die(message: str) -> "None"
-    purpose: Prints a prefixed error to stderr and exits with status 1.
-    notes: Raises SystemExit(1); does not return, though annotated -> "None".
-  - name: read_request
-    signature: def read_request() -> "tuple[str, str]"
-    purpose: Parses and validates the {"system","user"} JSON object from stdin.
-  - name: build_body
-    signature: def build_body(system: str, user: str) -> "dict"
-    purpose: Builds the Messages API request body with model, max_tokens, cached system block, and user message.
-  - name: call_api
-    signature: def call_api(body: "dict") -> "dict"
-    purpose: POSTs the request body to /v1/messages and returns the parsed JSON response.
-  - name: extract_text
-    signature: def extract_text(response: "dict") -> str
-    purpose: Concatenates all text-type content blocks from a Messages response into one string.
-  - name: main
-    signature: def main() -> "None"
-    purpose: Wires stdin parsing, API call, and stdout write together.
-invariants:
-  - Exits non-zero via die() on: invalid JSON, missing/wrong-typed fields, missing ANTHROPIC_API_KEY, HTTP/network error, non-list content, or empty/whitespace-only extracted text.
-  - stdout receives exactly the concatenated text blocks, nothing else.
-external_deps:
-  - urllib.request/error: only stdlib HTTP client used, avoiding a requests dependency for this standalone script.
-```
+Reference adapter connecting the summarizer pipeline to Anthropic's Messages API; this is the default `CTX_AGENT_CMD` target and the only piece of the system that speaks to Claude directly. It is intentionally Python and outside the Rust lint regime, mirroring `prompts/`'s exemption.
+
+The stdin/stdout contract is fixed and must stay in sync with whatever invokes it (the Rust runner): stdin is a single JSON object `{"system": str, "user": str}`, stdout is the model's raw completion text with nothing else appended, and any error goes to stderr with a non-zero exit. The adapter adds no instructions of its own — per `prompts/README.md`'s decoupling rule, `system` is forwarded verbatim as a cache-control-tagged block so repeated leaf/rollup calls in one task hit Anthropic's prompt cache.
+
+Non-obvious behavior: `thinking` is explicitly disabled and `output_config.effort` is forced to `"low"` — this is a deliberate choice for summarization's strict-format, low-intelligence workload, not an oversight. If tasks change to require heavier reasoning, this pinning must be revisited.
+
+Config is entirely env-driven: `ANTHROPIC_API_KEY` (required, dies if absent), `CTX_AGENT_MODEL` (default `claude-sonnet-5`), `CTX_AGENT_MAX_TOKENS` (default 2048), `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com`). `CTX_AGENT_TEMPERATURE` is documented in the module docstring but not actually read anywhere in the code — dead/unimplemented option.
+
+Key functions: `read_request() -> tuple[str, str]` parses and validates stdin JSON, dying on malformed input or missing/non-string fields. `build_body(system, user) -> dict` assembles the Messages API payload. `call_api(body) -> dict` performs the HTTP POST via `urllib`, dying with formatted messages on HTTP or network errors. `extract_text(response) -> str` concatenates `type == "text"` content blocks, dying on unexpected shape or empty result. `die(message)` is the shared error path (prints to stderr, raises `SystemExit(1)`) — invariant: the process never exits non-zero silently.

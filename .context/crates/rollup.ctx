@@ -1,5 +1,37 @@
-`crates/` is the workspace root for the CTX system: a family of independent binaries/libraries that together let an agent read, write, verify, sandbox, and re-summarize a repo's `.context/` sidecar tree under enforced access control. No shared library code lives directly here — every subdirectory is its own crate with its own `Cargo.toml`, and cross-crate coupling happens only through published Rust APIs or JSON/wire contracts, never through file-path assumptions.
+`crates/` is the CTX workspace root: each subdirectory is an independently
+publishable crate, and together they form the pipeline that lets an agent
+work under enforced, auditable access to a repository while keeping its
+own generated documentation (`.ctx`/`rollup.ctx`) fresh. Depending on this
+directory as a whole gets you a set of binaries (`ctx-access`, `ctx-cage`,
+`ctx-check`, `ctx-context`, `ctx-scan`, `ctx-summarize`, `ctx-verify`) plus
+one shared library crate (`ctx-core`) that the others link against for the
+canonical access-gate logic; there is no other cross-crate library
+dependency.
 
-`ctx-core` is the dependency root: it defines the single canonical access gate (secret/binary/gitignored deny) that `ctx-access` delegates to entirely and that `ctx-scan`/`ctx-summarize` build scope-matching on top of. `ctx-summarize` is the only sanctioned writer of `.ctx`/`rollup.ctx` files, invoked either directly or via `ctx-scan`'s staleness-driven orchestration; `ctx-access` is the only sanctioned reader/writer of source files for agents, enforcing read-before-write and rollup-before-list ordering. `ctx-context` is a read-only consumer of the same `.ctx`/rollup chain, serving it into Claude Code hooks. `ctx-check` and `ctx-verify` are parallel but independently-evolved verification brokers — both shell out to cargo/clippy/fmt and emit capped JSON reports, but they define separate `Report`/`Diagnostic` model types with no shared crate between them; a fix to one's diagnostic-capping or status-precedence logic does not propagate to the other. `ctx-cage` is the outermost layer, sandboxing an agent process and brokering its tool calls (including `ctx-access`, `ctx-verify`, `ctx-scan`) through an allowlist — its embedded `cage-rules.md` must be kept consistent with whatever tool contracts those other crates actually expose.
+The chain of responsibility runs: `ctx-core` defines the deny-rule gate →
+`ctx-access` is the only crate agents use to read/write files, delegating
+all allow/deny decisions to `ctx-core` → `ctx-summarize` regenerates the
+`.ctx`/`rollup.ctx` files that `ctx-access` and `ctx-context` serve →
+`ctx-scan` orchestrates `ctx-summarize` over a whole tree based on content
+hashing, git-independently → `ctx-context` renders the assembled
+rollup/intent/`.ctx` chain for a single path, both as CLI and as a Claude
+Code hook → `ctx-check` and `ctx-verify` are independent verification
+brokers (cargo/clippy/fmt/script checks) that overlap heavily in shape but
+are not (yet) merged — a `Report`/`Diagnostic` schema change in one is not
+automatically reflected in the other, so treat them as separate contracts
+despite the near-identical model. `ctx-cage` is the odd one out: it wraps
+an agent process in an offline sandbox and only reaches the rest of the
+workspace through its own binaries, not through `ctx-core`.
 
-Two independent scope-matching implementations exist — `ctx-scan`'s walker/hash logic and `ctx-summarize`'s `fs::scope_matcher` — and must stay behaviorally consistent even though neither depends on the other's matcher code directly. Every crate here isolates real filesystem/process/clock I/O behind an `Env`/`Fs`/`Runner`-style trait, letting each crate's `tests/` (or in `ctx-access`'s case, `FakeEnv`) exercise full logic without touching disk — this pattern is the norm across the workspace, not an accident local to one crate. No `intent.md` exists at this level, so no divergence can be assessed here; check each child crate's own rollup for its own divergence status.
+Cross-crate invariants worth knowing before editing: (1) `ctx-core`'s
+deny_reason priority (secret > binary > ignored) is the single source of
+truth — any crate reimplementing denylist logic instead of calling into
+`ctx-core` is a bug; (2) the `.context/`-sidecar layout and leaves-before-
+rollups write order, established in `ctx-summarize`, is assumed unchanged
+by both `ctx-scan` (orchestration) and `ctx-access`/`ctx-context`
+(consumption) — changing the sidecar path convention breaks three crates
+at once; (3) `SummError`/`CtxError`/report-model taxonomies are each local
+to their crate, so error types do not cross crate boundaries — callers
+match on the crate-specific enum, not a unified one.
+
+No workspace-level `intent.md` exists, so no divergence can be assessed.

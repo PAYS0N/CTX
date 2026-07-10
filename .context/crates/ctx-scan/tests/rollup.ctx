@@ -1,29 +1,7 @@
-`crates/ctx-scan/tests/` is the black-box behavioral contract for
-`ctx-scan`: it pins the observable semantics of staleness detection,
-`.ctxignore` seeding, scope gating, and the Stop-hook's report-only
-guarantee, using real filesystem fixtures and in-memory fakes rather than
-unit tests inside the crate. Anyone changing `walker.rs`, `hash.rs`,
-`runner.rs`, or `cli::stop_hook` should treat these two files as the spec
-to satisfy, not an afterthought to patch.
+This directory is the executable specification of `ctx-scan`'s on-disk and CLI contract: what these tests assert *is* the behavior downstream tools may rely on. Anyone changing sidecar layout, ignore-file precedence, staleness propagation, or the Stop-hook's report-only guarantee must update the corresponding test here or the change is unverified — these files, not prose docs, are the source of truth.
 
-Both files independently stand up isolated tmpdir fixtures keyed by a
-per-test label under `std::env::temp_dir()`, manually removed and
-recreated rather than using `tempfile` — neither is safe against a
-crashed prior run leaving a same-labeled directory behind, and both
-resolve real prompt files via `CARGO_MANIFEST_DIR` so tests don't depend
-on invocation cwd. Both also import fake/stub `Agent` implementations
-from `ctx_summarize::agent` (`RecordingAgent` in scan.rs asserts call
-counts and call content; `StubAgent` in stop_hook.rs only seeds freshness
-and ignores call counts) — a change to the `Agent` trait signature
-requires updating both.
+Both files share the same fixture pattern: a uniquely-named directory under `std::env::temp_dir()`, `remove_dir_all` before and after, and `prompts_path()` resolving `CARGO_MANIFEST_DIR`'s `../../prompts` so real prompt files back filesystem-level tests regardless of cwd. `scan.rs` additionally runs a hermetic half via `FakeFs`/`RecordingAgent` that never touches disk, used to pin exact agent-call counts against `runner::MAX_TARGETS` scope-gating — a count `stop_hook.rs` also depends on (via `MAX_TARGETS + 1` files) to assert the `--update` vs `--update --approve` escalation. Since tests aren't parallel-safe under a shared label and cleanup runs at start (not guaranteed at end if a run crashes), a new test must pick a distinct label or risk cross-test interference.
 
-The two files split the contract cleanly: `scan.rs` covers the
-regeneration engine (`walk_dir`, `hash`, `check_run`, `update_run`,
-`runner::summarize`) including the exact stale-propagation and
-scope-gating rules, while `stop_hook.rs` covers only the CLI's read-only
-entry point built on top of that engine, and both key off the same
-`runner::MAX_TARGETS` constant to test scope-gating/backlog-hint behavior
-at the same threshold — a change to that constant's semantics (not just
-its value) must be re-validated in both files.
+`scan.rs` owns the walk/ignore/staleness/rollup contract (`.ctxignore` seeding-then-decoupling from `.gitignore`, default excludes, exact 3-call rollup fan-out on single-file edits, orphan-leaf deletion). `stop_hook.rs` owns the separation of concerns between reporting and regeneration: stop_hook must never call `update_run` itself, must be silent on a fresh tree, and only escalates its suggested command string based on backlog size.
 
-No `intent.md` exists for this directory to check divergence against.
+intent_divergence: no `intent.md` exists for this directory to check against.

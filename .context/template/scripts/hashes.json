@@ -1,8 +1,9 @@
 {
-  "hash": "f3f7b72d420d4820b0043454cb97e9c9d31bbd9d17e6eff4f46b08e8f967284f",
+  "hash": "9716e64e29c9c86bdea6570d184269b5d1bb497a8f64e5cd860a2e3bbf99a4b5",
   "children": {
     "ci.sh": "f:182b00ee393e0d3ca1ef2986b4ce8b50c949b2712f4f748af3b39371cb302a08",
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
+    "install-tools.sh": "f:492c2bf580de4639822aa0f968f72917c5f1e6d39fba5054ebaa23765fd6c601",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",
     "workspace_lints_check.sh": "f:f4f449d45adb735b7a42897d8ea4187fbc47930b8db7e80761a4a0c0dbed61e7"

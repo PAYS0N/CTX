@@ -19,14 +19,16 @@ prompts/README.md decoupling rule): it is a thin transport only.
 
 Environment:
   ANTHROPIC_API_KEY     required
-  CTX_AGENT_MODEL       default: claude-sonnet-4-6
+  CTX_AGENT_MODEL       default: claude-sonnet-5
   CTX_AGENT_MAX_TOKENS  default: 2048 (summaries are small)
   CTX_AGENT_TEMPERATURE default: 0 (stable, strict-format output)
   ANTHROPIC_BASE_URL    default: https://api.anthropic.com
 
 The verbatim prompt is sent as a cached system block: the summarizer
 reuses one identical system prompt across every leaf/rollup call in a
-task, so prompt caching cuts cost/latency materially.
+task, so prompt caching cuts cost/latency materially. Reasoning is
+fixed at its minimum (thinking disabled, output_config effort "low")
+since summarization is a short, strict-format task.
 """
 
 from __future__ import annotations
@@ -71,6 +73,10 @@ def build_body(system: str, user: str) -> "dict":
     return {
         "model": model,
         "max_tokens": max_tokens,
+        # Summaries are short, strict-format, low-intelligence tasks: keep
+        # reasoning at its minimum (thinking off, lowest effort).
+        "thinking": {"type": "disabled"},
+        "output_config": {"effort": "low"},
         # List form with cache_control so the identical per-task system
         # prompt is cached across many leaf/rollup calls.
         "system": [

@@ -1,9 +1,28 @@
-crates/ctx-verify/src is the ctx-verify crate itself: a broker that shells out to cargo/clippy/rustdoc/scripts, normalizes their output into diagnostics, and emits one capped, deterministic JSON verification report for CI and ctx-run to parse.
+`crates/ctx-verify/src` implements the `ctx-verify` binary: a broker that
+runs a fixed set of cargo/clippy/script checks and emits one capped, schema-
+stable JSON (or terse text) report so verifying a change has bounded,
+deterministic cost. Depending on this crate as a library (`lib.rs`
+re-exports) gets you `checks::run_selected` plus the `Report`/`CheckReport`/
+`Diagnostic` model; depending on it as a binary gets you a process that
+exits 0/1/2 for pass/fail/error.
 
-The layering is strict and runs main.rs → cli.rs → checks.rs → (parse.rs + runner.rs) → model.rs. runner.rs is the only file that spawns processes (`Runner` trait, `ProcRunner`); checks.rs is written purely against that trait so tests inject fakes instead of shelling out. checks.rs owns the fixed `SPECS` list (fmt, clippy, doc, test, rationale, workspace_lints, no_allow) and, for each, picks a parser from parse.rs to turn raw stdout into `Diagnostic`s, then hands results to model.rs's `CheckReport::build`/`Report::new` to compute status and truncation. cli.rs and main.rs are pure argv/IO wiring — no check logic lives there.
+The crate is layered strictly: `runner.rs` is the only place a subprocess is
+spawned (`Runner` trait + `ProcRunner`); `checks.rs` is pure orchestration
+over that trait (SPECS list, per-check pass/fail/error/skip logic,
+`-p <package>` scoping); `parse.rs` turns each tool's raw stdout into
+`Diagnostic`s with no I/O; `model.rs` defines the capped/truncated report
+shape with hand-written `Serialize` impls; `cli.rs` renders a `Report` to
+terse text or JSON; `main.rs`/`error.rs` wire argv, writers, and the shared
+`CheckError` taxonomy together. A change to a check's output format touches
+two files together: the parser in `parse.rs` and the `Spec`/parser
+assignment in `checks.rs`. A change to `Diagnostic` or `CheckReport` fields
+in `model.rs` must stay in sync with `parse.rs` (field shape) and with
+`cli.rs`'s JSON dump (wire contract for ctx-run/CI) and terse renderer.
 
-Shared coupling: `Diagnostic`'s field shape (file, line, col, lint, message) is produced in parse.rs and consumed by model.rs and cli.rs's terse renderer — a field change ripples through all three. Error taxonomy is centralized in error.rs's `CheckError` and referenced by runner.rs (spawn failures), checks.rs (ToolMissing vs errored vs synthesized-failure distinction), and cli.rs (Encode/Write mapping). The JSON shape from model.rs is the wire contract other tools (ctx-run, CI) parse — described as schema-compatible with a broader "spec's audit report" family, so model.rs changes need to stay in sync with whatever else reads that family, not just this crate.
-
-Subtree invariants: a check that fails to spawn (other than missing tool) always becomes `errored`, never a silent `fail`; a failing check with no parsed diagnostics always gets exactly one synthesized diagnostic (checks.rs `failure_hint`); diagnostics per check are capped at `max` with excess recorded in `truncated`, never silently dropped; top-level `Status` prioritizes Errored > Fail > Pass, ignoring Skipped; and `fmt` is the only mutating check, must stay first in SPECS.
-
-No intent.md is present for this directory, so no divergence can be assessed.
+Invariants spanning the subtree: every check ends in exactly one of
+Pass/Fail/Errored/Skipped, with Errored taking precedence over Fail in
+`Report::new`; a check that spawned but produced no diagnostics on failure
+always gets a synthesized one-line `Diagnostic` (`checks::failure_hint`);
+diagnostics per check are always capped at `max` with overflow recorded in
+`truncated`, never silently dropped; only `fmt` mutates the tree (it must
+stay first in SPECS), everything else is read-only.

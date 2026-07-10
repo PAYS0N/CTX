@@ -51,8 +51,24 @@ pub struct Resolved {
 /// Any propagated [`CageError`] from `prepare` or `run`. Teardown
 /// errors are swallowed (best-effort cleanup).
 pub fn execute(r: &Resolved) -> Result<i32, CageError> {
+    let r = &canonicalize_target(r)?;
     let prep = prepare::prepare_run(r)?;
     let result = run::run_until_exit(r, &prep);
     teardown::teardown_run(&prep);
     result
+}
+
+/// Resolve `target_root` to its canonical absolute form. `bwrap` binds
+/// it at the identical path inside the cage (ADR-046) alongside other
+/// binds that are always absolute (`/cage/bin`, `/opt/cage/rules.md`,
+/// `/run/ctx`); a relative `target_root` (e.g. `.`, from `ctx-run .`)
+/// mixes relative and absolute dests in one `bwrap` invocation, which
+/// makes `bwrap` create those mount points as real directories on the
+/// host disk instead of inside the sandboxed root.
+fn canonicalize_target(r: &Resolved) -> Result<Resolved, CageError> {
+    let target_root = r.target_root.canonicalize()?;
+    Ok(Resolved {
+        target_root,
+        ..r.clone()
+    })
 }

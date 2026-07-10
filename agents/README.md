@@ -50,10 +50,13 @@ the `.env` sourcing is purely in the wrapper.
 
 `summarizer-claude.py` — Anthropic Messages API, python3 stdlib only (no
 pip/curl/jq). Env: `ANTHROPIC_API_KEY` (required), `CTX_AGENT_MODEL`
-(default `claude-sonnet-4-6`), `CTX_AGENT_MAX_TOKENS` (2048),
+(default `claude-sonnet-5`), `CTX_AGENT_MAX_TOKENS` (2048),
 `CTX_AGENT_TEMPERATURE` (0), `ANTHROPIC_BASE_URL`. Sends the per-task
 system prompt as a cached block (it is identical across every leaf/rollup
 call in a task), which materially cuts summarizer cost and latency.
+Reasoning is fixed at its minimum (`thinking: disabled`, `output_config.
+effort: low`) since leaf/rollup summarization is a short, strict-format
+task that doesn't benefit from extended thinking.
 
 ## Adding another provider
 

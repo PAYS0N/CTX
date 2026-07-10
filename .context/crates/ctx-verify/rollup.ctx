@@ -1,9 +1,22 @@
-`crates/ctx-verify` is a standalone workspace crate: a token-frugal verification broker that shells out to cargo/clippy/rustdoc/scripts and emits one capped, deterministic JSON report for CI and `ctx-run` to consume. Depending on it means depending on that JSON report's shape (`CheckReport`/`Report` from `model.rs`), which is described as schema-compatible with a broader "spec's audit report" family — changes to that shape must stay in sync with whatever else reads that family, not just this crate.
+`crates/ctx-verify` is a standalone crate providing both a CLI binary and
+a library (`ctx_verify`) for running a fixed battery of cargo/clippy/script
+checks and emitting one capped, schema-stable report (JSON or terse text).
+Depending on it as a library gets you `checks::run_selected` and the
+`Report`/`CheckReport`/`Diagnostic` model; depending on it as a binary gets
+you a process with 0/1/2 exit codes for pass/fail/error.
 
-The crate builds both a `ctx-verify` binary (`main.rs`) and a `ctx_verify` library (`lib.rs`) from one manifest; new modules must be wired into `lib.rs` to be shared between them. Internally the pipeline is main.rs → cli.rs → checks.rs → (parse.rs + runner.rs) → model.rs, with `runner.rs` as the sole process-spawning boundary (`Runner` trait) so `checks.rs` and its tests can inject fakes instead of shelling out. `checks.rs` owns the fixed `SPECS` list (fmt, clippy, doc, test, rationale, workspace_lints, no_allow); `fmt` is the only mutating check and must stay first.
+`Cargo.toml` wires one crate to two entry points (`src/main.rs`,
+`src/lib.rs`) sharing lint config from the workspace root. `src/` is the
+implementation, strictly layered (runner → checks → parse → model → cli),
+with the invariant that every check resolves to exactly one of
+Pass/Fail/Errored/Skipped and diagnostics are always capped, never
+silently dropped. `tests/` pins the resulting wire contract from outside,
+substituting all subprocess calls via `FakeRunner` and asserting the same
+report shape both `checks.rs` (parsing/orchestration) and `render.rs`
+(terse/JSON formatting) independently hardcode — a change to
+`CheckReport`'s fields must update both test fixtures and the two `src/`
+layers (`parse.rs`/`checks.rs` for parsing, `model.rs`/`cli.rs` for the
+wire shape) in lockstep.
 
-Subtree-wide invariants enforced across src: a check that fails to spawn (other than missing tool) always becomes `errored`, never a silent `fail`; a failing check with no parsed diagnostics gets exactly one synthesized diagnostic; diagnostics are capped at `max` with excess recorded in `truncated`, never dropped; `Status` prioritizes Errored > Fail > Pass. `Diagnostic`'s field shape (file, line, col, lint, message) is shared by parse.rs, model.rs, and cli.rs's terse renderer, and `CheckError`'s taxonomy is referenced by runner.rs, checks.rs, and cli.rs — both are change-together points.
-
-`tests/` pins this contract from the outside: `checks.rs` tests lock the JSON shape, status precedence, and diagnostic capping/parsing edge cases; `render.rs` tests lock terse-vs-`--json` output (terse must never contain the literal `"status"`; truncation must render as `"… +N more"`). Both test files independently redefine a `FakeRunner` keyed off the first CLI arg, mapping `None`/missing-key to `CheckError::ToolMissing` — a change to `CommandOutcome`'s shape or to how `Runner` is invoked must be updated in both fakes or one test file silently stops exercising the real path. `render.rs`'s clippy fixture hand-mirrors cargo's `compiler-message` wire format and breaks silently if `diagnostics.rs`'s deserializing struct changes field names.
-
-No `intent.md` exists for this crate, so no divergence can be assessed.
+No divergence from stated intent — intent.md is empty, and the crate's
+described behavior matches its files.

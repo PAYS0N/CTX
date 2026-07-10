@@ -1,7 +1,34 @@
-docs/ is the project's documentation of record — design history, current status, and forward-looking specs for a Rust agentic-coding system (ctx-* CLI suite, context-tree mechanism, and a meal-planner reference project). Code and prompts elsewhere implement what's decided here; nothing here is executable.
+`docs/` is the project's design memory for the CTX system: it's where an
+editor learns *why* the current architecture looks the way it does before
+touching any crate, script, or template. Nothing here is executable —
+depending on this directory means reading it, not linking against it.
 
-The six files form a layered record with a specific reading order for "why is X this way": SPEC.md is the frozen, current-revision (rev 4) contract; STATUS.md is the living "what's true now" pointer into it and into ADR numbers; DECISIONS.md is the append-only rationale log that SPEC.md and STATUS.md both cite by ADR number rather than restate; UNIMPLEMENTED.md is the backlog cross-referencing SPEC.md's rev-2 contracts and DYLINT_RULES.md's undone rules; SANDBOX.md and DYLINT_RULES.md are narrower design docs — one retired, one not-yet-built. An editor changing behavior should update SPEC.md (if the contract changes) or STATUS.md (if only current-state changes), then add an ADR in DECISIONS.md rather than editing old ADR text, then check UNIMPLEMENTED.md's status markers against actual crate state.
+The six files form a strict hierarchy that editors must respect. `SPEC.md`
+is the frozen, sealed contract (rev 4) — current behavior, thresholds, and
+file-format rules; changes require explicit re-spec, not ad hoc edits.
+`DECISIONS.md` is the append-only rationale log (ADR-001..046) explaining
+why SPEC looks the way it does and which alternatives were tried and
+rejected — check it before reintroducing anything that smells like a
+prior design (git-diff freshness, `/dev/null` masks, fixed cage aliases,
+API-key egress). `STATUS.md` is the only doc expected to go stale on
+purpose; it tracks current state and next steps against ADR numbers and
+must never absorb design decisions that belong in SPEC or DECISIONS.
+`UNIMPLEMENTED.md` is the backlog/changelog hybrid — its step numbering
+*is* the project history, so new work appends rather than renumbers, and
+several DONE markers there correspond to real crates that must be checked
+before being reverted to "pending." `SANDBOX.md` and `DYLINT_RULES.md` are
+narrower: the former is explicitly retired (superseded by the hook-led
+`ctx-context`/`ctx-cage` model in SPEC/DECISIONS) and kept only as
+historical threat-model record; the latter specifies nine dylint rules,
+none implemented, two of which (rules 1 and 4) have mechanical stand-ins
+in `scripts/` (`rationale_check.py`, `cycle_check.sh`) that must stay in
+sync until the real lints exist.
 
-Cross-file coupling to watch: SPEC.md's rollup/leaf line-budget numbers must stay identical to prompts/summarizer-rollup.md — a change to one without the other breaks the documented invariant. SPEC.md rev 4 supersedes its own body prose in the "Access protocol" section; readers must apply the revision paragraph over the literal old text rather than treat the file as internally consistent. SANDBOX.md is retired per ADR-035/040/041 but still cross-referenced by SPEC.md Layer 2 and UNIMPLEMENTED.md, both of which have themselves moved past it — none of the three should be read as the sole current truth in isolation. DYLINT_RULES.md's rule 1 and rule 4 overlap live mechanical checks in scripts/ (rationale_check.py, cycle_check.sh) and are meant to supersede them, not duplicate them, once built.
+The shared invariant across all six: none restate architecture that
+SPEC.md or DECISIONS.md already own — STATUS, UNIMPLEMENTED, SANDBOX, and
+DYLINT_RULES all point back rather than duplicate. Any edit that changes
+the rollup/leaf `.ctx` line budgets must touch both SPEC.md and
+`prompts/summarizer-rollup.md` together, since the numbers are asserted
+identical.
 
-No intent.md exists for this directory.
+No `intent.md` exists for this directory, so no divergence check applies.
