@@ -135,6 +135,13 @@ const SPECS: &[Spec] = &[
         envs: &[],
         parser: script_parser,
     },
+    Spec {
+        name: "machete",
+        tool: "bash",
+        args: &["scripts/machete_check.sh", "."],
+        envs: &[],
+        parser: script_parser,
+    },
 ];
 
 /// Effective args: insert `-p <package>` after the cargo subcommand when

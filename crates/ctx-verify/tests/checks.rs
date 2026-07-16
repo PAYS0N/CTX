@@ -143,6 +143,49 @@ fn clean_command_passes() {
 }
 
 #[test]
+fn machete_unused_dependency_fails_with_parsed_diagnostic() {
+    // The `machete` script emits one `FAIL: <path> unused dependency '<dep>'`
+    // line per finding; script_parser must turn each into a diagnostic and
+    // the check must report Fail.
+    let mut map = BTreeMap::new();
+    map.insert(
+        "scripts/machete_check.sh".to_owned(),
+        Some(outcome(
+            1,
+            "",
+            "FAIL: ./crates/x/Cargo.toml unused dependency 'serde'",
+        )),
+    );
+    let runner = FakeRunner { by_first_arg: map };
+    let report = run_selected(&runner, 20, Some(&["machete".to_owned()]), None);
+    let machete = report.checks.get("machete").expect("machete present");
+    assert_eq!(machete.status, Status::Fail);
+    assert_eq!(machete.count, 1);
+    assert!(machete
+        .diagnostics
+        .first()
+        .expect("diagnostic")
+        .message
+        .contains("unused dependency"));
+}
+
+#[test]
+fn machete_clean_run_passes() {
+    let mut map = BTreeMap::new();
+    map.insert(
+        "scripts/machete_check.sh".to_owned(),
+        Some(outcome(0, "", "")),
+    );
+    let runner = FakeRunner { by_first_arg: map };
+    let report = run_selected(&runner, 20, Some(&["machete".to_owned()]), None);
+    assert_eq!(
+        report.checks.get("machete").expect("machete").status,
+        Status::Pass
+    );
+    assert_eq!(report.status, Status::Pass);
+}
+
+#[test]
 fn command_failure_without_diagnostics_is_fail_but_never_silent() {
     // A compile abort exits non-zero with no parseable compiler-message
     // JSON; it must report Fail AND a synthesized hint (never empty).

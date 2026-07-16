@@ -1,0 +1,5 @@
+Static-analysis gate that rejects unused dependencies via `cargo-machete`, enforcing the project's "no unused dependencies" policy (docs/SPEC.md, Dependency policy). Runs offline, checking manifests and source directly — no `cargo metadata`, unlike `cargo deny`. Invoked as `machete_check.sh [ROOT]` (defaults to `.`).
+
+A missing `cargo-machete` binary is a hard FAIL with an install hint, not a skip, mirroring `cycle_check.sh`'s posture: silently skipping would make ctx-verify's pass result misleading.
+
+The script runs `cargo machete`, then re-parses its per-crate report format with awk — lines matching `<crate> -- <path/Cargo.toml>:` set the current manifest path, and following tab-indented lines are unused-dep names, each rewritten into its own `FAIL: <path> unused dependency '<dep>'` line on stderr. If `cargo machete` exits non-zero but no such line was parsed (e.g. an unreadable manifest), it emits a generic `FAIL: cargo machete failed` so no failure mode is silent. Exit code is `1` if any FAIL was emitted, else `0`.

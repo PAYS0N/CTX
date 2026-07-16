@@ -1,13 +1,12 @@
-file: docs/UNIMPLEMENTED.md
-behavior: Tracks, layer by layer, what the MVP scaffolding already contains versus what remains to be built for the context-management system (Layers 1-3, concurrency, reference project, prompt deployment), tagging each remaining item with an S/M/L effort estimate and a suggested build order.
-edit_notes:
-  - Status markers (DONE / IMPLEMENTED / pending) must be updated in lockstep with actual crate work; several items already marked DONE describe concrete crates (`crates/ctx-access`, `crates/ctx-summarize`, `crates/ctx-verify`) and their dogfooding results — do not re-mark as pending without checking those crates.
-  - Cross-references `docs/SPEC.md` (rev 2 schema/behavior contracts), `docs/DYLINT_RULES.md` (9 undone lint rules), and `docs/SANDBOX.md` (sandbox design, now partially realized in `sandbox/` per ADR-026).
-  - Documents concrete dogfooding findings (toolchain pin bump to 1.95.0, rustfmt nightly-only options removed, `allow-unwrap-in-tests`/`allow-expect-in-tests` added to clippy.toml, rationale_check.py bodyless-trait-method fix, dead print_stdout/print_stderr exception) that constrain the actual lint/template config elsewhere in the repo — changes to `template/` or `scripts/` should stay consistent with these.
-  - Records known debt: repo-relative path-safety/`.context` mirror logic is duplicated in `ctx-access` and `ctx-summarize`, slated for extraction into a future shared `ctx-core` crate.
-  - "Suggested order of implementation" list doubles as the actual project changelog (steps 1-5 marked DONE); step numbering should be preserved when adding new steps rather than renumbered.
-functions:
-invariants:
-  - ctx-summarize never deletes or modifies the per-task cache; only `ctx-access end-task` does (per SPEC rev 2).
-  - ctx-summarize never writes `intent.md`.
-external_deps:
+This file is a status-tracking document, not source code — it's the project's implementation roadmap, listing what exists versus what's stubbed across the layered architecture (Layer 1 lint/CI config, Layer 2 the `ctx-access`/`ctx-summarize`/`ctx-verify`/`ctx-audit` tool chain, Layer 3 architecture-audit, plus sandbox/concurrency/reference-project workstreams).
+
+Key facts an editor needs before touching related code:
+
+- **Completed, contrary to what "UNIMPLEMENTED" might suggest**: `ctx-access` CLI (`crates/ctx-access`), `ctx-verify` (`crates/ctx-verify`), `ctx-summarize` (`crates/ctx-summarize`), the sandbox MVP cage (`sandbox/`, bwrap-based), the reference project (relocated to `../meal-planning/`, *not* in this repo), and the Anthropic agent adapter (`agents/summarizer-claude.py`). Grep for "DONE" markers before assuming something is missing.
+- **Still unbuilt**: `ctx-audit` script, `ctx-resummarize` recovery CLI, custom git merge driver, the entire dylint rules crate (9 rules, only rule 1's line-count check exists in `scripts/`), Layer 3 architecture audit, real multi-agent shared-filesystem concurrency, and `cargo-deny`'s network-dependent policy check (deliberately excluded from the offline `ctx-verify`).
+- **Known debt flagged explicitly**: path-safety/`.context`-mirror logic is duplicated near-identically in `ctx-access` (`repo_path`/`chain`) and `ctx-summarize` (`cpath`) — slated for extraction into a future `ctx-core` crate; any path-validation security fix must currently be applied in both places.
+- **Cache-ownership invariant**: `ctx-summarize` must never delete or touch the per-task cache — only `ctx-access end-task` does that (corrected from an earlier rev-1 assumption). It also never writes `intent.md`.
+- **`ctx-audit` schema contract** (when built): must pass the per-directory auditor JSON (`{path, verdict, severity, rationale}`) through verbatim into the report's `divergences` array, only adding `task_id`/`completed_at` — do not reshape entries.
+- **Toolchain/lint gotchas recorded from dogfooding**: pinned Rust is 1.95.0 (not the stale 1.83.0 originally templated); `rustfmt.toml`'s `imports_granularity`/`group_imports` are nightly-only and silently no-op on stable; `clippy.toml` needs `allow-unwrap-in-tests`/`allow-expect-in-tests` since bare `#[allow]` is banned; the spec's `print_stdout`/`print_stderr` exception for bin `main.rs` is currently unusable under the global workspace deny (worked around via injected `Write`, not print macros) — flagged as dead spec text to strike later.
+- **Dependency-check split** (per ADR-047): `cargo-machete` runs inside `ctx-verify` (offline, manifest-only); `cargo-deny` and `cargo-modules --acyclic` cycle detection remain deliberately deferred/external because they need network or have tool false-positives (cargo-modules 0.26.0 mishandles type↔associated-fn cycles).
+- Coupling to watch: this doc's completion claims must stay in sync with the actual crates — if someone rewrites `ctx-summarize`'s cache handling or `ctx-access`'s schema (rev-2, `served_nodes` not `chains_read`), this file's descriptions go stale silently since nothing enforces the link.

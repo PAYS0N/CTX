@@ -5,7 +5,7 @@ design (revision 4 = the lead-by-hooks re-spec); `UNIMPLEMENTED.md` is
 the backlog; `DECISIONS.md` is the rationale log; this file is the
 moving part. Update it whenever the active focus changes.
 
-Last updated: 2026-07-02.
+Last updated: 2026-07-10.
 
 ## Current shape (post-pivot)
 
@@ -19,8 +19,11 @@ hook reports staleness only; regeneration is post-session
 ADR-043. The cage is safety-only: RW workspace, masked secrets
 (empty-file masks, ADR-042), offline with the host passthrough proxy
 as sole egress, subscription auth (ADR-041). `ctx-run <dir> "<task>"`
-is the billed launcher. `ctx-verify` is unchanged and remains THE
-checkpoint.
+is the billed launcher. `ctx-verify` remains THE checkpoint — now also
+auditing unused dependencies (`cargo-machete`), with the parallel
+`ci.sh` / `template/.github` CI stack retired so it is the sole check
+(ADR-047). `cargo-deny` (offline-blocked) and module-cycle detection
+stay out of it — documented policy / deferred to dylint rule 4.
 
 ## Done and verified (this pivot — ADR-035..043)
 

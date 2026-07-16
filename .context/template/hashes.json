@@ -1,14 +1,13 @@
 {
-  "hash": "7d0d1f5bda11e22dacb2f1a4610f5e4d8f5ddad615ac1f56d575e0e31bf8ce2e",
+  "hash": "3aa239a2c75ce17ccf5b5d23f3f3db7a465a6910c3538879a0ff2d7f57eb1b38",
   "children": {
     ".claude": "d:ac802a84bc5930f4b6bff5037b9078b798e34358f8816917e85f09acd849c54f",
     ".gitattributes": "f:e02cedd8c4fb0c8f2140763735a223135cf9e889db446fd46f39dfb1321ee2fa",
-    ".github": "d:47bde68bac88f11059512fe35e12f1f9ff2427c1cb45f2ea8c097cd165ba12df",
     "Cargo.toml": "f:499f85117cc4b0e4f1b42ea09658fe934775552b06164d1c8c239bd12ad3e40a",
     "clippy.toml": "f:6895c44ee42136e153abf8eb8e58b2b377058604f685f2d0b8fb489f4d44b981",
     "deny.toml": "f:89a34142eb145f23f64da2fa6dfb2b09bb0db62c611f36d761d6e33300b1f18a",
     "rust-toolchain.toml": "f:0439c4b9fc2038f409dcb11f1f1b080b5b9d4c6b6e8f73f41090fa4b536d4178",
     "rustfmt.toml": "f:ee427bc5a6520218af3e43c4601d70a610314fd6eeee45bbf478b85caa45cd15",
-    "scripts": "d:9716e64e29c9c86bdea6570d184269b5d1bb497a8f64e5cd860a2e3bbf99a4b5"
+    "scripts": "d:a218fd8b094b60159692604bf74814ec6fe004a43da69be473e6156deca03632"
   }
 }

@@ -1,11 +1,3 @@
-file: crates/ctx-cage/Cargo.toml
-behavior: Package manifest for ctx-cage, providing a library plus two binaries — ctx-cage (bwrap-based offline sandbox launcher) and ctx-run (billed one-command launcher) — that run autonomous agent sessions inside a namespace with a writable workspace, masked secrets, and a host-side API proxy as sole egress.
-edit_notes:
-  - Two distinct binaries share one lib (ctx_cage at src/lib.rs); new shared logic belongs in the lib so both bins stay consistent.
-  - Binary entry points are src/bin/ctx_cage.rs and src/bin/ctx_run.rs; renaming/moving either requires updating the [[bin]] path here.
-  - publish = false: not intended for crates.io distribution.
-functions:
-invariants:
-external_deps:
-  - clap (derive): CLI argument parsing for both ctx-cage and ctx-run binaries.
-  - thiserror: structured error types for cage/proxy failure modes.
+Package manifest for `ctx-cage`, the crate providing an offline `bwrap`-based sandbox for autonomous agent runs — a writable workspace, masked secrets, and a host-side API proxy as the only permitted egress path.
+
+Defines two binaries and a library: `ctx-cage` (src/bin/ctx_cage.rs, the low-level cage launcher) and `ctx-run` (src/bin/ctx_run.rs, the one-command billed launcher wrapping it), plus the `ctx_cage` lib crate (src/lib.rs) that both binaries presumably share. Depends on `clap` for CLI parsing, `serde_json` for structured I/O (likely proxy/config messages), and `thiserror` for error types. Not published. Uses workspace-level lint settings rather than its own. No sandboxing logic lives in this file — actual `bwrap` invocation, namespace setup, and proxy behavior are in the referenced src/ files, not deducible from the manifest alone.

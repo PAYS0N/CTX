@@ -1,28 +1,7 @@
-`crates/ctx-verify/src` implements the `ctx-verify` binary: a broker that
-runs a fixed set of cargo/clippy/script checks and emits one capped, schema-
-stable JSON (or terse text) report so verifying a change has bounded,
-deterministic cost. Depending on this crate as a library (`lib.rs`
-re-exports) gets you `checks::run_selected` plus the `Report`/`CheckReport`/
-`Diagnostic` model; depending on it as a binary gets you a process that
-exits 0/1/2 for pass/fail/error.
+`crates/ctx-verify/src` is the ctx-verify crate: it runs a fixed battery of cargo/clippy/doc/test/script checks against the workspace and emits one capped, token-frugal JSON (or terse text) verification report. Depending on it means invoking `cli::run` (or the `main` binary) and getting back a `Report` whose shape is a stable wire contract shared with the spec's audit-report family — consumers should treat `model.rs`'s field names as an external interface.
 
-The crate is layered strictly: `runner.rs` is the only place a subprocess is
-spawned (`Runner` trait + `ProcRunner`); `checks.rs` is pure orchestration
-over that trait (SPECS list, per-check pass/fail/error/skip logic,
-`-p <package>` scoping); `parse.rs` turns each tool's raw stdout into
-`Diagnostic`s with no I/O; `model.rs` defines the capped/truncated report
-shape with hand-written `Serialize` impls; `cli.rs` renders a `Report` to
-terse text or JSON; `main.rs`/`error.rs` wire argv, writers, and the shared
-`CheckError` taxonomy together. A change to a check's output format touches
-two files together: the parser in `parse.rs` and the `Spec`/parser
-assignment in `checks.rs`. A change to `Diagnostic` or `CheckReport` fields
-in `model.rs` must stay in sync with `parse.rs` (field shape) and with
-`cli.rs`'s JSON dump (wire contract for ctx-run/CI) and terse renderer.
+The subtree is layered: `runner.rs` is the process-spawn boundary (`Runner` trait + `ProcRunner`), `checks.rs` is pure orchestration over that trait (the static `SPECS` list, per-check `Parser` fns, three-way skip/error/fail split), `parse.rs` turns raw tool output into `Diagnostic`s, `model.rs` defines the capped/truncated report structs with hand-written `Serialize` impls, `error.rs` is the shared `CheckError` taxonomy, and `cli.rs`/`main.rs` wire argv to `checks::run_selected` and render the result. A typical change to add a check starts in `checks.rs` (new `Spec` + `Parser`) and may need a new parser fn in `parse.rs`; a change to the diagnostic fields must touch `parse.rs`, `model.rs`, and `cli.rs`'s JSON/terse renderers together.
 
-Invariants spanning the subtree: every check ends in exactly one of
-Pass/Fail/Errored/Skipped, with Errored taking precedence over Fail in
-`Report::new`; a check that spawned but produced no diagnostics on failure
-always gets a synthesized one-line `Diagnostic` (`checks::failure_hint`);
-diagnostics per check are always capped at `max` with overflow recorded in
-`truncated`, never silently dropped; only `fmt` mutates the tree (it must
-stay first in SPECS), everything else is read-only.
+Cross-cutting invariants: diagnostics are always capped at `max` per check with the overflow recorded in `truncated`, never silently dropped; `Report`'s top-level `Status` prioritizes Errored > Fail > Pass (Skipped never affects it); and any check that fails with zero parsed diagnostics still produces a non-empty synthesized `"exit"` diagnostic via `checks.rs`'s `failure_hint` fallback, so no check-failure is ever silent — but this fallback only fires on nonzero exit, not when a parser mismatches a successful, warning-emitting run (a live coupling risk between `parse.rs`'s expected formats and the actual clippy/rustdoc/script output).
+
+No `intent.md` is present for this directory.

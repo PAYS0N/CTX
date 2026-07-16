@@ -1,8 +1,8 @@
 {
-  "hash": "f3f7b72d420d4820b0043454cb97e9c9d31bbd9d17e6eff4f46b08e8f967284f",
+  "hash": "e44f22cbd95280f272ec70aecea6e37df3973ef226d55a81f86d4a0050b38976",
   "children": {
-    "ci.sh": "f:182b00ee393e0d3ca1ef2986b4ce8b50c949b2712f4f748af3b39371cb302a08",
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
+    "machete_check.sh": "f:360bf22094b1f192a2e480f1578b0654d30a169f26af19e455c1818bb2982c17",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",
     "workspace_lints_check.sh": "f:f4f449d45adb735b7a42897d8ea4187fbc47930b8db7e80761a4a0c0dbed61e7"

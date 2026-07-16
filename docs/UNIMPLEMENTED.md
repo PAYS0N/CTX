@@ -93,10 +93,18 @@ The `enforce` module avoids `indexing_slicing`/`string_slice`/
   no re-spec was required — but the dead exception should be struck on the
   next spec touch.
 
-Still pending (separate S items, unchanged): `cargo-deny` validation
-against the real dependency graph, `cargo-machete`, and `cargo-modules`
-are not installed in this environment, so those CI phases do not yet run.
-`Cargo.lock` is now committed so the dep graph is pinnable.
+Dependency / module checks (updated per ADR-047): `cargo-machete` is now
+folded into `ctx-verify` (`scripts/machete_check.sh`) — it parses
+manifests/sources only, so it runs offline; landing it removed a
+genuinely-unused `serde` dep from `ctx-cage`. `cargo-deny` stays
+deferred: it drives `cargo metadata`, which needs network to resolve
+host-foreign crates, so it cannot run in the offline cage — it remains
+documented policy (SPEC "Dependency policy") enforced on a networked CI,
+not by `ctx-verify`. `cargo-modules` cycle detection stays deferred to
+dylint rule 4: `--acyclic` false-positives on type↔associated-fn in
+cargo-modules 0.26.0, and `scripts/cycle_check.sh` remains the
+runs-cleanly stub. `Cargo.lock` is committed so the dep graph is
+pinnable.
 
 **Sandbox configuration (M, deployment-specific).** The agent's shell must
 block direct reads of paths under configured source roots. This is not

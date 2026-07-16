@@ -840,3 +840,47 @@ isolating `target/` under a per-session tmpfs instead — smaller diff,
 but loses incremental build caching across cage sessions and leaves
 the cosmetic path-leakage (and the same class of hazard for any other
 env-baked or cwd-baked absolute path) unfixed.
+
+## ADR-047 — `ctx-verify` folds in `cargo-machete`; parallel CI retired; `cargo-deny`/module-cycle stay out
+**Decision:** add `cargo-machete` (unused-dependency detection) to
+`ctx-verify` as a script-wrapped `Spec`
+(`scripts/machete_check.sh`, `bash` + `script_parser`, after `no_allow`),
+mirrored byte-identically in `template/scripts/` per [[ADR-025]]. Retire
+the pre-`ctx-verify` CI stack entirely: delete `scripts/ci.sh` (root +
+template) and `template/.github/` (the `ci.yml` workflow + dir). This
+makes `ctx-verify` the single agent checkpoint in `template/` too,
+matching how the root repo already verifies itself — root shipped no
+`.github/` and its `ci.sh` was already orphaned. Extends [[ADR-011]]/
+[[ADR-022]] ("`ctx-verify` is the whole checkpoint; use it, not raw
+`cargo`/`ci.sh`") to close the last place where `template/` still
+diverged. `cargo-machete` reads only manifests + source (no
+`cargo metadata`, no network), so it runs in the same offline static-check
+context as `no_allow`/`workspace_lints`; a missing binary is a loud
+`FAIL`, not a skip (stated policy, same posture as `cycle_check.sh`).
+Landing it shook out one real finding — a genuinely-unused `serde`
+dependency in `ctx-cage` (only `serde_json` is used), removed here.
+**Rejected — folding in `cargo-deny` and `cargo-modules --acyclic`**
+(the original intent of this change), for two concrete blockers found on
+this toolchain/environment:
+(1) **`cargo-deny` cannot run offline.** It drives `cargo metadata`,
+which tries to download host-foreign (Windows-only) crates
+(`winapi-util`, `anstyle-wincon`) absent from the vendored Linux cache,
+and the advisory-db fetch needs network — both impossible in the offline
+cage ([[ADR-040]]/[[ADR-041]]). Folded in, it would make `ctx-verify`
+un-passable here. It stays documented policy (SPEC "Dependency policy"),
+enforceable on a networked CI, not by `ctx-verify`.
+(2) **`cargo-modules 0.26.0 --acyclic` false-positives.** It flags every
+type↔associated-function pair as a "circular dependency" (e.g.
+`CommandOutcome` ↔ `CommandOutcome::ok`) on 5 of 6 workspace crates; the
+acyclicity check runs on the *unfiltered* graph, so no
+`--no-fns`/`--no-types`/`--no-owns` flag suppresses it. Folded in, it
+would fail `ctx-verify` on known-clean code — the "looks-enforced-but-
+misfires" class this project exists to prevent. Module-cycle detection
+therefore stays deferred to dylint rule 4 (`DYLINT_RULES.md`);
+`cycle_check.sh` remains the runs-cleanly stub and SPEC's "aspirational"
+wording on cycle detection stands. **Residual:** `cargo-deny`'s
+license/advisory/duplicate-version policy and real module-cycle detection
+are unautomated at the repo root today (they were already orphaned there);
+this change makes `template/` match that reality rather than adding
+coverage — recorded so a future networked-CI or dylint pass reintroduces
+them deliberately, not by reverting this ADR.

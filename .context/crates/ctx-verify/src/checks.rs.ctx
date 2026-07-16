@@ -1,29 +1,11 @@
-file: crates/ctx-verify/src/checks.rs
-behavior: Defines the fixed set of wrapped tool checks (fmt, clippy, doc, test, rationale, workspace_lints, no_allow), runs each through a `Runner`, parses/caps its output, and assembles them into a `Report`.
-edit_notes:
-  - SPECS order matters: `fmt` must stay first because it is the only check that mutates (applies `cargo fmt`); everything after is read-only/report-only.
-  - Adding a Spec requires choosing/writing a Parser (compiler_parser for clippy/rustdoc JSON, script_parser for `FAIL:`-line scripts, test_parser for cargo test, noop_parser for mutating tools) and deciding whether it is cargo-based (gets `-p <package>` scoping) or a repo-wide script (ignores package).
-  - `-p <package>` is spliced in as the 2nd argument (index 1), assuming args[0] is the cargo subcommand (e.g. "clippy", "fmt"); breaks if a cargo Spec's args list is empty or restructured.
-functions:
-  - name: run_selected
-    signature: pub fn run_selected<R: Runner>(runner: &R, max: usize, only: Option<&[String]>, package: Option<&str>) -> Report
-    purpose: Runs all SPECS matching the `only` filter, scoped by `package`, and builds the final Report.
-  - name: run_spec
-    signature: fn run_spec<R: Runner>(runner: &R, spec: &Spec, max: usize, package: Option<&str>) -> CheckReport
-    purpose: Executes one Spec via the Runner and converts its outcome into a CheckReport.
-    notes: Distinguishes ToolMissing (-> skipped) from other spawn errors (-> errored) from ran-but-diagnostic-less failures (-> synthesized failure_hint).
-  - name: effective_args
-    signature: fn effective_args(spec: &Spec, package: Option<&str>) -> Vec<String>
-    purpose: Builds the argument list for a spec, inserting `-p <package>` for cargo-based checks when a package is given.
-  - name: failure_hint
-    signature: fn failure_hint(o: &CommandOutcome) -> Diagnostic
-    purpose: Synthesizes a single Diagnostic from the last non-empty output line when a failing check yields no parsed diagnostics.
-  - name: wanted
-    signature: fn wanted(spec: &Spec, only: Option<&[String]>) -> bool
-    purpose: Determines whether a spec is included given an optional name filter.
-invariants:
-  - A check that fails to spawn (other than ToolMissing) always becomes `errored`, never a silent `fail`.
-  - A check that ran, exited non-zero, and produced no parsed diagnostics always gets exactly one synthesized Diagnostic via failure_hint.
-  - `fmt`'s parser (noop_parser) never reports diagnostics from output; only its exit status can mark it failed.
-external_deps:
-  - crate::runner::Runner: trait abstraction over process execution, allowing checks.rs to be tested without spawning real subprocesses.
+Orchestrates the ctx-verify checkpoint: runs a fixed sequence of wrapped tools (`cargo fmt`, `clippy`, `doc`, `test`, plus repo scripts `rationale_check.py`, `workspace_lints_check.sh`, `no_allow_check.sh`, `machete_check.sh`) through a [`Runner`], parses each tool's output into diagnostics, caps them, and assembles one [`Report`].
+
+`fmt` is listed first and is the only check that mutates the tree (it applies `cargo fmt --all`); every other check is report-only. Its parser (`noop_parser`) never emits diagnostics — fmt failures surface only via non-zero exit, caught generically by `run_spec`'s `failure_hint` fallback. That fallback fires for *any* check that fails but whose parser found nothing, guaranteeing no check ever produces a silent empty failure: it takes the last non-empty trimmed line from stderr (falling back to stdout) as a synthesized `Diagnostic` with lint `"exit"`.
+
+`SPECS` is a static `&[Spec]` array — the definitive list and order of checks; adding a new check means adding a `Spec` entry with its own `Parser` fn. Each `Spec` pairs a tool/args/env with a `Parser = fn(&CommandOutcome) -> Vec<Diagnostic>`. `compiler_parser` expects clippy/rustdoc `--message-format=json` output (delegates to `parse::parse_compiler_json`). `script_parser` expects the script's combined stdout+stderr to contain `FAIL:`-prefixed lines (delegates to `parse::parse_fail_lines`) — the four bash/python scripts in `scripts/` must emit that exact prefix or their failures go unparsed (falling back to `failure_hint`). `test_parser` scans raw `cargo test` stdout/stderr line-by-line for substrings `"FAILED"` (suffix), `"error["` or `"error:"` (prefix) — not JSON, so it's fragile to cargo's human-format test output changing.
+
+`effective_args(spec, package)` inserts `-p <package>` right after the subcommand (position 1) for cargo-tooled specs only; script-based checks ignore `package` entirely since they're repo-wide by nature.
+
+`run_spec` distinguishes `CheckError::ToolMissing` (→ `CheckReport::skipped()`, e.g. tool not installed) from other spawn errors (→ `CheckReport::errored(...)`, carrying the message) from a successfully-run-but-failing check (→ `CheckReport::build` with diagnostics, capped at `max`). This three-way split matters to callers reading `Report`: `errored`/`skipped` are infra-level, not code failures.
+
+`run_selected<R: Runner>(runner: &R, max: usize, only: Option<&[String]>, package: Option<&str>) -> Report` is the sole public entry point; `only` filters by `Spec.name` (None = run all in `SPECS` order, inserted into a `BTreeMap` so `Report` iterates alphabetically regardless of `SPECS` order). Depends on `crate::runner::Runner` trait for testability/mocking and `crate::parse` for the two JSON/text diagnostic parsers — coupling: if `parse::parse_compiler_json` or `parse::parse_fail_lines`'s expected formats drift from what clippy/rustdoc/scripts actually emit, diagnostics silently drop to zero (masked by the `failure_hint` fallback only on nonzero exit, not on success-with-warnings mismatches).

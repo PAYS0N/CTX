@@ -1,37 +1,7 @@
-`crates/` is the CTX workspace root: each subdirectory is an independently
-publishable crate, and together they form the pipeline that lets an agent
-work under enforced, auditable access to a repository while keeping its
-own generated documentation (`.ctx`/`rollup.ctx`) fresh. Depending on this
-directory as a whole gets you a set of binaries (`ctx-access`, `ctx-cage`,
-`ctx-check`, `ctx-context`, `ctx-scan`, `ctx-summarize`, `ctx-verify`) plus
-one shared library crate (`ctx-core`) that the others link against for the
-canonical access-gate logic; there is no other cross-crate library
-dependency.
+`crates/` is the CTX workspace: a set of independent binary+lib crates that together implement an agent-facing context/enforcement/sandbox/verification toolchain. Nothing here shares runtime state — coupling across crates is purely through published Cargo dependencies and CLI/JSON contracts, not shared code paths.
 
-The chain of responsibility runs: `ctx-core` defines the deny-rule gate →
-`ctx-access` is the only crate agents use to read/write files, delegating
-all allow/deny decisions to `ctx-core` → `ctx-summarize` regenerates the
-`.ctx`/`rollup.ctx` files that `ctx-access` and `ctx-context` serve →
-`ctx-scan` orchestrates `ctx-summarize` over a whole tree based on content
-hashing, git-independently → `ctx-context` renders the assembled
-rollup/intent/`.ctx` chain for a single path, both as CLI and as a Claude
-Code hook → `ctx-check` and `ctx-verify` are independent verification
-brokers (cargo/clippy/fmt/script checks) that overlap heavily in shape but
-are not (yet) merged — a `Report`/`Diagnostic` schema change in one is not
-automatically reflected in the other, so treat them as separate contracts
-despite the near-identical model. `ctx-cage` is the odd one out: it wraps
-an agent process in an offline sandbox and only reaches the rest of the
-workspace through its own binaries, not through `ctx-core`.
+`ctx-core` is the dependency-free foundation: its access-gate (secret/binary/gitignored deny) is the canonical denylist that `ctx-access` and `ctx-summarize` both depend on and must not reimplement. `ctx-access` is the sole sanctioned file I/O path for agents, enforcing read-before-write and chain-ordered rollup delivery; `ctx-context` and `ctx-scan` both build the same rollup/intent/`.ctx` chain concept on top of it but from different angles — `ctx-context` delivers it to a hook or CLI caller session-scoped, `ctx-scan` drives regeneration of it via content hashing, independent of git. `ctx-summarize` is the actual generation engine both of those depend on conceptually (prompt-driven leaf/rollup writing via a pluggable Agent), owning the single source-path-to-`.context`-path mapping that any regenerator must respect. `ctx-check` and `ctx-verify` are sibling verification-report crates — near-identical shape (capped `Diagnostic` lists, `Report` with pass/fail/skip status, JSON/text output) but independently implemented and tested; a change to one's report schema has no effect on the other, but readers expecting one contract from both should not assume they're unified. `ctx-cage` is orthogonal: the offline sandbox that runs an agent subprocess under `bwrap` with masked filesystem and proxied egress, unrelated to the context-chain crates except as a place those agents might run.
 
-Cross-crate invariants worth knowing before editing: (1) `ctx-core`'s
-deny_reason priority (secret > binary > ignored) is the single source of
-truth — any crate reimplementing denylist logic instead of calling into
-`ctx-core` is a bug; (2) the `.context/`-sidecar layout and leaves-before-
-rollups write order, established in `ctx-summarize`, is assumed unchanged
-by both `ctx-scan` (orchestration) and `ctx-access`/`ctx-context`
-(consumption) — changing the sidecar path convention breaks three crates
-at once; (3) `SummError`/`CtxError`/report-model taxonomies are each local
-to their crate, so error types do not cross crate boundaries — callers
-match on the crate-specific enum, not a unified one.
+Cross-crate invariant: every crate's tests fake the environment/subprocess boundary (`FakeEnv`, `FakeFs`, `FakeRunner`, `RecordingAgent`) rather than touching real disk or shelling out — this convention is independently maintained per crate, not shared code. A new crate joining this workspace is expected to follow the same isolation discipline.
 
-No workspace-level `intent.md` exists, so no divergence can be assessed.
+No workspace-level `intent.md` exists, so no divergence assessment applies at this level.

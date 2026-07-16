@@ -8,10 +8,13 @@
 //! the claude runtime.
 //!
 //! Phase 2 — `run`: stand up the API proxy thread (billed modes),
-//! exec the cage via `bwrap`, stop the proxy on cage exit.
+//! exec the cage via `bwrap`, stop the proxy on cage exit. Its
+//! `BwrapConfig` bind/env resolution lives in the sibling `env`
+//! module, split out purely to stay under the file-length tier.
 //!
 //! Phase 3 — `teardown`: best-effort cleanup of the run dir.
 
+mod env;
 mod prepare;
 mod run;
 mod teardown;

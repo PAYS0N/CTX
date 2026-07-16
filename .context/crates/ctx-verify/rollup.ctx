@@ -1,22 +1,7 @@
-`crates/ctx-verify` is a standalone crate providing both a CLI binary and
-a library (`ctx_verify`) for running a fixed battery of cargo/clippy/script
-checks and emitting one capped, schema-stable report (JSON or terse text).
-Depending on it as a library gets you `checks::run_selected` and the
-`Report`/`CheckReport`/`Diagnostic` model; depending on it as a binary gets
-you a process with 0/1/2 exit codes for pass/fail/error.
+`crates/ctx-verify` is a standalone crate (binary + library) that runs a fixed battery of cargo/clippy/doc/test/script checks against the workspace and emits one capped, token-frugal verification report, in either JSON or terse text. Depending on it means invoking `cli::run` or the `ctx-verify` binary and getting back a `Report` whose field names are a stable external wire contract shared with the spec's audit-report family.
 
-`Cargo.toml` wires one crate to two entry points (`src/main.rs`,
-`src/lib.rs`) sharing lint config from the workspace root. `src/` is the
-implementation, strictly layered (runner → checks → parse → model → cli),
-with the invariant that every check resolves to exactly one of
-Pass/Fail/Errored/Skipped and diagnostics are always capped, never
-silently dropped. `tests/` pins the resulting wire contract from outside,
-substituting all subprocess calls via `FakeRunner` and asserting the same
-report shape both `checks.rs` (parsing/orchestration) and `render.rs`
-(terse/JSON formatting) independently hardcode — a change to
-`CheckReport`'s fields must update both test fixtures and the two `src/`
-layers (`parse.rs`/`checks.rs` for parsing, `model.rs`/`cli.rs` for the
-wire shape) in lockstep.
+The crate is two peer subtrees: `src/` implements the runner/orchestration/parsing/model/CLI layers described in its own rollup, and `tests/` pins that entire pipeline black-box against a faked subprocess layer (`FakeRunner`), so no test shells out to real tools. The coupling that spans them: any change to how `src/checks.rs` invokes an external tool (new flag, reordered args, new script path) must be mirrored in the `by_first_arg` maps independently maintained in both test files, and any change to the `Diagnostic`/`Report`/`Status` shapes must touch `parse.rs`, `model.rs`, `cli.rs` and both test files together — none of these five sites can change alone.
 
-No divergence from stated intent — intent.md is empty, and the crate's
-described behavior matches its files.
+Crate-level invariants worth checking from outside: diagnostics are always capped with overflow recorded in `truncated`, never silently dropped; `Status` prioritizes Errored > Fail > Pass; and every check failure produces at least one diagnostic (via the `"exit"` fallback), so a check can fail-with-zero-parsed-diagnostics but never fail silently — except when a parser mismatches a successful, warning-emitting run, a known live risk between `parse.rs` and actual tool output formats.
+
+No `intent.md` exists for this directory, so no divergence can be assessed.
