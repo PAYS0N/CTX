@@ -983,3 +983,34 @@ explain. Sampling `/proc/<tid>/syscall` said "99.9% running" and misled
 both passes, because it can only catch a syscall that *blocks*; an
 instantly-failing `sendto` is invisible to it. Prefer unbiased counters
 over sampled ones, and measure the null (idle) case before any load.
+
+## ADR-050 — `ctx-run`'s post-run summary refresh is a y/n prompt, not automatic
+**Decision:** `ctx-run`'s post-run summary refresh no longer runs
+unconditionally on success. It asks — `ctx-run: regenerate context
+summaries now? [y/N]` — and only invokes `ctx-scan --update` on an
+explicit `y`/`yes`. The prompt only fires when stdin is a real
+terminal (`is_terminal()`, same discipline as the PTY relay,
+[[ADR-048]]); piped/CI/test invocations have no one to ask, so they
+fall back to "no" and get the manual-command hint on stderr instead,
+same as a declined prompt. `--skip-summarize` still exists and now
+skips the prompt itself, not just the refresh. This does not reopen
+[[ADR-043]]: regeneration still happens in exactly one place
+(post-session), it is just now gated by an answer instead of firing
+unconditionally within that place.
+**Context:** the previous behavior billed a `ctx-scan --update` after
+*every* successful run regardless of whether the operator cared about
+freshness at that moment — convenient, but a surprise cost/latency tax
+on runs where staleness is a non-issue (e.g. read-only exploration
+tasks). The free Stop-hook staleness report already names the exact
+refresh command, so an unconditional auto-run was duplicating a signal
+the operator could act on manually; the gap was only that "manually"
+meant remembering to type a separate command later.
+**Rejected:** a `--auto-summarize` opt-in flag (inverts the earlier
+`--skip-summarize` opt-out) — rejected because it just relocates the
+same "did I remember the flag" problem from run to config, and the
+project's target user is an interactive operator sitting at the
+terminal *right after* the run, for whom a prompt costs nothing extra.
+Defaulting non-TTY invocations to "yes" (auto-run when no one's there
+to ask) was also rejected: a headless/CI `ctx-run` would then silently
+re-incur the exact unconditional billed step this ADR removes for the
+interactive case, just for a different caller.

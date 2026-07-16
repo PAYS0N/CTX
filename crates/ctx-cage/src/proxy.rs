@@ -19,8 +19,10 @@
 //! implementation shells `socat` with certificate verification, so no
 //! TLS stack enters this crate).
 
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -29,8 +31,9 @@ use std::time::Duration;
 
 use crate::error::CageError;
 
-/// Hard cap on the request-head size (per the usual server limits).
-const MAX_HEAD: usize = 64 * 1024;
+mod head;
+use head::read_head;
+pub use head::rewrite_head;
 
 /// Idle-poll cadence for the nonblocking accept loop.
 const ACCEPT_IDLE: Duration = Duration::from_millis(20);
@@ -44,6 +47,11 @@ pub struct ProxyConfig {
     pub api_key: Option<String>,
     /// Upstream host, e.g. `api.anthropic.com`.
     pub upstream_host: String,
+    /// Where best-effort diagnostics are appended, instead of the
+    /// process's own inherited stdio (which, during an interactive run,
+    /// is the host terminal `pty.rs` has put in raw mode — writing there
+    /// directly races the PTY relay thread and corrupts the display).
+    pub log_path: PathBuf,
 }
 
 /// A duplex byte stream to the upstream API.
@@ -64,12 +72,35 @@ pub trait Upstream: Send + Sync {
     fn connect(&self) -> Result<UpstreamIo, CageError>;
 }
 
+/// Best-effort append-mode `Stdio` for `path`; falls back to discarding
+/// output entirely if the log file can't be opened, so a logging
+/// failure never blocks the dial it's diagnosing.
+fn log_stdio(path: &Path) -> Stdio {
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_or_else(|_| Stdio::null(), Stdio::from)
+}
+
+/// Best-effort append of one diagnostic line to `path`. Never panics or
+/// propagates — a logging failure must not affect the connection it's
+/// reporting on.
+fn log_line(path: &Path, msg: &str) {
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(f, "{msg}");
+    }
+}
+
 /// Real dialer: `socat - OPENSSL:<host>:443` with certificate
 /// verification, long half-close timeout (the ADR-028 lesson).
 #[derive(Debug, Clone)]
 pub struct SocatUpstream {
     /// Upstream host to dial.
     pub host: String,
+    /// Where this `socat` child's stderr is appended (see
+    /// [`ProxyConfig::log_path`] — same rationale, independent copy).
+    pub log_path: PathBuf,
 }
 
 impl Upstream for SocatUpstream {
@@ -82,7 +113,7 @@ impl Upstream for SocatUpstream {
             .args(["-t", "86400", "-", &addr])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(log_stdio(&self.log_path))
             .spawn()?;
         let tx = child
             .stdin
@@ -96,72 +127,6 @@ impl Upstream for SocatUpstream {
             tx: Box::new(tx),
             rx: Box::new(rx),
         })
-    }
-}
-
-/// Whether `line` is a request header the proxy owns (dropped from the
-/// client's head and re-emitted with proxy-controlled values). Client
-/// credentials are owned only when the proxy injects its own key.
-fn is_owned_header(line: &str, inject: bool) -> bool {
-    let lower = line.to_ascii_lowercase();
-    if lower.starts_with("host:") || lower.starts_with("connection:") {
-        return true;
-    }
-    inject && (lower.starts_with("x-api-key:") || lower.starts_with("authorization:"))
-}
-
-/// Rewrite an HTTP/1.1 request head.
-///
-/// Keeps the request line and all non-owned headers, then sets `Host`,
-/// `Connection: close`, and (in key-injection mode) `x-api-key`.
-/// Pure; `head` excludes the final blank line.
-#[must_use]
-pub fn rewrite_head(head: &str, cfg: &ProxyConfig) -> String {
-    let inject = cfg.api_key.is_some();
-    let mut out = String::new();
-    for line in head.split("\r\n") {
-        if line.is_empty() || is_owned_header(line, inject) {
-            continue;
-        }
-        out.push_str(line);
-        out.push_str("\r\n");
-    }
-    out.push_str("Host: ");
-    out.push_str(&cfg.upstream_host);
-    out.push_str("\r\n");
-    if let Some(key) = &cfg.api_key {
-        out.push_str("x-api-key: ");
-        out.push_str(key);
-        out.push_str("\r\n");
-    }
-    out.push_str("Connection: close\r\n\r\n");
-    out
-}
-
-/// Read from `stream` until the `\r\n\r\n` head terminator; returns
-/// `(head_text, leftover_body_bytes)`.
-///
-/// # Errors
-///
-/// [`CageError::Protocol`] on EOF before the terminator or an
-/// oversized head; [`CageError::Io`] on read failure.
-fn read_head(stream: &mut UnixStream) -> Result<(String, Vec<u8>), CageError> {
-    let mut buf: Vec<u8> = Vec::new();
-    let mut chunk = [0_u8; 4096];
-    loop {
-        let n = stream.read(&mut chunk)?;
-        if n == 0 {
-            return Err(CageError::Protocol("EOF before request head".to_owned()));
-        }
-        buf.extend_from_slice(chunk.get(..n).unwrap_or_default());
-        if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-            let rest = buf.split_off(pos + 4);
-            buf.truncate(pos);
-            return Ok((String::from_utf8_lossy(&buf).into_owned(), rest));
-        }
-        if buf.len() > MAX_HEAD {
-            return Err(CageError::Protocol("request head too large".to_owned()));
-        }
     }
 }
 
@@ -236,8 +201,7 @@ pub fn serve<U: Upstream + 'static>(
                 let up = Arc::clone(upstream);
                 thread::spawn(move || {
                     if let Err(e) = serve_conn(stream, &cfg_conn, up.as_ref()) {
-                        let _ =
-                            writeln!(std::io::stderr(), "ctx-cage proxy: connection failed: {e}");
+                        log_line(&cfg_conn.log_path, &format!("connection failed: {e}"));
                     }
                 });
             },

@@ -28,5 +28,5 @@ thiserror = "2"
 # openpty / termios / signalfd wrappers; `rustix` the safe winsize
 # ioctls `nix` lacks. Both only expose safe APIs here — the workspace's
 # `unsafe_code = "forbid"` still holds for this crate.
-nix = { version = "0.31", default-features = false, features = ["term", "signal"] }
+nix = { version = "0.31", default-features = false, features = ["term", "signal", "poll"] }
 rustix = { version = "1", features = ["termios"] }

@@ -84,12 +84,15 @@ fn start_proxy(prep: &Prep) -> Result<ProxyHandle, CageError> {
     let sock = prep.rundir.join(API_SOCK_NAME);
     let _ = std::fs::remove_file(&sock);
     let listener = UnixListener::bind(&sock)?;
+    let log_path = prep.rundir.join("proxy.log");
     let cfg = Arc::new(ProxyConfig {
         api_key: None,
         upstream_host: API_HOST.to_owned(),
+        log_path: log_path.clone(),
     });
     let upstream = Arc::new(SocatUpstream {
         host: API_HOST.to_owned(),
+        log_path,
     });
     let stop = Arc::new(AtomicBool::new(false));
     let stop_loop = Arc::clone(&stop);

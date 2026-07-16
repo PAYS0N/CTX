@@ -13,6 +13,8 @@
 //! Only the *safe* wrappers of `nix`/`rustix` are used here; the
 //! workspace's `unsafe_code = "forbid"` still holds.
 
+mod input_relay;
+
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::IsTerminal;
@@ -24,9 +26,11 @@ use nix::pty::{openpty, OpenptyResult, Winsize};
 use nix::sys::signal::{SigSet, Signal};
 use nix::sys::signalfd::SignalFd;
 use nix::sys::termios::{self, SetArg, Termios};
+use nix::unistd::pipe;
 
 use crate::error::CageError;
 use crate::proxy::pump;
+use input_relay::{spawn_input_relay, stop_input_relay};
 
 /// Restores the host terminal's original line settings on drop, so raw
 /// mode never leaks past the session — covers early return and panic.
@@ -125,20 +129,14 @@ fn relay_until_exit(
     let master = File::from(master);
     let to_child = master.try_clone()?;
     let for_winch = master.try_clone()?;
-    spawn_input_relay(to_child);
+    let (cancel_read, cancel_write) = pipe().map_err(io_err)?;
+    let input = spawn_input_relay(to_child, cancel_read);
     spawn_winch_relay(sigset, for_winch)?;
     let output = spawn_output_relay(master);
     let status = child.wait()?;
     let _ = output.join();
+    stop_input_relay(cancel_write, input);
     Ok(status)
-}
-
-/// Detached: host stdin → PTY master. Blocks in `read`; dies with the
-/// process (it may linger a moment after the cage exits — harmless).
-fn spawn_input_relay(to_master: File) {
-    if let Ok(stdin) = dup_fd(std::io::stdin()) {
-        thread::spawn(move || pump(stdin, to_master));
-    }
 }
 
 /// Joined: PTY master → host stdout. Returns when the master hits EOF at

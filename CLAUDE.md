@@ -23,3 +23,5 @@ Call `target/debug/ctx-context .`. Do not skip this.
   commit it.
 - `template/` and root workspace lint configs mirror each other;
   change both.
+- when debugging, always ensure that the thing you are changing is correct. 
+  Do not reach a logical conclusion and change code; verify the issue.

@@ -1,20 +1,40 @@
-//! Tests for the API proxy: pure head rewriting, and one full
-//! connection served over socketpairs with a fake upstream.
+//! Tests for the API proxy: pure head rewriting, one full connection
+//! served over socketpairs with a fake upstream, and that connection
+//! failures are logged to a file rather than the process's own stderr
+//! (which, during an interactive cage run, is the raw-mode host
+//! terminal — writing there directly corrupts the display).
 
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use ctx_cage::error::CageError;
-use ctx_cage::proxy::{rewrite_head, serve_conn, ProxyConfig, Upstream, UpstreamIo};
+use ctx_cage::proxy::{rewrite_head, serve, serve_conn, ProxyConfig, Upstream, UpstreamIo};
+
+/// Counter for unique tempfile names across tests.
+static SEQ: AtomicU32 = AtomicU32::new(0);
+
+/// A unique tempfile path; the test owns cleanup.
+fn fresh_tempfile(label: &str) -> PathBuf {
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "ctx-cage-proxy-{}-{}-{}.log",
+        label,
+        std::process::id(),
+        n
+    ))
+}
 
 /// Key-injection config (metered-key posture).
 fn cfg() -> ProxyConfig {
     ProxyConfig {
         api_key: Some("sk-real-key".to_owned()),
         upstream_host: "api.anthropic.com".to_owned(),
+        log_path: fresh_tempfile("cfg"),
     }
 }
 
@@ -45,6 +65,7 @@ fn passthrough_mode_keeps_the_clients_oauth_authorization() {
     let passthrough = ProxyConfig {
         api_key: None,
         upstream_host: "api.anthropic.com".to_owned(),
+        log_path: fresh_tempfile("passthrough"),
     };
     let head = "POST /v1/messages HTTP/1.1\r\n\
                 Host: 127.0.0.1:8080\r\n\
@@ -122,4 +143,79 @@ fn serve_conn_rewrites_forwards_and_relays_the_response() {
     assert!(resp.starts_with("HTTP/1.1 200 OK"));
     assert!(resp.ends_with("ok"));
     conn.join().expect("join").expect("serve_conn");
+}
+
+/// Always fails to dial, to exercise `serve`'s error-logging path.
+struct FailingUpstream;
+
+impl Upstream for FailingUpstream {
+    fn connect(&self) -> Result<UpstreamIo, CageError> {
+        Err(CageError::Protocol("simulated dial failure".to_owned()))
+    }
+}
+
+/// A unique socket path; the test owns cleanup.
+fn fresh_socket_path() -> PathBuf {
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "ctx-cage-proxy-serve-{}-{n}.sock",
+        std::process::id()
+    ))
+}
+
+/// Poll `log_path` for up to 1s until it contains `needle`; returns the
+/// last-read contents either way (for the caller's assertion message).
+fn wait_for_log_contains(log_path: &PathBuf, needle: &str) -> String {
+    let mut seen = String::new();
+    for _ in 0..200 {
+        seen = std::fs::read_to_string(log_path).unwrap_or_default();
+        if seen.contains(needle) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    seen
+}
+
+/// Binds a fresh listener and returns it with a matching `ProxyConfig`
+/// (pointing at its own fresh log file) for the `serve` failure-logging
+/// test.
+fn bind_serve_fixture() -> std::io::Result<(UnixListener, PathBuf, Arc<ProxyConfig>)> {
+    let sock_path = fresh_socket_path();
+    let _ = std::fs::remove_file(&sock_path);
+    let listener = UnixListener::bind(&sock_path)?;
+    let cfg = Arc::new(ProxyConfig {
+        api_key: None,
+        upstream_host: "api.anthropic.com".to_owned(),
+        log_path: fresh_tempfile("serve"),
+    });
+    Ok((listener, sock_path, cfg))
+}
+
+/// `serve`'s per-connection failure branch must land in `cfg.log_path`,
+/// not the process's own inherited stderr — during an interactive cage
+/// run that stderr is the raw-mode host terminal, and writing there
+/// directly corrupts the PTY relay's output (the bug this guards).
+#[test]
+fn serve_logs_connection_failures_to_the_log_file() {
+    let (listener, sock_path, cfg) = bind_serve_fixture().expect("bind_serve_fixture");
+    let log_path = cfg.log_path.clone();
+    let upstream = Arc::new(FailingUpstream);
+    let stop = Arc::new(AtomicBool::new(false));
+    thread::scope(|scope| {
+        scope.spawn(|| serve(&listener, &cfg, &upstream, &stop));
+
+        let mut client = UnixStream::connect(&sock_path).expect("connect");
+        client
+            .write_all(b"GET /v1/messages HTTP/1.1\r\nHost: x\r\n\r\n")
+            .expect("send request");
+        drop(client);
+
+        let seen = wait_for_log_contains(&log_path, "connection failed");
+        assert!(seen.contains("connection failed"), "log file: {seen:?}");
+        stop.store(true, Ordering::Relaxed);
+    });
+
+    let _ = std::fs::remove_file(&sock_path);
+    let _ = std::fs::remove_file(&log_path);
 }

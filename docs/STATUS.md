@@ -5,7 +5,7 @@ design (revision 4 = the lead-by-hooks re-spec); `UNIMPLEMENTED.md` is
 the backlog; `DECISIONS.md` is the rationale log; this file is the
 moving part. Update it whenever the active focus changes.
 
-Last updated: 2026-07-10.
+Last updated: 2026-07-16.
 
 ## Current shape (post-pivot)
 
@@ -43,8 +43,10 @@ stay out of it — documented policy / deferred to dylint rule 4.
   toolchain RO binds, always-offline + passthrough proxy (pure header
   rewrite, socat-TLS upstream seam, socketpair-tested); `ctx-run`
   launcher (dirty-tree refusal, optional 0600 `~/.config/ctx/env` for
-  the summarizer only, post-run refresh that warns but never fails the
-  run). `--self-test stub` probes: workspace writable, masks readable-
+  the summarizer only, post-run refresh gated by a y/n prompt on a TTY
+  (non-TTY falls back to skip + manual-command hint, ADR-050) that
+  warns but never fails the run). `--self-test stub` probes: workspace
+  writable, masks readable-
   as-empty, in-cage `git status` works, no egress — green.
 - **Interactive caged claude reached the TUI** on subscription auth
   with no onboarding/key prompt (installer warning silenced by the

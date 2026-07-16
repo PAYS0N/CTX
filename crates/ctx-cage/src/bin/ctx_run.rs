@@ -9,9 +9,9 @@
 //! authorization, so no separate `--allow-spend` is required here.
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
@@ -40,7 +40,7 @@ struct Cli {
     /// Permit running on a dirty tree (default: refuse).
     #[arg(long)]
     allow_dirty: bool,
-    /// Skip the post-run `ctx-scan --update` summary refresh.
+    /// Skip the post-run summary refresh (and its y/n prompt) entirely.
     #[arg(long)]
     skip_summarize: bool,
 }
@@ -103,6 +103,28 @@ fn pick_mode(cli: &Cli) -> Result<Mode, CageError> {
     })
 }
 
+/// Ask the operator whether to regenerate context summaries now. Only
+/// prompts when stdin is a real terminal (same `is_terminal()`
+/// discipline as the PTY relay, ADR-048); piped/CI/test invocations
+/// have no one to ask, so they fall back to "no" and the caller prints
+/// the manual command instead.
+fn confirm_summarize() -> bool {
+    if !std::io::stdin().is_terminal() {
+        return false;
+    }
+    let mut out = std::io::stdout().lock();
+    let wrote = write!(out, "ctx-run: regenerate context summaries now? [y/N] ").is_ok();
+    if !wrote || out.flush().is_err() {
+        return false;
+    }
+    drop(out);
+    let mut answer = String::new();
+    if std::io::stdin().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
 /// Post-session summary refresh — the ONE place regeneration happens
 /// (the Stop hook only reports): `ctx-scan <dir> --update`. Agent
 /// config from `~/.config/ctx/env` is passed only into the child's
@@ -110,7 +132,7 @@ fn pick_mode(cli: &Cli) -> Result<Mode, CageError> {
 /// `.env`. Never fails the run: the session's deliverable already
 /// landed; a refresh problem is maintenance, reported with the manual
 /// command.
-fn refresh_summaries(scan_bin: &PathBuf, dir: &PathBuf, env: &HashMap<String, String>) {
+fn refresh_summaries(scan_bin: &Path, dir: &Path, env: &HashMap<String, String>) {
     let mut cmd = Command::new(scan_bin);
     cmd.arg(dir).arg("--update");
     for key in ["CTX_AGENT_CMD", "ANTHROPIC_API_KEY"] {
@@ -123,6 +145,22 @@ fn refresh_summaries(scan_bin: &PathBuf, dir: &PathBuf, env: &HashMap<String, St
             std::io::stderr().lock(),
             &format!(
                 "ctx-run: summary refresh incomplete (see ctx-scan output above); run `ctx-scan {} --update --approve` to refresh manually",
+                dir.display()
+            ),
+        );
+    }
+}
+
+/// Offers the post-run summary-refresh prompt and either refreshes or
+/// prints the manual-recovery hint, depending on the answer.
+fn maybe_refresh_summaries(dir: &Path, scan_bin: &Path, env: &HashMap<String, String>) {
+    if confirm_summarize() {
+        refresh_summaries(scan_bin, dir, env);
+    } else {
+        emit(
+            std::io::stderr().lock(),
+            &format!(
+                "ctx-run: summary refresh skipped; run `ctx-scan {} --update --approve` to refresh manually",
                 dir.display()
             ),
         );
@@ -151,14 +189,14 @@ fn run() -> Result<i32, CageError> {
     };
     let code = execute(&resolved)?;
     if code == 0 && !cli.skip_summarize {
-        refresh_summaries(&bins.scan, &cli.dir, &env);
+        maybe_refresh_summaries(&cli.dir, &bins.scan, &env);
     }
     Ok(code)
 }
 
 /// The chain hook only leads when the target commits its own
 /// `.claude/settings.json`; warn (don't fail) when it is absent.
-fn warn_if_no_hooks(dir: &std::path::Path) {
+fn warn_if_no_hooks(dir: &Path) {
     if !dir.join(".claude/settings.json").is_file() {
         emit(
             std::io::stderr().lock(),
