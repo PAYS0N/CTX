@@ -16,6 +16,10 @@
 //! - toolchain dirs — RO binds at their identical host paths.
 //! - `/cage/bin` — tmpfs with the host CTX tools (and `claude`) RO-bound.
 //! - `/opt/cage/rules.md` — RO bind of the cage-rules file.
+//! - `/etc/resolv.conf` — RO bind of a stub naming an unroutable
+//!   nameserver. The cage is offline, so it resolves nothing; without
+//!   it the resolver defaults to `127.0.0.1:53`, which the empty netns
+//!   refuses instantly, and the retry loop pins a core (ADR-049).
 //! - `/run/ctx` — RO bind of the run dir holding the API proxy socket
 //!   (the sole egress; the cage itself has no network).
 
@@ -25,5 +29,5 @@ mod config;
 pub use build::build_bwrap_args;
 pub use config::{
     BwrapConfig, API_SOCK_NAME, CAGE_BIN, CAGE_CLAUDE_CONFIG, CAGE_CLAUDE_CRED, CAGE_LOCAL_CLAUDE,
-    CAGE_RULES_PATH, CAGE_RUN_DIR,
+    CAGE_RESOLV_PATH, CAGE_RULES_PATH, CAGE_RUN_DIR,
 };

@@ -11,7 +11,7 @@ use std::process::Command;
 use crate::cli::mode_is_billed;
 use crate::error::CageError;
 use crate::runtime::{resolve_claude_runtime, ClaudeRuntime};
-use crate::CAGE_RULES_MD;
+use crate::{CAGE_RESOLV_CONF, CAGE_RULES_MD};
 
 use super::Resolved;
 
@@ -23,6 +23,8 @@ pub struct Prep {
     pub rundir: PathBuf,
     /// Host path of the materialized cage-rules.md (bound into cage).
     pub rules_file: PathBuf,
+    /// Host path of the materialized stub resolv.conf (bound into cage).
+    pub resolv_file: PathBuf,
     /// Host path of the empty regular file bound over secret paths.
     pub mask_file: PathBuf,
     /// `Some` for billed modes: the claude runtime binds.
@@ -44,6 +46,7 @@ pub fn prepare_run(r: &Resolved) -> Result<Prep, CageError> {
     }
     let rundir = mint_rundir(&r.task_id)?;
     let rules_file = write_rules_file(&rundir)?;
+    let resolv_file = write_resolv_file(&rundir)?;
     let mask_file = write_mask_file(&rundir)?;
     let claude = if billed {
         Some(resolve_claude_runtime(&rundir, &r.target_root)?)
@@ -53,6 +56,7 @@ pub fn prepare_run(r: &Resolved) -> Result<Prep, CageError> {
     Ok(Prep {
         rundir,
         rules_file,
+        resolv_file,
         mask_file,
         claude,
     })
@@ -101,5 +105,14 @@ fn mint_rundir(task_id: &str) -> Result<PathBuf, CageError> {
 fn write_rules_file(rundir: &Path) -> Result<PathBuf, CageError> {
     let path = rundir.join("cage-rules.md");
     std::fs::write(&path, CAGE_RULES_MD)?;
+    Ok(path)
+}
+
+/// Write the embedded stub resolv.conf to `<rundir>/resolv.conf`. It
+/// resolves nothing (the cage is offline) — it keeps DNS failing
+/// slowly instead of spinning; see [`CAGE_RESOLV_CONF`] and ADR-049.
+fn write_resolv_file(rundir: &Path) -> Result<PathBuf, CageError> {
+    let path = rundir.join("resolv.conf");
+    std::fs::write(&path, CAGE_RESOLV_CONF)?;
     Ok(path)
 }

@@ -884,3 +884,102 @@ are unautomated at the repo root today (they were already orphaned there);
 this change makes `template/` match that reality rather than adding
 coverage — recorded so a future networked-CI or dylint pass reintroduces
 them deliberately, not by reverting this ADR.
+
+## ADR-048 — Interactive PTY isolation for the cage (resolves ADR-034 backlog)
+**Decision:** `--interactive` cage runs now get a **dedicated host-side
+PTY relay** instead of inheriting the host's controlling terminal
+directly. The host allocates a `openpty` pair, drops the real terminal
+into raw mode (restored via an RAII guard on every exit/panic path),
+hands the slave to `bwrap` as stdin/stdout/stderr, and pumps bytes both
+directions between the master and the real terminal (reusing
+`proxy::pump`); `SIGWINCH` is caught via a `signalfd` and the size
+copied onto the master so resizes reach the cage live. Inside the cage
+the interactive command is wrapped in **`setsid --ctty --wait`** so
+claude gets a new session whose controlling terminal is its stdin (the
+private PTY slave). `--unshare-pid` and the rest of the isolation are
+**unchanged** — full PID-namespace isolation is retained.
+**Context:** `--unshare-pid` is always on, but the caged process's
+controlling terminal used to live in the *host's* PID namespace. Job-
+control ioctls (`tcgetpgrp`/`tcsetpgrp`, `SIGTTIN`/`SIGTTOU`) can't
+resolve across that boundary and return `ENOTTY`/`EIO`; Node's readline
+(the claude TUI) busy-retries instead of blocking, pinning one core at
+100%. Reproduced from inside the cage (`tcgetpgrp` → "Inappropriate
+ioctl for device"). Deferred since [[ADR-034]]/[[ADR-040]]; this closes
+it (option 2 of the backlog: a real PTY relay, not the isolation-
+weakening "drop `--unshare-pid`" shortcut).
+**Rationale:** a private PTY as the child's controlling terminal keeps
+`tcgetpgrp`/`tcsetpgrp` inside the cage's own namespace, so flow control
+works and the spin disappears. Dropping `--unshare-pid` (the quick
+mitigation) was rejected: it would expose the host process list via
+`/proc` (argv leakage) and widen signal blast radius to same-uid host
+processes — regressions the cage's threat model ([[ADR-026]], "capable
+& lazy, not adversarial") tolerates only because it need not.
+**Implementation:** new `nix` (safe `openpty`/`termios`/`signalfd`) and
+`rustix` (safe `tcgetwinsize`/`tcsetwinsize`, which `nix` lacks) deps —
+both already in the offline registry cache; `portable-pty` is **not**
+cached and would need network, so it was rejected. `TIOCSCTTY` is
+delegated to `setsid --ctty` rather than a `pre_exec` ioctl, keeping the
+workspace `unsafe_code = "forbid"` intact (bwrap's own `--new-session`
+only `setsid`s — no `TIOCSCTTY` — so it is neither used nor sufficient
+here). The relay engages only when host stdin `is_terminal()`; piped /
+CI / test invocations fall back to plain stdio inheritance unchanged.
+
+## ADR-049 — Stub `resolv.conf`: the cage's DNS must fail slowly
+**Decision:** bind a **stub `/etc/resolv.conf`** (new asset
+`assets/cage-resolv.conf`, `include_str!`-embedded like
+`cage-rules.md`, materialized per-run into the rundir) into every cage.
+It names one unroutable server — `192.0.2.1`, TEST-NET-1 (RFC 5737).
+It resolves nothing and is never reached; its only job is to keep DNS
+failing *slowly*.
+**Context:** caged `claude` burned **~101% of a core permanently, at an
+empty prompt, with no input** — not during streaming, and it never
+self-quiesced. The cage mounts almost none of `/etc` (only
+`/etc/alternatives`), so there is no `resolv.conf`; the resolver falls
+back to its `127.0.0.1:53` default. `--unshare-net` gives the cage a
+netns with loopback **up** and nothing listening on `:53`, so every
+query is refused *instantly* (ICMP port-unreachable → ECONNREFUSED) and
+retried immediately — a tight loop. Measured host-vs-cage under
+identical conditions: idle 2.8% host / 101.6% cage; with the stub,
+2.8% / 2.7%, and under a keystroke load 77.0% / 77.7% (parity).
+**Root cause:** [[ADR-029]] provisioned exactly this plumbing
+(`resolv.conf`, `/etc/hosts`, `/etc/ssl`, a minimal `nsswitch.conf`)
+for the Bash `cage-run.sh --claude`. The [[ADR-034]] Rust port carried
+the *assets* across but **silently dropped the binds** — `nsswitch` is
+still an orphan asset today (nothing in `src/` references it, and its
+own header claims it is "Bound as /etc/nsswitch.conf"). Nobody noticed
+because [[ADR-035]]+ made the cage unconditionally offline, so DNS is
+*expected* to fail. The bug is that it did not fail *quietly*.
+**Rationale:** any non-loopback address works — the fix is not "make
+DNS work" (it must not) but "deny the resolver an instant refusal".
+This is pinned by a test asserting the asset names a nameserver and
+that none are loopback, since both regressions are silent at build time
+and cost a core at runtime.
+**Rejected:** binding the host's real `/etc/resolv.conf` (works, but
+leaks host DNS config into a blinded offline cage and makes cage
+behaviour depend on host network state); an **empty** file (measured:
+still 101.6% — an empty resolv.conf *is* the `127.0.0.1` default, not
+an inert one); `nameserver 127.0.0.1` (measured: 101.7%, the bug
+itself); binding all of `/etc` (measured fix at 2.5%, but leaks host
+config wholesale and contradicts [[ADR-026]] blinding). Reviving the
+orphaned `cage-nsswitch.conf` bind was **not** bundled here: it targets
+glibc NSS, whereas the spinning resolver is Bun's own (c-ares reads
+`resolv.conf` directly and ignores `nsswitch.conf`), and the asset's
+stated purpose — "resolving api.anthropic.com over the shared (1a)
+network" — describes a network mode that no longer exists. It is dead
+weight with a false header comment; disposition is a separate call.
+**Method note:** the prior investigation (`cage-cpu-findings.md`, now
+deleted) concluded the opposite — "claude reaches genuine idle (0%)",
+residual CPU is "Claude Code's own TUI reconciler", "not fixable in
+run.rs", "extend ADR-048 with a note and stop" — and was one step from
+writing that into this log. It measured only *inside* the cage, where
+the PID namespace structurally forbids the host comparison that settles
+it, and reported a vivid mechanism (timerfd fd7, 0.78 ms one-shot,
+~14 ms render callback, ~70 Hz) for an experiment with no control arm.
+Its own numbers were self-contradictory (87% lifetime average vs 0%
+idle). The decisive datum was free all along and in the first file
+read: **`utime`/`stime` split** — 46.8% user vs **54.7% system**. Over
+half the burn was kernel time, which no userspace render loop can
+explain. Sampling `/proc/<tid>/syscall` said "99.9% running" and misled
+both passes, because it can only catch a syscall that *blocks*; an
+instantly-failing `sendto` is invisible to it. Prefer unbiased counters
+over sampled ones, and measure the null (idle) case before any load.

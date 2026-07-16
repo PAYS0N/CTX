@@ -5,7 +5,9 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use ctx_cage::bwrap::{build_bwrap_args, BwrapConfig, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR};
+use ctx_cage::bwrap::{
+    build_bwrap_args, BwrapConfig, CAGE_BIN, CAGE_RESOLV_PATH, CAGE_RULES_PATH, CAGE_RUN_DIR,
+};
 
 /// A representative config exercising every bind family.
 fn sample_config() -> BwrapConfig {
@@ -27,6 +29,7 @@ fn sample_config() -> BwrapConfig {
         )],
         rundir: PathBuf::from("/tmp/run"),
         cage_rules_path: PathBuf::from("/tmp/run/cage-rules.md"),
+        resolv_conf: PathBuf::from("/tmp/run/resolv.conf"),
         env: vec![("PATH".to_owned(), "/cage/bin:/usr/bin:/bin".to_owned())],
         new_session: true,
         cage_cmd: vec!["sh".into(), "-c".into(), "true".into()],
@@ -77,6 +80,15 @@ fn chdir_matches_the_workspace_bind() {
     let argv = build_bwrap_args(&sample_config());
     let idx = find(&argv, "--chdir").expect("--chdir present");
     assert_eq!(argv.get(idx + 1), Some(&OsString::from("/home/u/proj")));
+}
+
+/// The cage mounts almost none of `/etc`, so without this bind the
+/// resolver falls back to `127.0.0.1:53` and spins on instant
+/// ECONNREFUSED for the whole session (ADR-049).
+#[test]
+fn stub_resolv_conf_is_bound_read_only_over_etc() {
+    let argv = build_bwrap_args(&sample_config());
+    assert_bind(&argv, "--ro-bind", "/tmp/run/resolv.conf", CAGE_RESOLV_PATH);
 }
 
 #[test]

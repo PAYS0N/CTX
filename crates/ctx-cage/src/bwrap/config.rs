@@ -9,6 +9,9 @@ pub const CAGE_BIN: &str = "/cage/bin";
 /// Cage-internal RO bind of the always-injected rules markdown.
 pub const CAGE_RULES_PATH: &str = "/opt/cage/rules.md";
 
+/// Cage-internal RO bind of the stub `resolv.conf`.
+pub const CAGE_RESOLV_PATH: &str = "/etc/resolv.conf";
+
 /// Cage-internal RO bind of the host's run directory (holds the API
 /// proxy socket).
 pub const CAGE_RUN_DIR: &str = "/run/ctx";
@@ -59,6 +62,14 @@ pub struct BwrapConfig {
     pub rundir: PathBuf,
     /// Absolute host path of a file containing the cage-rules markdown.
     pub cage_rules_path: PathBuf,
+    /// Absolute host path of a file containing the stub `resolv.conf`,
+    /// bound RO at [`CAGE_RESOLV_PATH`]. The cage is offline, so this
+    /// resolves nothing; it exists because DNS must fail *slowly*.
+    /// Absent (the cage mounts almost no `/etc`) or empty, the resolver
+    /// defaults to `127.0.0.1:53`, which the cage's netns refuses
+    /// instantly — and the retry loop burns a full core for the whole
+    /// session (ADR-049).
+    pub resolv_conf: PathBuf,
     /// `--setenv` pairs — with `--clearenv`, this is the entire cage
     /// environment.
     pub env: Vec<(String, String)>,

@@ -20,6 +20,35 @@ use super::Resolved;
 /// The upstream API host the proxy dials.
 const API_HOST: &str = "api.anthropic.com";
 
+/// TCP port the in-cage relay listens on, and what `claude`'s
+/// `ANTHROPIC_BASE_URL` (see `runtime::CAGE_BASE_URL`) points at.
+const RELAY_PORT: u16 = 8080;
+
+/// Build the shell snippet that blocks until a TCP listener on
+/// `127.0.0.1:port` is actually bound (up to 5s), so `claude`'s first
+/// request can't race the `socat &` startup. Without this, an
+/// ECONNREFUSED window surfaces to the user as a stuck-looking "API
+/// error · Retrying" in Claude Code's own retry UI.
+///
+/// Checks `/proc/net/tcp` for a `LISTEN` (`0A`) row on
+/// `127.0.0.1:port` (`0100007F:<hex port>`, little-endian hex) rather
+/// than opening a real probe connection: the relay is `socat
+/// ...,fork`, so *any* accepted TCP connection — including a probe
+/// that sends no bytes — gets forked straight into the host-side
+/// proxy, which reads an immediate EOF and logs a scary (but
+/// harmless) "connection failed: EOF before request head" on every
+/// single startup. Parameterized over `port` (rather than baking in
+/// [`RELAY_PORT`]) so tests can probe a throwaway port instead of
+/// racing whatever else has 8080 bound on the host.
+fn wait_for_relay_snippet(port: u16) -> String {
+    format!(
+        "i=0; while [ $i -lt 50 ]; do \
+         grep -qE '^[[:space:]]*[0-9]+: 0100007F:{port:04X} [0-9A-Fa-f]{{8}}:[0-9A-Fa-f]{{4}} 0A ' /proc/net/tcp 2>/dev/null && break; \
+         i=$((i+1)); sleep 0.1; \
+         done"
+    )
+}
+
 /// A running proxy thread and its stop signal.
 struct ProxyHandle {
     /// Set to make the accept loop exit.
@@ -81,11 +110,17 @@ fn exec_cage(r: &Resolved, prep: &Prep) -> Result<std::process::ExitStatus, Cage
         rw_binds: env::claude_rw_binds(prep),
         rundir: prep.rundir.clone(),
         cage_rules_path: prep.rules_file.clone(),
+        resolv_conf: prep.resolv_file.clone(),
         env: env::cage_env(r),
         new_session: !interactive,
         cage_cmd: cage_cmd_for_mode(&r.mode),
     };
     let argv = build_bwrap_args(&cfg);
+    if interactive {
+        if let Some(status) = pty::run_on_pty(&argv)? {
+            return Ok(status);
+        }
+    }
     Ok(Command::new("bwrap").args(argv.iter().skip(1)).status()?)
 }
 
@@ -119,9 +154,10 @@ echo SELF-TEST-STUB-OK\n";
 /// bind-mounted proxy socket), then exec claude. The cage IS the
 /// sandbox `--dangerously-skip-permissions` asks for.
 fn claude_cmd(headless: bool) -> Vec<OsString> {
+    let wait = wait_for_relay_snippet(RELAY_PORT);
     let relay = format!(
-        "socat -t 86400 TCP-LISTEN:8080,bind=127.0.0.1,reuseaddr,fork \
-         UNIX-CONNECT:/run/ctx/{API_SOCK_NAME} &"
+        "socat -t 86400 TCP-LISTEN:{RELAY_PORT},bind=127.0.0.1,reuseaddr,fork \
+         UNIX-CONNECT:/run/ctx/{API_SOCK_NAME} &\n{wait}"
     );
     let claude = if headless {
         format!(
@@ -129,8 +165,13 @@ fn claude_cmd(headless: bool) -> Vec<OsString> {
              --append-system-prompt-file {CAGE_RULES_PATH} \"$CTX_TASK_BRIEF\""
         )
     } else {
+        // `setsid --ctty` gives claude a new session whose controlling
+        // terminal is its stdin — the private PTY slave (see `pty.rs`).
+        // Without it the caged process has no controlling TTY in its own
+        // PID namespace and Node's readline busy-spins at 100% CPU.
+        // `--wait` propagates claude's exit status back through setsid.
         format!(
-            "exec claude --dangerously-skip-permissions \
+            "exec setsid --ctty --wait claude --dangerously-skip-permissions \
              --append-system-prompt-file {CAGE_RULES_PATH}"
         )
     };
@@ -140,3 +181,8 @@ fn claude_cmd(headless: bool) -> Vec<OsString> {
         format!("{relay}\n{claude}").into(),
     ]
 }
+
+mod pty;
+
+#[cfg(test)]
+mod tests;

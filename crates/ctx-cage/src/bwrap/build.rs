@@ -5,7 +5,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use super::config::{BwrapConfig, CAGE_BIN, CAGE_RULES_PATH, CAGE_RUN_DIR};
+use super::config::{BwrapConfig, CAGE_BIN, CAGE_RESOLV_PATH, CAGE_RULES_PATH, CAGE_RUN_DIR};
 
 /// Build the bwrap argv. Output starts with `"bwrap"` so the caller
 /// can do `Command::new(&argv[0]).args(&argv[1..])`.
@@ -45,6 +45,7 @@ fn add_base_isolation(a: &mut Vec<OsString>, c: &BwrapConfig) {
     for host in ["/usr", "/bin", "/lib", "/lib64", "/etc/alternatives"] {
         push_ro_bind_str(a, host, host);
     }
+    push_ro_bind(a, &c.resolv_conf, CAGE_RESOLV_PATH);
     a.push("--proc".into());
     a.push("/proc".into());
     a.push("--dev".into());

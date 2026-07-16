@@ -24,3 +24,9 @@ path = "src/lib.rs"
 clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+# Interactive PTY relay (see lifecycle/run/pty.rs). `nix` provides safe
+# openpty / termios / signalfd wrappers; `rustix` the safe winsize
+# ioctls `nix` lacks. Both only expose safe APIs here — the workspace's
+# `unsafe_code = "forbid"` still holds for this crate.
+nix = { version = "0.31", default-features = false, features = ["term", "signal"] }
+rustix = { version = "1", features = ["termios"] }

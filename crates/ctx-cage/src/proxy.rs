@@ -166,7 +166,8 @@ fn read_head(stream: &mut UnixStream) -> Result<(String, Vec<u8>), CageError> {
 }
 
 /// Pump bytes from `from` to `to` until EOF or error (best-effort).
-fn pump(mut from: impl Read, mut to: impl Write) {
+/// Reused by the interactive PTY relay (`lifecycle::run::pty`).
+pub(crate) fn pump(mut from: impl Read, mut to: impl Write) {
     let mut buf = [0_u8; 8192];
     loop {
         match from.read(&mut buf) {

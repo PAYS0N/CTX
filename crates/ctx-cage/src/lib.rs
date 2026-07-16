@@ -33,3 +33,8 @@ pub mod runtime;
 /// The project-agnostic caged-agent rules, injected as the system
 /// prompt's append-context on every real `claude` launch.
 pub const CAGE_RULES_MD: &str = include_str!("../assets/cage-rules.md");
+
+/// The stub `resolv.conf` bound into every cage. The cage is offline,
+/// so this never resolves anything — it only keeps DNS failing
+/// *slowly*; see the asset's own comment and ADR-049.
+pub const CAGE_RESOLV_CONF: &str = include_str!("../assets/cage-resolv.conf");
