@@ -13,21 +13,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
+use ctx_core::hashtree::{hex_hash, DirNode};
 use ctx_summarize::cpath;
 use ctx_summarize::fs::Fs;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::error::ScanError;
-
-/// One directory's hash node as stored in its sidecar.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DirNode {
-    /// Aggregate hash over the sorted `children` entries.
-    pub hash: String,
-    /// Child name -> `f:<hex>` (file) or `d:<hex>` (subdirectory).
-    pub children: BTreeMap<String, String>,
-}
 
 /// Hash nodes for every directory in scope, keyed by repo-relative
 /// directory (`""` = root).
@@ -46,25 +36,23 @@ pub struct Staleness {
     pub changed_files: Vec<String>,
     /// Leaf `.ctx` paths whose source file no longer exists.
     pub orphan_leaves: Vec<String>,
+    /// Expected `.ctx`/`rollup.ctx` artifacts the hash tree accounts for
+    /// but that are absent on disk — deleted by hand, or never generated.
+    /// Freshness ≠ integrity: the tree only hashes source, so a missing
+    /// summary is otherwise invisible to `--check` (audit finding #11).
+    pub missing_artifacts: Vec<String>,
 }
 
 impl Staleness {
-    /// True when nothing needs regeneration.
+    /// True when nothing needs regeneration and no expected artifact is
+    /// missing.
     #[must_use]
     pub const fn is_fresh(&self) -> bool {
-        self.stale_dirs.is_empty() && self.changed_files.is_empty() && self.orphan_leaves.is_empty()
+        self.stale_dirs.is_empty()
+            && self.changed_files.is_empty()
+            && self.orphan_leaves.is_empty()
+            && self.missing_artifacts.is_empty()
     }
-}
-
-/// Hex SHA-256 of `bytes`.
-fn hex_hash(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let mut s = String::with_capacity(64);
-    for b in Sha256::digest(bytes) {
-        let r = write!(s, "{b:02x}");
-        if r.is_err() {}
-    }
-    s
 }
 
 /// Split a repo-relative path into (parent dir, basename).
@@ -223,4 +211,26 @@ pub fn diff(current: &TreeState, stored: &TreeState) -> Staleness {
     out.stale_dirs
         .sort_by(|a, b| depth(b).cmp(&depth(a)).then_with(|| a.cmp(b)));
     out
+}
+
+/// Record expected leaf/rollup artifacts that are absent on disk.
+///
+/// For every directory in `current` its `rollup.ctx` must exist, and for
+/// every recorded source file its leaf `<name>.ctx` must exist; a gap is a
+/// summary that was deleted or never generated (invisible to hash-only
+/// staleness — the "never generated" case, audit finding #11).
+pub fn record_missing_artifacts<F: Fs>(fs: &F, current: &TreeState, out: &mut Staleness) {
+    for (dir, node) in &current.dirs {
+        let cdir = cpath::context_dir_of(dir);
+        let rollup = format!("{cdir}/rollup.ctx");
+        if !fs.exists(&rollup) {
+            out.missing_artifacts.push(rollup);
+        }
+        for (name, entry) in &node.children {
+            if entry.starts_with("f:") && !fs.exists(&format!("{cdir}/{name}.ctx")) {
+                out.missing_artifacts.push(format!("{cdir}/{name}.ctx"));
+            }
+        }
+    }
+    out.missing_artifacts.sort();
 }

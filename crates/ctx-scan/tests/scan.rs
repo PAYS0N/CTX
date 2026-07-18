@@ -307,27 +307,36 @@ fn create_hash_fixture(base: &std::path::Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+/// Compute and persist the hash sidecars for `base` (hashes only, no
+/// summaries generated). A test helper, so it returns `Result` rather
+/// than unwrapping.
+fn store_hashes(base: &std::path::Path) -> Result<(), ScanError> {
+    let files = walk_dir(base)?;
+    let current = hash::compute(base, &files)?;
+    hash::store(&StdFs::new(base.to_path_buf()), &current)
+}
+
 #[test]
-fn check_reports_everything_stale_without_sidecars_then_fresh_after_store() {
+fn check_cycle_stale_then_missing_artifacts_then_edit_propagates() {
     let base = test_dir("hash-cycle");
     drop(std::fs::remove_dir_all(&base));
     create_hash_fixture(&base).expect("fixture");
 
     let first = check_run(&base).expect("check");
     assert!(!first.is_fresh(), "no sidecars -> stale");
-    assert!(first.changed_files.contains(&"src/main.rs".to_owned()));
-    assert!(first.stale_dirs.contains(&"src".to_owned()));
     assert!(first.stale_dirs.contains(&String::new()), "root stale");
 
-    // Store the current state; the tree is then fresh.
-    let files = walk_dir(&base).expect("walk");
-    let current = hash::compute(&base, &files).expect("compute");
-    hash::store(&StdFs::new(base.clone()), &current).expect("store");
+    // Hashes stored but no summaries generated: the hash diff is clean,
+    // yet the integrity check flags the missing artifacts (finding #11).
+    store_hashes(&base).expect("store");
     let second = check_run(&base).expect("recheck");
-    assert!(second.is_fresh(), "stored -> fresh");
+    assert!(second.stale_dirs.is_empty() && second.changed_files.is_empty());
+    assert!(second
+        .missing_artifacts
+        .contains(&".context/rollup.ctx".to_owned()));
 
-    // Touch one file: exactly its leaf and its ancestor dirs go stale.
-    std::fs::write(base.join("src/main.rs"), "fn main() { edited(); }").expect("edit");
+    // Edit one file: exactly its leaf and ancestor dirs go stale.
+    std::fs::write(base.join("src/main.rs"), "fn main() { e(); }").expect("edit");
     let third = check_run(&base).expect("check after edit");
     assert_eq!(third.changed_files, vec!["src/main.rs".to_owned()]);
     assert_eq!(third.stale_dirs, vec!["src".to_owned(), String::new()]);

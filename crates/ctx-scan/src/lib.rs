@@ -11,6 +11,7 @@
 //! [`cli::dispatch`] for CLI-driven use.
 
 pub mod cli;
+pub mod contract;
 pub mod error;
 pub mod hash;
 pub mod readme;

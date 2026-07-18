@@ -7,7 +7,6 @@
 //! [`fs`] and [`agent`] seams. `intent.md` is never written.
 
 pub mod agent;
-pub mod cache;
 pub mod cli;
 pub mod cpath;
 pub mod error;

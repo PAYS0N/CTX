@@ -142,6 +142,20 @@ const SPECS: &[Spec] = &[
         envs: &[],
         parser: script_parser,
     },
+    Spec {
+        name: "contracts",
+        tool: "bash",
+        args: &["scripts/gen_tool_contracts.sh", "--check", "."],
+        envs: &[],
+        parser: script_parser,
+    },
+    Spec {
+        name: "retired_terms",
+        tool: "bash",
+        args: &["scripts/retired_terms_check.sh", "."],
+        envs: &[],
+        parser: script_parser,
+    },
 ];
 
 /// Effective args: insert `-p <package>` after the cargo subcommand when

@@ -151,6 +151,9 @@ fn render_staleness<W: Write>(out: &mut W, s: &Staleness) -> Result<(), ScanErro
     for l in &s.orphan_leaves {
         writeln!(out, "orphan-leaf: {l}").map_err(|ref e| stdout_err(e))?;
     }
+    for m in &s.missing_artifacts {
+        writeln!(out, "missing-artifact: {m}").map_err(|ref e| stdout_err(e))?;
+    }
     Ok(())
 }
 
@@ -192,9 +195,10 @@ fn staleness_message(dir: &std::path::Path, s: &Staleness) -> String {
         ""
     };
     format!(
-        "ctx: context tree stale ({} dirs, {} leaves); run `ctx-scan {} --update{approve}` after the session",
+        "ctx: context tree stale ({} dirs, {} leaves, {} missing); run `ctx-scan {} --update{approve}` after the session",
         s.stale_dirs.len(),
         s.changed_files.len(),
+        s.missing_artifacts.len(),
         dir.display()
     )
 }

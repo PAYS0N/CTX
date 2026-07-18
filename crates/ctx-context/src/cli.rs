@@ -16,6 +16,21 @@ use crate::env::Env;
 use crate::error::CtxError;
 use crate::{hook, serve, session};
 
+/// One-paragraph, agent-facing contract for this binary.
+///
+/// Single source of truth: the generated tool-contract block in
+/// `CLAUDE.md`/`README.md` is assembled from `--contract` output, and the
+/// `contracts` battery check fails if that block drifts from this string.
+pub const CONTRACT: &str = "ctx-context <path> prints the context chain \
+an agent must read before touching <path>: the ancestor rollup.ctx + \
+intent.md at each directory level, plus the file's own leaf .ctx for a \
+file target (`.` targets the repo root). Read-only and fail-open — a \
+missing node renders as an explicit `(absent: …)` marker, never an error; \
+a served summary whose source changed since the last regen is prefixed \
+`[STALE …]`, and one whose source exists but was never summarized \
+`[NEVER GENERATED …]`. `--hook` reads a Claude Code PostToolUse event \
+from stdin and emits deduplicated additional-context for the session.";
+
 /// The context-chain server.
 #[derive(Debug, Parser)]
 #[command(

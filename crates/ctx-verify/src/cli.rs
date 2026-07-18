@@ -17,6 +17,20 @@ use crate::runner::Runner;
 /// Terse diagnostic messages are clipped to this many chars.
 const MAX_MSG: usize = 100;
 
+/// One-paragraph, agent-facing contract for this binary.
+///
+/// Single source of truth: the generated tool-contract block in
+/// `CLAUDE.md`/`README.md` is assembled from `--contract` output, and the
+/// `contracts` battery check fails if that block drifts from this string.
+pub const CONTRACT: &str = "ctx-verify [crate] is the agent checkpoint: \
+it applies `cargo fmt`, then builds, lints (clippy + rustdoc, warnings \
+denied), tests, and runs the repo's script battery in one call; an \
+optional crate name scopes the cargo-based checks. The default terse \
+render prints the single word `pass` when every check passed, otherwise \
+one FAIL:/ERROR: block per failing check — the `{\"status\":\"pass\"}` \
+JSON envelope is emitted only under `--json`. Serving fails open; this \
+gate fails closed.";
+
 /// The agent checkpoint: formats, builds, lints, and tests; emits one
 /// capped report (`pass` when all-pass).
 #[derive(Debug, Parser)]

@@ -5,7 +5,6 @@ use std::io::Write;
 use clap::{Parser, Subcommand};
 
 use crate::agent::Agent;
-use crate::cache::paths_from_cache;
 use crate::error::SummError;
 use crate::fs::Fs;
 use crate::runner;
@@ -32,12 +31,6 @@ pub struct Cli {
 /// Target-selection mode.
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Summarize the `paths_written` of a task cache.
-    FromCache {
-        /// Task identifier whose cache to read.
-        #[arg(long)]
-        task_id: String,
-    },
     /// Summarize an explicit list of source paths.
     Paths {
         /// Repo-relative source paths.
@@ -49,17 +42,15 @@ enum Command {
 ///
 /// # Errors
 ///
-/// Propagates cache, prompt, filesystem, path, agent, or encoding errors.
+/// Propagates prompt, filesystem, path, agent, or encoding errors.
 pub fn dispatch<F: Fs, A: Agent, W: Write>(
     fs: &F,
     agent: &A,
     cli: &Cli,
     out: &mut W,
 ) -> Result<(), SummError> {
-    let targets = match &cli.command {
-        Command::FromCache { task_id } => paths_from_cache(fs, task_id)?,
-        Command::Paths { paths } => paths.clone(),
-    };
+    let Command::Paths { paths } = &cli.command;
+    let targets = paths.clone();
     runner::scope_check(targets.len(), cli.approve)?;
     let summary = runner::run(fs, agent, &cli.prompts, &targets)?;
     serde_json::to_writer_pretty(&mut *out, &summary).map_err(|e| SummError::Io {

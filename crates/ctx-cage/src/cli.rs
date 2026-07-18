@@ -15,11 +15,24 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, ValueEnum};
 
+/// One-paragraph, agent-facing contract for this binary.
+///
+/// Single source of truth: the generated tool-contract block in
+/// `CLAUDE.md`/`README.md` is assembled from `--contract` output, and the
+/// `contracts` battery check fails if that block drifts from this string.
+pub const CONTRACT: &str = "ctx-cage <target> runs an agent subprocess in \
+an offline sandbox over the target project — bwrap with a masked \
+filesystem, fresh namespaces, and no egress except a proxied API relay — \
+and guarantees teardown. Billed modes (`--task`/`--task-file`, or the \
+interactive default) require `--allow-spend` or `CTX_CAGE_ALLOW_SPEND=1`; \
+`--self-test stub` is the always-available no-spend, no-network \
+containment probe.";
+
 /// The raw CLI parsed by `clap`.
 #[derive(Debug, Parser)]
 #[command(
     name = "ctx-cage",
-    about = "Generic sandboxed-agent harness: brokered ctx-access/ctx-verify over a project."
+    about = "Sandboxed-agent harness: runs an agent offline under bwrap over a project."
 )]
 pub struct Cli {
     /// Target project root (absolute path). REQUIRED — no default.
@@ -73,8 +86,8 @@ pub struct SpendFlags {
 /// Available no-spend self-tests. New kinds land in later turns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum SelfTestKind {
-    /// Smoke-test the orchestration: cage runs `ctx-access manifest`
-    /// over the broker and exits — no model, no network.
+    /// Smoke-test the orchestration: cage runs a brokered probe over
+    /// the tool broker and exits — no model, no network.
     Stub,
 }
 

@@ -1,9 +1,13 @@
-//! Shared, dependency-free primitives for the CTX tooling.
+//! Shared foundational primitives for the CTX tooling.
 //!
-//! Currently the single source of truth for the access gate. It lives
-//! here, not duplicated per crate, because a divergent secret denylist
-//! between `ctx-access` and `ctx-summarize` would be a silent
-//! secret-exfiltration bug (see DECISIONS ADR-023). Each consumer maps
-//! the neutral deny reason into its own typed error.
+//! Home for definitions that more than one tool must agree on exactly,
+//! so a divergent copy can't drift into a silent bug. The access gate
+//! ([`access`]) is the single source of truth for the secret/binary
+//! denylist (a divergent copy is a secret-exfiltration bug — DECISIONS
+//! ADR-023). The content-hash sidecar schema ([`hashtree`]) is shared by
+//! the generator (`ctx-scan`) and the chain server (`ctx-context`) so a
+//! hash recorded by one is comparable by the other. Each consumer maps
+//! neutral results into its own typed error.
 
 pub mod access;
+pub mod hashtree;

@@ -1,59 +1,38 @@
 # Status & Active Plan
 
-The live "where we are, what's next, and why." `SPEC.md` is the frozen
-design (revision 4 = the lead-by-hooks re-spec); `UNIMPLEMENTED.md` is
-the backlog; `DECISIONS.md` is the rationale log; this file is the
-moving part. Update it whenever the active focus changes.
+The live "where we are, what's next, and why." This file is the moving
+part; it deliberately does **not** describe current architecture — that
+is derived, and lives in the regenerated root rollup. **For current
+architecture, read the root rollup: `ctx-context .`** (tool names, hook
+wiring, freshness model, cage posture all live there). `SPEC.md` is the
+sealed design, `UNIMPLEMENTED.md` the backlog, `DECISIONS.md` the
+rationale log. Keep this file to what a rollup can't express: open work,
+dates, what's blocked on what, and deferred items.
 
-Last updated: 2026-07-16.
+Last updated: 2026-07-18.
 
-## Current shape (post-pivot)
+## Done and verified (the lead-by-hooks pivot — ADR-035..043)
 
-Agents use native Read/Edit. `ctx-context <path>` serves the
-rollup+intent chain (a directory or `.` serves directory summaries);
-the committed `.claude/settings.json` injects it on every Read/Grep/
-Glob via the fail-open `PostToolUse` hook, deduplicated per session.
-Freshness is content-hashed (`.context/<dir>/hashes.json`); the Stop
-hook reports staleness only; regeneration is post-session
-(`ctx-scan <dir> --update`, `--approve` past 50 targets) — one owner,
-ADR-043. The cage is safety-only: RW workspace, masked secrets
-(empty-file masks, ADR-042), offline with the host passthrough proxy
-as sole egress, subscription auth (ADR-041). `ctx-run <dir> "<task>"`
-is the billed launcher. `ctx-verify` remains THE checkpoint — now also
-auditing unused dependencies (`cargo-machete`), with the parallel
-`ci.sh` / `template/.github` CI stack retired so it is the sole check
-(ADR-047). `cargo-deny` (offline-blocked) and module-cycle detection
-stay out of it — documented policy / deferred to dylint rule 4.
+Status only; see the rollups for how each works.
 
-## Done and verified (this pivot — ADR-035..043)
-
-- **`ctx-context`** (was `ctx-access`): read-only chain CLI + `--hook`
-  mode (event-`cwd` rooted, session-deduped, fail-open with loud
-  markers). Write path/task lifecycle deleted. Hermetic tests; hook
-  verified firing in real GUI/CLI sessions (dedup state files are the
-  evidence — model self-reports are not, ADR-037).
-- **`ctx-scan`**: CACT hash tree + sidecars, `.ctxignore` scope,
-  `--check` (free) / `--update` (selective, gated) / `--stop-hook`
-  (report-only), orphan-leaf cleanup. Tests cover the
+- `ctx-context`: read-only chain CLI + fail-open `--hook`; write
+  path/task lifecycle deleted. Hook verified firing in real sessions
+  (dedup state files are the evidence, not model self-reports — ADR-037).
+- `ctx-scan`: CACT hash tree + sidecars, `.ctxignore` scope,
+  `--check`/`--update`/`--stop-hook`, orphan-leaf cleanup. `--check` also
+  reports missing (deleted/never-generated) artifacts. Tests cover the
   edit-one-file ⇒ one-leaf+ancestor-rollups delta.
-- **Prompts**: leaf + rollup rewritten cdoc-style (behavior-first,
-  `edit_notes`, invariants demoted; budgets unchanged). Leaves KEPT
-  (ADR-039).
-- **`ctx-cage` rework**: broker/protocol/client deleted; RW workspace,
-  toolchain RO binds, always-offline + passthrough proxy (pure header
-  rewrite, socat-TLS upstream seam, socketpair-tested); `ctx-run`
-  launcher (dirty-tree refusal, optional 0600 `~/.config/ctx/env` for
-  the summarizer only, post-run refresh gated by a y/n prompt on a TTY
-  (non-TTY falls back to skip + manual-command hint, ADR-050) that
-  warns but never fails the run). `--self-test stub` probes: workspace
-  writable, masks readable-
-  as-empty, in-cage `git status` works, no egress — green.
-- **Interactive caged claude reached the TUI** on subscription auth
-  with no onboarding/key prompt (installer warning silenced by the
-  `/tmp/.local/bin/claude` bind).
-- **Docs**: SPEC revision 4, ADR-035..043, CLAUDE.md rewritten
-  cdoc-lean, cage-rules precedence clause, SANDBOX.md retired-banner.
-- Whole workspace `ctx-verify` = `{"status":"pass"}` at every step.
+- Serve-time freshness: `ctx-context` tags each served summary against its
+  `hashes.json` sidecar — `[STALE]` (source changed) vs `[NEVER GENERATED]`
+  (source exists, no summary) — so a weak model reading injected context
+  can tell current from outdated. Shared hashing lives in `ctx-core`.
+- Prompts: leaf + rollup rewritten to prose (leaves KEPT, ADR-039).
+- `ctx-cage` rework: broker/protocol/client deleted; safety-only cage +
+  `ctx-run` launcher (ADR-040..043, 046, 048, 050).
+- Interactive caged `claude` reached the TUI on subscription auth.
+- Docs: SPEC re-specced to current truth (ADR-051); retired designs moved
+  to `docs/retired/`.
+- Whole-workspace `ctx-verify` = `pass` at every step.
 
 Pre-pivot MVP validation (access/cage thesis, billed runs, reference
 project) stands as history: ADR-016..034 and git.
@@ -63,14 +42,17 @@ project) stands as history: ADR-016..034 and git.
 1. **First billed headless `ctx-run`** (one small task): proves relay →
    proxy → TLS passthrough with OAuth end-to-end. Free tests cover
    everything up to the first real API request.
-2. **Seed this repo's summary tree** with the new prompts:
+2. **Seed this repo's summary tree** with the current prompts:
    `ctx-scan . --update --approve` (~110 leaves + 34 rollups, billed).
-   Until then `.context/` is STALE (pre-pivot content, no sidecars):
-   chains still serve, but describe the old architecture below the
-   root level and are absent for the new crates.
+   Until then `.context/` below the root is STALE (pre-pivot content,
+   mostly no sidecars): chains still serve, but describe the old
+   architecture and are absent for the new crates. Serve-time markers now
+   flag this where sidecars exist (`[STALE]`/`[NEVER GENERATED]`), but a
+   full reseed is still the fix. This remains a live risk to any agent
+   trusting injected context in this repo below the root.
 3. **Phase 5 — e2e smoke fixture**: throwaway workspace, buggy file +
-   failing test, generated tree, `--stub` (deterministic fake agent,
-   no billing) and billed modes; asserts hook injection, native Edit,
+   failing test, generated tree, `--stub` (deterministic fake agent, no
+   billing) and billed modes; asserts hook injection, native Edit,
    `ctx-verify` pass, post-session rollup regen, no egress beyond the
    proxy, no writes outside the workspace.
 
@@ -78,17 +60,13 @@ project) stands as history: ADR-016..034 and git.
 
 - seccomp filter for the cage (namespaces + `no_new_privs` + offline
   stand today) — ADR-040.
-- OAuth refresh mid-session would miss the single-host proxy —
-  ADR-041.
-- Orphaned `.context` *directory* subtrees are not auto-pruned —
-  ADR-038.
+- OAuth refresh mid-session would miss the single-host proxy — ADR-041.
+- Orphaned `.context` *directory* subtrees are not auto-pruned — ADR-038.
 - Dedicated-PTY isolation for `--interactive` (ADR-034 backlog).
-- Production multi-agent broker + Layer 3: `UNIMPLEMENTED.md`,
-  unchanged.
+- Production multi-agent broker + Layer 3: `UNIMPLEMENTED.md`, unchanged.
 
 ## How to verify anything
 
-`target/debug/ctx-verify` (optionally a crate name to scope). It
-formats+builds+lints+**tests** in one call; `{"status":"pass"}` = done.
-Containment: `target/debug/ctx-cage <dir> --self-test stub`. Chain:
-`target/debug/ctx-context <path>`. Freshness: `ctx-scan <dir> --check`.
+`target/debug/ctx-verify` (optionally a crate name to scope) — `pass` =
+done. Containment: `ctx-cage <dir> --self-test stub`. Chain:
+`ctx-context <path>`. Freshness: `ctx-scan <dir> --check`.

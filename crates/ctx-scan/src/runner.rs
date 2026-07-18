@@ -95,7 +95,9 @@ pub fn check_run(base: &Path) -> Result<Staleness, ScanError> {
     let targets = walk_dir(base)?;
     let current = hash::compute(base, &targets)?;
     let stored = hash::load_stored(&fs, &current);
-    Ok(hash::diff(&current, &stored))
+    let mut stale = hash::diff(&current, &stored);
+    hash::record_missing_artifacts(&fs, &current, &mut stale);
+    Ok(stale)
 }
 
 /// Regenerate exactly what `stale` names: changed leaves, orphan leaf

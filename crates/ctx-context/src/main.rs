@@ -37,7 +37,24 @@ fn resolve_root(hook_stdin: &str) -> Result<std::path::PathBuf, std::io::Error> 
     ctx_context::hook::event_cwd(hook_stdin).map_or_else(std::env::current_dir, Ok)
 }
 
+/// Whether `--contract` was passed. Handled before `clap` so it wins
+/// over the positional-path parsing (the contract is a standalone probe,
+/// not a normal invocation).
+fn wants_contract() -> bool {
+    std::env::args().skip(1).any(|a| a == "--contract")
+}
+
 fn main() -> ExitCode {
+    if wants_contract() {
+        emit(std::io::stdout().lock(), ctx_context::cli::CONTRACT);
+        return ExitCode::SUCCESS;
+    }
+    run()
+}
+
+/// The normal (non-`--contract`) path: parse argv, resolve the root,
+/// dispatch, and map the outcome to an exit code.
+fn run() -> ExitCode {
     let cli = Cli::parse();
     let stdin = if cli.hook_mode() {
         read_stdin()

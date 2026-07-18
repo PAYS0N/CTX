@@ -11,9 +11,6 @@ pub enum SummError {
     /// A required prompt file is missing or unreadable.
     #[error("prompt file unreadable: {0:?}")]
     MissingPrompt(String),
-    /// The task cache could not be read or parsed.
-    #[error("cannot read task cache for {0:?}")]
-    CacheRead(String),
     /// No agent command was configured (env var unset/empty and no
     /// `.env` entry).
     #[error("no agent command configured (set CTX_AGENT_CMD, or put it in the target's .env)")]

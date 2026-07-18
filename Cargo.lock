@@ -204,6 +204,7 @@ name = "ctx-context"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ctx-core",
  "serde",
  "serde_json",
  "thiserror",
@@ -212,6 +213,10 @@ dependencies = [
 [[package]]
 name = "ctx-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "sha2",
+]
 
 [[package]]
 name = "ctx-scan"
@@ -221,9 +226,7 @@ dependencies = [
  "ctx-core",
  "ctx-summarize",
  "ignore",
- "serde",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 

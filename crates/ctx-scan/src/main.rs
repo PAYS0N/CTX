@@ -33,7 +33,24 @@ fn run_stop_hook<W: Write>(cli: &Cli, out: &mut W) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Whether `--contract` was passed. Handled before `clap` so it wins
+/// over the required `<dir>` positional (the contract is a standalone
+/// probe, not a scan invocation).
+fn wants_contract() -> bool {
+    std::env::args().skip(1).any(|a| a == "--contract")
+}
+
 fn main() -> ExitCode {
+    if wants_contract() {
+        emit(std::io::stdout().lock(), ctx_scan::contract::CONTRACT);
+        return ExitCode::SUCCESS;
+    }
+    run()
+}
+
+/// The normal (non-`--contract`) path: parse argv and route to the
+/// selected mode.
+fn run() -> ExitCode {
     let cli = Cli::parse();
     let mut out = std::io::stdout().lock();
     if cli.dry_run() {

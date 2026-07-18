@@ -19,7 +19,17 @@ fn emit<W: Write>(mut w: W, msg: &str) {
     if result.is_err() {}
 }
 
+/// Whether `--contract` was passed. Handled before `clap` so it prints
+/// the tool's one-paragraph contract and exits without running checks.
+fn wants_contract() -> bool {
+    std::env::args().skip(1).any(|a| a == "--contract")
+}
+
 fn main() -> ExitCode {
+    if wants_contract() {
+        emit(std::io::stdout().lock(), ctx_verify::cli::CONTRACT);
+        return ExitCode::SUCCESS;
+    }
     let cli = Cli::parse();
     let mut out = std::io::stdout().lock();
     match run(&ProcRunner, &cli, &mut out) {

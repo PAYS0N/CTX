@@ -12,6 +12,7 @@ pub mod chain;
 pub mod cli;
 pub mod env;
 pub mod error;
+pub mod freshness;
 pub mod hook;
 pub mod repo_path;
 pub mod serve;

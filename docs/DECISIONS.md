@@ -1014,3 +1014,38 @@ Defaulting non-TTY invocations to "yes" (auto-run when no one's there
 to ask) was also rejected: a headless/CI `ctx-run` would then silently
 re-incur the exact unconditional billed step this ADR removes for the
 interactive case, just for a different caller.
+
+## ADR-051 — Authored docs re-specced to current truth; retired designs to `docs/retired/`
+**Decision:** the authored context layer is brought under the same
+"every `must` is generated or checked" discipline the Rust layer already
+has (audit `docs/AUDIT.md`). Three changes: (1) **SPEC.md re-specced.**
+The sealed body was rewritten to state only what is currently true; the
+rev-1..4 preamble and the rev-4 "supersedes, in the body below…"
+amendment pattern are removed, along with the retired-mechanism prose the
+amendment had left stranded (the brokered access protocol, task
+lifecycle, `served_nodes`, write-needs-read, stale banners, the old YAML
+`.ctx` schema). "Sealed" is retained as a *process* rule — a change still
+requires an owner-authorized re-spec recorded here — but the document
+itself now reads as one coherent current spec, not a base plus a patch.
+Revision history lives in this ledger (ADR-035/036 for the pivot), not in
+the spec body. (2) **Retired designs moved out of `docs/`**:
+`docs/SANDBOX.md` → `docs/retired/SANDBOX.md` and `sandbox/README.md` →
+`docs/retired/sandbox-README.md`, so a weak model's grep can't land in a
+retired design presented at the same path-prestige as a live one. (3)
+**Tool contracts generated, retired vocabulary grepped.** Each binary
+emits its own `--contract`; `scripts/gen_tool_contracts.sh` assembles the
+tool block in `CLAUDE.md`/`README.md`, and a `ctx-verify` `contracts`
+check fails on drift. `scripts/retired_terms_check.sh` (also in the
+battery) bans the retired identifiers (`ctx-access`, `init-task`,
+`end-task`, `served_nodes`) outside this ledger and `docs/retired/**`.
+STATUS.md's "current shape" section was trimmed to a pointer at the
+regenerated root rollup, and `.context/intent.md`'s body was restated as
+mechanism-free goals/invariants. **Rejected:** keeping the
+sealed-body-plus-amendment pattern — it conflates an append-only decision
+record (this ledger's job) with a currently-true spec a weak model reads
+literally; the consumption artifact must be internally consistent at every
+commit, and history belongs in the ledger. **Owner sign-off:** the
+`intent.md` rewrite touches a file SPEC lists as frozen post-creation, and
+this SPEC rewrite is itself a sealed-doc change — both are recorded here as
+the mechanical half of "sealed", but the `intent.md` content change needs
+explicit owner confirmation (a human step) before merge.

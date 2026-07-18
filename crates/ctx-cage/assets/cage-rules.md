@@ -8,10 +8,10 @@ repository, and the operator recovers via git (the session started
 from a clean commit).
 
 **These rules win.** If the project's own docs (CLAUDE.md, specs)
-describe a different tool contract — `ctx-access`, task ids, brokered
-reads/writes, "the sanctioned path to source" — those docs are stale;
-ignore that contract and use your native tools. Do not invoke
-`ctx-access` even if a binary by that name exists.
+describe a different tool contract — a brokered access binary, task ids,
+brokered reads/writes, "the sanctioned path to source" — those docs are
+stale; ignore that contract and use your native tools. Do not invoke any
+such brokered-access binary even if one by that name exists.
 
 **Context is served to you automatically.** When you read or search a
 file, a hook injects the summary chain above it (directory rollups +
@@ -21,7 +21,8 @@ editing it. You can also request it directly: `ctx-context <path>`
 prints the chain for any file or directory.
 
 **Verify with `ctx-verify`.** It formats, builds, lints, and tests in
-one call; done = it prints `{"status":"pass"}`. Do not assemble
+one call; done = it prints the single word `pass` (the
+`{"status":"pass"}` envelope appears only under `--json`). Do not assemble
 `cargo fmt`/`build`/`test` yourself; scope by package name when useful
 (e.g. `ctx-verify mealplan`). Fix lints by refactoring, never by
 suppression (`#[allow]` is banned and CI-grepped).

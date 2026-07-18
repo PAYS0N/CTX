@@ -100,10 +100,12 @@ fn hook_injects_chain_then_dedups_within_session() {
     let first = hook::run(&env, base, &read_event("s1", "/repo/crates/foo/bar.rs"));
     assert!(first.contains("additionalContext"));
     assert!(first.contains("foo rollup"));
-    // Same session, sibling file: ancestors are deduped; only the new
-    // leaf level would remain, and it is absent -> nothing to inject.
+    // Same session, sibling file: ancestors are deduped, so no rollup is
+    // re-injected; but baz.rs has no leaf summary and its source exists,
+    // so the new leaf is injected with a NEVER GENERATED marker.
     let second = hook::run(&env, base, &read_event("s1", "/repo/crates/foo/baz.rs"));
-    assert!(second.is_empty());
+    assert!(!second.contains("foo rollup"), "ancestors already served");
+    assert!(second.contains("NEVER GENERATED"), "baz.rs has no leaf yet");
     // A different session starts fresh.
     let other = hook::run(&env, base, &read_event("s2", "/repo/crates/foo/bar.rs"));
     assert!(other.contains("foo rollup"));

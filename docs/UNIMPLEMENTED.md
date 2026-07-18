@@ -11,9 +11,9 @@ L (weeks).
   including `workspace_lints_check.sh` (every member must opt into the
   workspace lint table).
 - Agent prompts as plain files in `prompts/`, decoupled from any code.
-- Full sealed spec, rev 2 (`docs/SPEC.md`).
+- Full sealed spec (`docs/SPEC.md`).
 - Deferred dylint rule list (`docs/DYLINT_RULES.md`).
-- Sandbox deployment design (`docs/SANDBOX.md`).
+- Retired sandbox/broker design, kept as history (`docs/retired/SANDBOX.md`).
 - This document.
 
 ## What is NOT implemented
@@ -36,36 +36,16 @@ names across Rust versions.
 
 ### Layer 2
 
-**`ctx-access` CLI — IMPLEMENTED.** Built and dogfooded at the repo root
-(`crates/ctx-access`, `cargo_access` lib + bin) under the full lint regime
-(clippy pedantic/nursery/restriction + `-D warnings`, fmt, rustdoc,
-rationale, workspace-lints, no-allow all green; 8 in-memory behavioral
-tests pass; end-to-end CLI smoke verified). The `cli` / `enforce` / `env`
-seam from `docs/SANDBOX.md` is in place. Remaining within this piece: the
-`end-task` summarizer is a `NoopSummarizer` (the agent-driven runner is the
-separate item below); a real `transport`-to-`ctx-broker` is deployment
-work. Original required behavior, all now satisfied:
-
-- Subcommands: `init-task`, `read`, `write`, `list`, `end-task`.
-- Per-task cache management at `.context/.cache/<task-id>.json` with the
-  rev-2 schema (`served_nodes` set, not `chains_read`).
-- Chain computation from repo root to target path.
-- Single-call chain serving: one `read` returns every not-yet-served
-  ancestor node plus source, in order; `served_nodes` is the prefix
-  cache. `--shallow` stops before source. NOT step-by-step / one call
-  per node (that was rev 1; rev 2 bundles).
-- Stale banner logic based on cache `paths_written`.
-- Enforcement that `write` requires a prior non-`--shallow` `read` of the
-  same path in the same task.
-- Mandatory internal seam: `cli` (argv/io) / `enforcement` (pure logic
-  over injected fs+clock) / `transport` (MVP: in-process; future: UDS to
-  `ctx-broker`). The sandbox depends on this seam — it is not optional.
-  See `docs/SANDBOX.md`.
-
-Implemented as: Rust lib+bin (~700 LoC), `clap` + `serde_json` + `thiserror`.
-The `enforce` module avoids `indexing_slicing`/`string_slice`/
-`as_conversions`/`unwrap` throughout (typed `thiserror` enums, `.get()`,
-`strip_prefix`, no print macros — output via injected `Write`).
+**Context read tooling — IMPLEMENTED (as `ctx-context`).** The original
+brokered access CLI (read/write/list plus a task lifecycle and per-task
+cache) was retired in the lead-by-hooks pivot (ADR-035/036). What ships
+now is `crates/ctx-context`: a read-only chain server —
+`ctx-context <path>` prints the rollup+intent chain root→target (plus the
+file's leaf `.ctx` for a file target), with a fail-open `PostToolUse`
+`--hook` mode that injects it on native reads, deduplicated per session
+(`.context/.cache/hook-<session-id>.json`). No source bytes, no task ids,
+no write path. Dogfooded through `ctx-verify`; hermetic tests over an
+in-memory `Env`.
 
 **Dogfood findings (Phase 0/1), recorded for the reference-project notes:**
 
@@ -106,38 +86,29 @@ cargo-modules 0.26.0, and `scripts/cycle_check.sh` remains the
 runs-cleanly stub. `Cargo.lock` is committed so the dep graph is
 pinnable.
 
-**Sandbox configuration (M, deployment-specific).** The agent's shell must
-block direct reads of paths under configured source roots. This is not
-something the CLI can do. Design is specified in `docs/SANDBOX.md`
-(`ctx-broker` daemon as the only source-reading identity + mount-namespace
-or container isolation of the agent).
-
-*Update:* an MVP cage proving this property now exists — `sandbox/`
-(`bwrap` ns + tmpfs over source + UNIX-socket forwarder to a host-side
-`ctx-access`; ADR-026). `sandbox/cage-demo.sh` shows source unreachable
-except via the tool, enforcement preserved through the transport, no
-spend (`CAGE D PASS`). Layer 2 is therefore **enforceable in this
-deployment**, not merely advisory, for a run launched through the cage.
-Still deferred (production, not MVP): the dedicated `ctx` uid /
-cache-owning broker with locking — same-uid is the cage's accepted
-residual under the *capable-but-lazy, not adversarial* threat model.
-The `ctx-access` internal seam already makes that a transport swap, not
-a rewrite.
+**Enforcement sandbox — SUPERSEDED.** The source-masking design (a broker
+daemon as the sole source-reading identity, the agent isolated by mount
+namespace) was retired with the pivot: enforcement-by-cage gave way to
+lead-by-hooks (ADR-035), and the cage (`ctx-cage`) is now a *safety*
+boundary only — writable real workspace, masked secrets, offline except a
+passthrough proxy. The retired design is kept as history at
+`docs/retired/SANDBOX.md`, and the old bash demo at
+`docs/retired/sandbox-README.md`. No enforcement-sandbox work remains;
+what remains for the cage is tracked under STATUS.md and the cage ADRs
+(040..043, 046, 048, 050).
 
 **Summarization-agent runner — DONE.** `crates/ctx-summarize` (lib+bin,
 dogfooded through `ctx-verify`, 6 tests incl. real-subprocess agent):
 
-- `from-cache --task-id` reads `paths_written` from the task cache;
-  `paths <p>...` takes explicit targets.
+- `paths <p>...` takes explicit target paths; in practice the runner is
+  driven by `ctx-scan`, which computes stale paths from the hash tree.
 - Each source file -> `prompts/summarizer-leaf.md` as system prompt, file
   contents as user message -> writes `.context/<path>.ctx`.
 - Each affected directory -> `prompts/summarizer-rollup.md` + assembled
   children summaries + the dir's `intent.md` -> writes `rollup.ctx`.
 - Walks leaf-up (deepest dir first, repo root last).
-- Does NOT touch the per-task cache: per SPEC rev 2, `ctx-access
-  end-task` is the cache's sole deleter (this corrects the rev-1 wording
-  that had the runner clean it up). `ctx-summarize` also never writes
-  `intent.md`.
+- Never writes `intent.md` — it reads owner-authored intent but never
+  produces or modifies it.
 - LLM is behind an `Agent` seam; the real `SubprocessAgent` speaks a
   model-agnostic JSON-on-stdin contract via `CTX_AGENT_CMD` (no SDK
   dependency; the network/dep-policy stress lands in the reference
@@ -147,7 +118,7 @@ Prompt iteration will still be heaviest here; the runner is a thin shell
 with prompt content never embedded in code.
 
 KNOWN DEBT (`ctx-core` extraction): the repo-relative path-safety + the
-`.context` mirror mapping now exist in BOTH `ctx-access`
+`.context` mirror mapping now exist in BOTH `ctx-context`
 (`repo_path`/`chain`) and `ctx-summarize` (`cpath`), kept deliberately
 small and identical in spirit. Post-MVP these (and the task-cache view)
 should move to a shared `ctx-core` crate so the security-sensitive path
@@ -229,7 +200,8 @@ across multiple real projects becomes painful.
 ## Suggested order of implementation
 
 1. ~~Smoke-test the lint config~~ — DONE (Phase 0; toolchain 1.95.0).
-2. ~~Build `ctx-access` CLI~~ — DONE (Phase 1; dogfooded).
+2. ~~Build the context read CLI~~ — DONE (`ctx-context`; pivoted to
+   read-only + hook per ADR-036).
 3. ~~Build `ctx-verify`~~ — DONE. Token-frugal verification broker
    (`crates/ctx-verify`): wraps clippy/doc/fmt/rationale/workspace_lints/
    no_allow via a `Runner` seam, parses structured + `FAIL:`-line output,

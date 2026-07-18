@@ -1,9 +1,9 @@
 //! Repo-relative path validation and `.context` mirror mapping.
 //!
 //! NOTE: this duplicates ~20 lines of the path-safety + `.context`
-//! mapping that also lives in `ctx-access` (`repo_path`/`chain`). The
-//! runner is deliberately kept independent of the access-broker crate;
-//! the shared logic should move to a future `ctx-core` crate (recorded in
+//! mapping that also lives in `ctx-context` (`repo_path`/`chain`). The
+//! runner is deliberately kept independent of the chain-serving crate;
+//! the shared logic should move to `ctx-core` (recorded in
 //! `docs/UNIMPLEMENTED.md`). Until then this copy is intentionally small
 //! and identical in spirit.
 

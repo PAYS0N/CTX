@@ -2,7 +2,7 @@
 //!
 //! [`checks`](crate::checks) is pure over the [`Runner`] trait: the real
 //! runner shells `std::process::Command`; tests inject canned output.
-//! Same seam idea as `ctx-access`'s `Env`.
+//! Same seam idea as `ctx-context`'s `Env`.
 
 use std::io::ErrorKind;
 use std::process::Command;

@@ -106,10 +106,21 @@ fn run() -> Result<i32, HostError> {
     Ok(execute(&resolved)?)
 }
 
+/// Whether `--contract` was passed. Handled before `clap` so it wins
+/// over the required `<target>` positional (the contract is a standalone
+/// probe, not a cage invocation).
+fn wants_contract() -> bool {
+    std::env::args().skip(1).any(|a| a == "--contract")
+}
+
 /// Binary entry point. Propagates the cage's exit code (truncated to
 /// `u8` per process-exit conventions); a host-side error prints to
 /// stderr and exits `1`.
 fn main() -> ExitCode {
+    if wants_contract() {
+        emit(std::io::stdout().lock(), ctx_cage::cli::CONTRACT);
+        return ExitCode::SUCCESS;
+    }
     match run() {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(e) => {

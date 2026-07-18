@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 use crate::chain::{self, ChainNode, NodeKind};
 use crate::env::Env;
 use crate::error::CtxError;
+use crate::freshness::{self, Assessment};
 use crate::repo_path::RepoPath;
 use crate::session;
 
@@ -26,6 +27,8 @@ pub struct ServedNode {
     pub body: String,
     /// Whether the backing file exists (`false` ⇒ marker body).
     pub present: bool,
+    /// How this node's content relates to its source (freshness sidecar).
+    pub freshness: Assessment,
 }
 
 /// Parse a CLI target string; `.` denotes the repo root, and a trailing
@@ -37,7 +40,8 @@ fn parse_target(raw: &str) -> Result<RepoPath, CtxError> {
     RepoPath::parse(raw.trim_end_matches('/'))
 }
 
-/// Serve one node: contents when present, an absent marker otherwise.
+/// Serve one node: contents when present, an absent marker otherwise,
+/// plus a freshness [`Assessment`] against its hash sidecar.
 fn serve_one<E: Env>(env: &E, node: &ChainNode) -> Result<ServedNode, CtxError> {
     let present = env.exists(&node.id);
     let body = if present {
@@ -50,6 +54,7 @@ fn serve_one<E: Env>(env: &E, node: &ChainNode) -> Result<ServedNode, CtxError> 
         kind: node.kind,
         body,
         present,
+        freshness: freshness::assess(env, node, present),
     })
 }
 
@@ -95,7 +100,10 @@ pub fn fresh_chain_for<E: Env>(
         .into_iter()
         .filter(|n| !served.contains(&n.id))
         .collect();
-    if !nodes.iter().any(|n| n.present) {
+    // A present node is worth showing; so is a NeverGenerated one — an
+    // absent artifact whose source exists is a signal, not silence. Plain
+    // `(absent: …)` scaffolding alone still counts as nothing new.
+    if !nodes.iter().any(worth_showing) {
         return Ok(None);
     }
     for n in &nodes {
@@ -105,7 +113,27 @@ pub fn fresh_chain_for<E: Env>(
     Ok(Some(nodes))
 }
 
-/// Render served nodes as labeled sections.
+/// Whether a served node carries something worth injecting: real content,
+/// or a "never generated" signal. A plain absent marker alone does not.
+fn worth_showing(n: &ServedNode) -> bool {
+    n.present || n.freshness == Assessment::NeverGenerated
+}
+
+/// The one-line marker a node's freshness earns, if any. Distinguishes
+/// "content is untrustworthy" (stale / never generated) from the plain
+/// `(absent: …)` marker, which means "no such node exists to have".
+const fn freshness_marker(a: Assessment) -> Option<&'static str> {
+    match a {
+        Assessment::Stale => Some("[STALE — source changed since last regen]"),
+        Assessment::NeverGenerated => {
+            Some("[NEVER GENERATED — source exists but no summary on record]")
+        },
+        Assessment::Fresh | Assessment::Unknown => None,
+    }
+}
+
+/// Render served nodes as labeled sections, each prefixed with a freshness
+/// marker when its content is stale or was never generated.
 #[must_use]
 pub fn render(nodes: &[ServedNode]) -> String {
     let mut out = String::new();
@@ -115,6 +143,10 @@ pub fn render(nodes: &[ServedNode]) -> String {
         out.push_str(" [");
         out.push_str(n.kind.label());
         out.push_str("] ===\n");
+        if let Some(marker) = freshness_marker(n.freshness) {
+            out.push_str(marker);
+            out.push('\n');
+        }
         out.push_str(&n.body);
         if !n.body.ends_with('\n') {
             out.push('\n');

@@ -1,49 +1,15 @@
 # MVP Specification — Opinionated Agentic Coding System
 
-Status: sealed. Changes require explicit re-spec.
-
-Revision 2 (2026-05-16, owner-authorized re-spec). Changes from rev 1:
-sandbox dependency made explicit (Layer 2 advisory until deployed; see
-`docs/SANDBOX.md`); module-cycle detection corrected to deferred; rollup
-budget set to 15/40; `ctx-access read` changed from N step-calls to one
-bundled call; task lifecycle (`init-task`/`end-task`) and per-task cache
-schema specified; audit report schema aligned to `prompts/auditor.md`;
-crate-root deny mechanism corrected to workspace lints; `cargo doc`
-enforcement mechanism corrected; prompt-file references corrected.
-
-Revision 3 (2026-05-17, owner-authorized). `started_at` is unix epoch
-seconds (not RFC3339); `--shallow` serves through the leaf and stops
-before source; `write` evicts the path's leaf+source from `served_nodes`
-so the stale banner is reachable; `clippy.toml` gains
-`allow-unwrap/expect-in-tests` (the only mechanism for the spec's test
-exemption given `#[allow]` is banned). New component `ctx-verify` (a
-token-frugal verification broker) is sequenced BEFORE the reference
-project; see `docs/UNIMPLEMENTED.md`.
-
-Revision 4 (2026-07-02, owner-authorized re-spec — ADR-035..043).
-**Lead-by-hooks replaces enforce-by-cage.** Goal 2 is now *led*, not
-forced: agents read/edit source with native tools; a Claude Code
-`PostToolUse` hook (`ctx-context --hook`, fail-open) injects the
-rollup+intent chain on every read, deduplicated per session. This
-revision supersedes, in the body below: the **Access protocol**
-section entirely (`ctx-access`, task lifecycle, per-task cache,
-`served_nodes`, write-needs-read, stale banners — all removed;
-`ctx-context <path>` is the read-only chain server, and directory
-targets serve directory summaries on demand); the **summarization
-trigger** (no `end-task` — freshness is a content-hash tree,
-CACT-style `hashes.json` sidecars per mirrored directory, with
-`ctx-scan --check` free and `--update` regenerating only stale
-leaves/rollups behind the `--approve` gate, post-session only); the
-**scope rule** (`.ctxignore`, gitignore syntax, falls back to
-`.gitignore`; the ctx-core secret/binary deny is not overridable); and
-the **file-format prose** for `.ctx`/`rollup.ctx` (cdoc-style:
-behavior-first with `edit_notes`, invariants demoted; line budgets
-unchanged). The sandbox's role inverts: `docs/SANDBOX.md`'s
-broker/enforcement design is retired — the cage (`ctx-cage`, launched
-via `ctx-run`) is a *safety* boundary only: writable real workspace,
-masked secrets, offline with a host-side passthrough proxy as sole
-egress, subscription auth. Layer 1, `ctx-verify`, `ctx-core`, the
-mirror-tree layout, and the concurrency foundations are unchanged.
+Status: **sealed.** This document states what is true *now*, as one
+coherent spec — not a base layer plus amendments. Changing it is a
+process event, not an edit: it requires an owner-authorized re-spec
+recorded as an ADR in `docs/DECISIONS.md`. The revision history (what
+each past revision changed and why) lives there, not here — most
+recently ADR-035/036 (the lead-by-hooks pivot) and ADR-051 (this
+rewrite, which deleted the retired-mechanism prose the pivot had left
+stranded in the body). For *why* a choice was made, read DECISIONS; for
+*current state and open work*, read `docs/STATUS.md` and the regenerated
+root rollup (`ctx-context .`).
 
 ## Goals
 
@@ -56,7 +22,8 @@ mirror-tree layout, and the concurrency foundations are unchanged.
 
 - Human ergonomics. This is for autonomous agents.
 - Lint suppression/appeal mechanism.
-- Editing `intent.md` after directory creation.
+- Editing `intent.md` after directory creation (it is frozen; a change
+  is an owner decision, not a routine edit).
 
 ## Layer 1 — Language and Enforcement
 
@@ -97,7 +64,8 @@ Exceptions:
 
 - `unwrap_used`, `expect_used` allowed in `#[cfg(test)]` modules and `tests/`.
 - `print_stdout`, `print_stderr` allowed in `bin` crate `main.rs` only.
-- No `#[allow(...)]` attributes elsewhere. Enforced by grep in CI.
+- No `#[allow(...)]` attributes elsewhere. Enforced by grep in CI
+  (`scripts/no_allow_check.sh`).
 
 ### Thresholds
 
@@ -113,8 +81,9 @@ Exceptions:
 ### Dependency policy
 
 - `cargo-deny` with allowlist: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
-  ISC, Unicode-DFS-2016. Zero advisories. No duplicate versions.
-- `cargo-machete`: no unused dependencies.
+  ISC, Unicode-DFS-2016. Zero advisories. No duplicate versions. Not run
+  inside `ctx-verify` (needs network); a CI/offline concern (ADR-047).
+- `cargo-machete`: no unused dependencies. Run by `ctx-verify`.
 - No circular module deps within a crate. NOT enforced at MVP: the
   `scripts/cycle_check.sh` script only verifies `cargo-modules` runs
   cleanly; it does not parse the dependency graph for cycles. Real cycle
@@ -124,13 +93,23 @@ Exceptions:
 
 ### Formatting and docs
 
-- `cargo fmt --check` in CI.
+- `cargo fmt --check` in CI (`ctx-verify` applies `cargo fmt` itself).
 - `cargo doc --no-deps --workspace` in CI with
   `RUSTDOCFLAGS="-D warnings"`. The specific rustdoc denies
   (`broken_intra_doc_links`, `missing_crate_level_docs`) are set in the
   `[workspace.lints.rustdoc]` table, which binds only to crates that opt
   into workspace lints (see Compiler section). `RUSTDOCFLAGS="-D warnings"`
   is belt-and-suspenders so any escaped rustdoc warning still fails CI.
+
+### The checkpoint
+
+`ctx-verify [crate]` is the single verification gate: it applies
+`cargo fmt`, then builds, lints (clippy + rustdoc), tests, and runs the
+`scripts/` battery, emitting one capped report. Its terse render prints
+the bare word `pass`; the `{"status":"pass"}` envelope is behind `--json`
+(see the tool's own `--contract`). Serving context fails open; this gate
+fails closed. The parallel `ci.sh`/`template/.github` stack is retired —
+`ctx-verify` is the sole check (ADR-047).
 
 ### Deferred custom dylint rules (specified, not built)
 
@@ -140,7 +119,10 @@ See `docs/DYLINT_RULES.md`.
 
 ### Layout
 
-Mirror tree at repo root, gitignored from production builds, committed in dev.
+Mirror tree at repo root, committed in dev. Each source directory has a
+parallel `.context/<dir>/` holding that directory's `rollup.ctx`, an
+optional owner-authored `intent.md`, a `<file>.ctx` leaf per source file,
+and a `hashes.json` freshness sidecar.
 
 ```
 repo/
@@ -151,195 +133,147 @@ repo/
     ├── src/
     │   ├── rollup.ctx
     │   ├── intent.md
+    │   ├── hashes.json
     │   └── <file>.ctx
     └── ...
 ```
 
 ### File formats
 
-**Leaf `<file>.ctx`** (≤10 lines target, ≤40 hard ceiling):
+Generated context is **prose, not a fixed schema** — a few tight
+paragraphs written the way a competent engineer orients a teammate about
+to edit a file they haven't opened. The authoritative definition of the
+format is the generator prompts (`prompts/summarizer-leaf.md`,
+`prompts/summarizer-rollup.md`); this section states only the invariant
+shape and budgets.
 
-```
-file: <repo-relative source path>
-purpose: <1-3 sentences>
-invariants:
-  - <bullet>
-external_deps:
-  - <crate or module>: <non-obvious reason it is used>
-functions:
-  - name: <fn_name>
-    signature: <one line>
-    purpose: <one sentence>
-    notes: <optional>
-```
-
-**Non-leaf `rollup.ctx`** (≤15 lines target, ≤40 hard ceiling). A
-directory whose rollup cannot fit in 40 lines has too much surface area;
-emit anyway and let the auditor flag it. This budget must match
-`prompts/summarizer-rollup.md` exactly; changing one requires changing the
-other.
-
-```
-directory: <repo-relative dir path>
-summary: <2-5 sentences on what this subtree provides>
-children:
-  - <name>: <one-line summary>
-key_invariants:
-  - <bullet>
-```
-
-**`intent.md`** (frozen after creation at MVP):
+- **Leaf `<file>.ctx`** (≤10 lines target, ≤40 hard ceiling): leads with
+  what the file does for the system in domain terms, then only what an
+  editor would get wrong cold — non-obvious behavior, coupling to other
+  files/wire formats, the signatures that matter, verifiable invariants,
+  non-obvious dependencies. No history, no diffs, no filler.
+- **Non-leaf `rollup.ctx`** (≤15 lines target, ≤40 hard ceiling): leads
+  with what the subtree provides one level up, then the coupling its
+  children share, each child's role from the parent's view, and
+  subtree-spanning invariants — never re-deriving facts already in a
+  child's `.ctx`. A directory whose rollup cannot fit in 40 lines has too
+  much surface area; emit anyway and let the audit flag it. If the subtree
+  contradicts its `intent.md`, the rollup ends with a single
+  `intent_divergence:` line (that literal label is read by the auditor).
+  `prompts/summarizer-rollup.md` refers to this budget; keep them
+  consistent.
+- **`intent.md`** (frozen after creation at MVP): YAML front matter with
+  `intent_version`, then prose stating goals, non-goals, and invariants —
+  things that survive a change of mechanism. It never describes current
+  mechanism (that lives in the regenerated rollups); it is owner-authored
+  and not regenerated by the tooling.
 
 ```
 ---
 intent_version: 1
 ---
-<prose>
+<prose: goals, non-goals, invariants>
 ```
 
-### Access protocol
+### Context delivery
 
-The `ctx-access` CLI is the intended only path to source. All invocations
-take `--task-id <uuid>`. Enforcement that the agent cannot read source
-directly is a *deployment* concern (the sandbox), not something the CLI
-does itself. **Until the sandbox in `docs/SANDBOX.md` is deployed, Layer 2
-is advisory: a determined or lazy agent can bypass `ctx-access` by reading
-source directly.** The CLI is built with an internal `cli` / `enforcement`
-/ `transport` seam so the sandbox broker split is a later transport change,
-not a rewrite.
+Agents read and edit source with their **native tools** — there is no
+brokered access path and no task lifecycle. Context is *led*, not forced:
+a Claude Code `PostToolUse` hook (`ctx-context --hook`, fail-open) reads
+the tool event and injects the target's context chain as additional
+context, deduplicated per session via
+`.context/.cache/hook-<session-id>.json` (ADR-035/036/037).
 
-#### Task lifecycle
+`ctx-context <path>` is the read-only chain server behind that hook and
+available directly. It prints, root→target, each directory's `rollup.ctx`
+then `intent.md`, and for a file target the file's leaf `<file>.ctx`; `.`
+or a directory target stops at that directory (directory summaries on
+demand). It never serves source bytes. Context scaffolding is sparse by
+nature (`intent.md` is owner-authored, not one-per-directory; a rollup or
+leaf may not exist yet), so a missing node is served as an explicit
+one-line `(absent: no <kind> at this level)` marker — every chain level
+stays visible, and only a genuinely unreadable present file is an error.
+The hook fails open, loudly: a chain error injects a `(chain unavailable)`
+marker rather than blocking the read (ADR-037).
 
-A task is an explicit, bounded unit of work with its own cache and report.
+Each served summary is also checked against its directory's `hashes.json`
+sidecar (below) and, when its content is untrustworthy, prefixed with a
+one-line freshness marker: `[STALE …]` when the source has changed since
+the recorded hash, `[NEVER GENERATED …]` when the source exists but no
+summary is on record. These are distinct from `(absent: …)`, which means
+"no such node exists to have" (e.g. a sparse `intent.md`); the freshness
+markers mean "a node exists but its content is outdated or was never
+built." The check is local to each node's own sidecar (fail-open: no
+record ⇒ no marker), not a whole-tree recompute, so it stays cheap enough
+to run on every hooked read.
 
-- `ctx-access init-task --task-id <uuid>` — validates `<uuid>`, refuses if
-  a cache for it already exists (no clobber), writes the initial per-task
-  cache. Must be called before any `read`/`write`/`list` for that task;
-  those commands fail with a clear error if the cache is absent.
-- `ctx-access end-task --task-id <id>` — the only command that mutates
-  generated context files. It hands `paths_written` to the summarization
-  runner (leaf-up), then to `ctx-audit`, writes
-  `.context/.reports/<id>.json`, then deletes the cache file. Errors if no
-  cache exists for `<id>`.
+### Freshness and regeneration
 
-An orphaned cache (task crashed before `end-task`) is harmless: it is
-gitignored and uniquely keyed by task id. `init-task --force` reclaims one.
+Freshness is a **content-hash tree** (CACT-style), not git state, so it
+catches gitignore-invisible edits. Each mirrored directory carries a
+`hashes.json` sidecar: a leaf entry is the hash of its source file, a
+directory node the hash of its sorted children, so any change propagates
+to the root. Scope is governed by `.ctxignore` (gitignore syntax, seeded
+once from `.gitignore`, then the sole authority; ADR-044/045); the
+`ctx-core` secret/binary deny is not overridable.
 
-#### Per-request commands
-
-- `ctx-access read <path> --task-id <id>` — computes the chain from repo
-  root to `<path>` (each directory contributes its `rollup.ctx` then its
-  `intent.md`, top-down; then `<path>`'s leaf `<file>.ctx`; then source)
-  and returns, in one response, every chain node not already in the task's
-  `served_nodes`, in order, followed by the source contents. Nodes already
-  served this task are omitted (prefix-cached). A second read in the same
-  subtree therefore returns only the delta — often just the new leaf and
-  source. `--shallow` serves the unserved chain nodes up to and including
-  the target's leaf `<file>.ctx` but stops before source, for
-  explore-without-edit. There is one tool call per `read`, not one per
-  chain node. Context scaffolding is sparse by nature (`intent.md` is
-  owner-authored, not one-per-directory; a `rollup.ctx`/leaf may not
-  exist yet): a missing `rollup.ctx`/`intent.md`/leaf is served as an
-  explicit one-line `(absent: no <kind> at this level)` marker so every
-  chain level is still surfaced and counts as served. A missing **source**
-  file is the only hard error (`MissingNode`).
-- `ctx-access write <path> <content> --task-id <id>` — requires that a
-  non-`--shallow` `read` of the same `<path>` succeeded earlier in the same
-  task (i.e. its full chain incl. source is in `served_nodes`). Appends
-  `<path>` to `paths_written`. No in-tree stale flags.
-- `ctx-access list <path> --task-id <id>` — directory listing; requires
-  that directory's `rollup.ctx` to be in `served_nodes`.
-
-Per-task state lives at `.context/.cache/<task-id>.json` (gitignored).
-`served_nodes` is the set of context-tree node identifiers (chain nodes and
-source paths) already returned to the agent this task; it fully expresses
-chain progress, so no per-step counter is needed:
-
-```json
-{
-  "task_id": "...",
-  "started_at": "<unix-epoch-seconds>",
-  "served_nodes": ["..."],
-  "paths_written": ["..."]
-}
-```
-
-`write` evicts the written path's leaf `<file>.ctx` and its source from
-`served_nodes`. The next `read` of that path therefore re-serves those two
-nodes, and the leaf `<file>.ctx` carries a `STALE — modified in current
-task` banner (its summary predates the edit; the summarizer runs only at
-`end-task`). Ancestor `rollup.ctx`/`intent.md` nodes stay cached and
-un-bannered — subtree summaries are regenerated wholesale at `end-task`,
-not per-file. Without this eviction the banner would be unreachable: any
-path writable in a task has, by the write-needs-read rule, already had its
-entire chain served and cached, so it would never be re-served to carry
-the banner.
+- `ctx-scan <dir> --check` recomputes the tree and reports stale
+  directories and leaves, plus expected `.ctx`/`rollup.ctx` artifacts that
+  are missing (deleted or never generated — freshness ≠ integrity); it
+  never calls the model.
+- `ctx-scan <dir> --update` regenerates only the stale leaves and rollups
+  (leaf-up, so parents see fresh children), removes orphaned leaves, then
+  rewrites the sidecars. Behind the `--approve` blast-radius gate.
+- `ctx-scan <dir> --stop-hook` reports staleness as a Claude Code Stop
+  `systemMessage` and exits 0. It never regenerates: regeneration has one
+  owner, and it is post-session (ADR-043), because the Stop event fires
+  every turn and would race the session.
 
 ### Summarization agent
 
-Separate from the editing agent. Invoked once at task end. Operates leaf-up
-over modified paths.
-
-Prompts: `prompts/summarizer-leaf.md` (per source file) and
-`prompts/summarizer-rollup.md` (per directory). Decoupled from any code
-that invokes them; the runner loads them at runtime and passes dynamic data
-in the user message only.
+Separate from the editing agent, invoked only by `ctx-scan --update`,
+leaf-up over stale paths. Prompts (`prompts/summarizer-leaf.md`,
+`prompts/summarizer-rollup.md`) are decoupled from the code that invokes
+them; the runner loads them at runtime and passes dynamic data in the
+user message only.
 
 The runner (`ctx-summarize`) is model-agnostic: it shells a
 deployment-configured command (`CTX_AGENT_CMD`) speaking a fixed contract
-(stdin JSON `{"system","user"}` -> stdout completion text). The adapter
+(stdin JSON `{"system","user"}` → stdout completion text). The adapter
 that calls a concrete LLM is a non-Rust, non-linted edge like the prompts;
 a reference adapter lives in `agents/` (see `agents/README.md`).
 
-Never edits `intent.md`. If the new rollup contradicts intent, the rollup
-notes the disagreement in a `intent_divergence:` field for the audit step.
+It never edits `intent.md`. If a new rollup contradicts intent, the rollup
+notes it in a trailing `intent_divergence:` line for the audit step.
 
 ### Intent divergence audit
 
-After summarization, `ctx-audit` produces a JSON report at
-`.context/.reports/<task-id>.json`:
-
-```json
-{
-  "task_id": "...",
-  "completed_at": "...",
-  "divergences": [
-    {
-      "path": "...",
-      "verdict": "consistent|divergent",
-      "severity": "none|low|medium|high",
-      "rationale": "..."
-    }
-  ]
-}
-```
-
-Each `divergences` entry is the verbatim JSON object emitted by the
-auditor agent for one directory (see `prompts/auditor.md`); the runner
-wraps them with `task_id`/`completed_at` and does not reshape them. The
-array includes both `consistent` and `divergent` verdicts so the report is
-a complete record, not only the flagged subset.
-
-No CI failure on divergence at MVP. Report is informational.
+The `intent_divergence:` signal exists today (emitted by the rollup
+prompt); the consuming auditor (`ctx-audit`, `prompts/auditor.md`) and its
+JSON report are **deferred to Layer 3**. When built, the report records
+one verdict object per directory (both `consistent` and `divergent`, so
+it is a complete record), wrapped with `task_id`/`completed_at`. No CI
+failure on divergence at MVP — the report is informational.
 
 ## Layer 3 — Architecture Audit
 
-Deferred. Hooks: intent files exist, divergence reports produced. Future
-home of the "is this file/module doing too much" semantic check.
+Deferred. Hooks: `intent.md` files exist and rollups already emit
+`intent_divergence:`. Future home of the "is this file/module doing too
+much" semantic check and of wiring the auditor into `ctx-scan --update`
+(audit each regenerated rollup against its intent).
 
 ## Concurrency foundations
 
-- Task IDs threaded through all `ctx-access` calls.
-- Per-task cache and report files keyed by task id; no cross-task collision.
 - `intent.md` carries `intent_version`; concurrent edits conflict on the
   version line in git.
-- `.gitattributes` declares merge policy for generated context files.
-  `ctx-resummarize <path>` is the manual recovery path on merge conflict.
-- Divergence reports are JSON for later aggregation.
-- Shared-filesystem concurrency (cache locking, task-affinity) is a
-  `ctx-broker` concern (see `docs/SANDBOX.md`), not solved at MVP. MVP
-  concurrency is branch/worktree-per-agent; the per-task keying above is
-  what makes the later broker addition non-breaking.
+- `.gitattributes` declares a merge policy for generated context files;
+  manual recovery on a merge conflict is a re-run of `ctx-scan --update`
+  over the affected path.
+- Divergence reports (when built) are JSON for later aggregation.
+- MVP concurrency is branch/worktree-per-agent. A shared-filesystem
+  multi-agent broker is not solved at MVP and is out of scope for the
+  current design; the path-keyed mirror tree is what makes a later
+  addition non-breaking.
 
 ## Reference project
 
@@ -364,10 +298,11 @@ Hard design constraints (these are what make it a valid system test):
   the reference project is meant to learn.
 - **The LLM ideation step sits behind a trait seam** (e.g.
   `MealIdeator`), with a deterministic fake for tests — mirroring the
-  `Env`/`Summarizer` seams in `ctx-access`. Non-determinism stays out of
+  `Env`/`Agent` seams in the CTX tooling. Non-determinism stays out of
   the testable core.
 - The HTTP/LLM client is quarantined behind that trait so the core stays
   pure; expect the dependency policy (`cargo-deny` `multiple-versions`,
   license allowlist) to require deliberate widening — that signal is
   wanted, since `deny.toml` is otherwise untested.
-- Built and verified exclusively through `ctx-access` and `ctx-verify`.
+- Built with native tools and verified through `ctx-verify`, with context
+  led by the `ctx-context` hook and regenerated by `ctx-scan`.
