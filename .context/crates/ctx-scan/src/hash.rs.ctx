@@ -1,35 +1,7 @@
-## crates/ctx-scan/src/hash.rs
+Computes and persists the CACT content-hash tree used to detect stale summaries: builds a per-directory hash node (`f:`/`d:` prefixed children entries) from source file bytes, aggregates deepest-first up to root, and diffs against stored sidecars to determine what needs regenerating.
 
-Computes and diffs the content-hash tree that drives change detection for
-the whole summarization pipeline — the CACT (content-addressed context
-tree) mechanism. Freshness is decided purely from SHA-256 hashes stored
-in `.context/<dir>/hashes.json`, never from git state, so gitignored or
-uncommitted edits are still detected and a clean git tree isn't mistaken
-for a fresh summary tree.
+Freshness is entirely hash-based, never git-derived — this is deliberate (see module doc) so gitignore-invisible edits and uncommitted changes are still caught. Each directory's sidecar lives at `.context/<dir>/hashes.json` (path built by `sidecar`); `cpath::context_dir_of` and `cpath::ancestor_dirs` define the mirrored `.context` layout and must stay in sync with how `ctx-summarize` writes leaves/rollups.
 
-Core model: `TreeState.dirs` maps repo-relative directory (`""` = root)
-to a `DirNode` (from `ctx_core::hashtree`) whose `children` map holds
-either `f:<hex>` (file hash) or `d:<hex>` (child directory's aggregate
-hash) entries. `aggregate()` computes each directory's hash deepest-first
-by hashing its sorted `name=hash\n` child lines, then folds the result
-into the parent as a `d:` entry — this is what makes any leaf change
-propagate to the root.
+Key entry points: `compute(base, files) -> Result<TreeState, ScanError>` reads every file's bytes and builds the full tree (errors as `ScanError::Io` with path/detail). `load_stored`/`store` round-trip `TreeState` through JSON sidecars; a missing or corrupt sidecar reads as "absent" rather than erroring, which `diff` then treats as stale (via `old.is_none_or(...)`). `diff(current, stored) -> Staleness` returns `stale_dirs` (sorted deepest-first so children regenerate before parents), `changed_files`, and `orphan_leaves` (leaf `.ctx` files for source files that disappeared). `record_missing_artifacts` is a separate pass catching the case where hashes match but the `.ctx` file was simply never written or was deleted — hash diffing alone can't see this gap (referenced internally as "audit finding #11").
 
-Key functions: `compute(base, files) -> Result<TreeState, ScanError>`
-rebuilds the tree from current file contents. `load_stored<F: Fs>(fs,
-current) -> TreeState` reads sidecars per directory in `current`; a
-missing or corrupt sidecar is treated as absent (not an error), meaning
-that directory reads as stale. `store<F: Fs>(fs, state) ->
-Result<(), ScanError>` persists all nodes. `diff(current, stored) ->
-Staleness` yields `stale_dirs` (deepest-first order, for bottom-up
-regeneration), `changed_files`, and `orphan_leaves` (source deleted but
-`.ctx` still recorded). `record_missing_artifacts<F: Fs>(fs, current,
-out: &mut Staleness)` separately checks that every expected
-`rollup.ctx`/leaf `.ctx` actually exists on disk — this catches summaries
-deleted by hand or never generated, since hash-only diffing can't see
-artifact absence (a gap here is invisible to plain `diff`).
-
-Depends on `ctx_summarize::cpath` for the `.context/` mirroring
-convention and `ctx_summarize::fs::Fs` trait for testable I/O — both
-must stay in sync with how the rest of the summarizer lays out context
-directories.
+Invariant: `aggregate` must be called with a `BTreeMap` containing every ancestor directory in `all`, or intermediate dirs silently get `DirNode::default()` (empty children, hash of empty string) instead of real content — `compute` guarantees this via `cpath::ancestor_dirs`.

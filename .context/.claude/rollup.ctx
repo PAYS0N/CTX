@@ -1,7 +1,0 @@
-directory: .claude
-domain: Claude Code editor configuration for this repository. Wires the `ctx-context` binary into the Claude Code tool-call lifecycle so that Read/Grep/Glob invocations trigger context-tracking side effects during editing sessions.
-edit_notes:
-  - settings.json's tool matcher and binary path are the only integration point; changes to ctx-context's CLI flags or hook binary location must be mirrored here.
-children:
-  - settings.json: Declares the PostToolUse hook binding Claude Code's tool calls to the local ctx-context binary.
-invariants:

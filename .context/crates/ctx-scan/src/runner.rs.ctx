@@ -1,7 +1,30 @@
-Orchestrates the three top-level CTX scan operations — full scan, staleness check, and incremental update — by composing `ctx-summarize`'s walk/summarize primitives with this crate's hash tree and README writer. All three entry points (`scan_run`, `check_run`, `update_run`) construct a `StdFs` rooted at `base` and are the outer API other crates call; `summarize` is the inner, `Fs`/`Agent`-generic step meant for direct use with fakes in tests.
+Orchestrates the four CTX CLI-level operations (`scan_run`, `check_run`,
+`prune_run`, `update_run`) over `ctx-summarize`'s generic walk/summarize
+machinery, wiring in the real filesystem (`StdFs`) and hash-tree logic
+from `crate::hash`. This is the layer where "what runs when" is decided;
+the actual leaf/rollup summarization mechanics live in `ctx-summarize`.
 
-Non-obvious: prompts are always loaded from `prompts_dir` resolved against the process cwd (`load_prompts`), never against `base` — the scan target doesn't need to carry CTX's own prompt files. `update_run` short-circuits to `Ok(stale)` before loading prompts or touching the filesystem if `stale.is_fresh()`, so a fresh tree does zero model calls and zero writes (including no README rewrite). `regenerate` processes `stale.changed_files` (leaf resummarize), then `orphan_leaves` (removal), then `stale_dirs` (rollups) — relies on `Staleness.stale_dirs` already being ordered deepest-first by `hash::diff`; reordering would break rollups that read child summaries before they're regenerated.
+Key asymmetry: prompts are loaded from `prompts_dir` resolved against the
+process cwd via `load_prompts`, independent of `base` (the scan target) —
+a scan target need not carry CTX's own prompt files. `summarize` (the
+generic, testable core) takes pre-loaded `Prompts` and calls
+`summ::scope_check` before doing any work, so approval gating happens
+before summarization, not after.
 
-Coupling: depends on `hash::compute`/`diff`/`load_stored`/`store`/`record_missing_artifacts` for staleness semantics, and on `summ::scope_check` for the approval-gate behavior shared with plain summarize — changes to either module's staleness model or scope-check signature ripple here directly.
+`update_run` is the most delicate: it computes staleness once, prunes
+orphans unconditionally (pure filesystem, no model call), then only
+loads prompts/calls the model if `stale.needs_regeneration()` is true.
+A tree stale purely from orphan artifacts prunes and returns without
+touching prompts or the agent. `regenerate` assumes `stale.stale_dirs` is
+already deepest-first ordered by `hash::diff` — it doesn't re-sort.
 
-Invariant: `scan_run` and `update_run` (non-fresh path) always call `hash::store` after successful summarization, keeping the sidecar hash tree in sync with what was actually written; `check_run` never writes anything.
+`check_run` and the staleness computation in `update_run` both call
+`reconcile::find_orphan_artifacts` and then narrow via
+`scan.artifacts_excluding(&stale.orphan_leaves)` to avoid double-counting
+leaves that are both hash-stale and structurally orphaned — this
+narrowing logic is duplicated between the two functions and must be kept
+in sync if `Staleness`'s orphan fields change shape.
+
+All four public entry points construct their own `StdFs::new(base...)`
+and call `walker::walk_dir(base)` independently — no shared walk cache
+across calls in one process.

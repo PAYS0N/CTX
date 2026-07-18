@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use ctx_summarize::agent::SubprocessAgent;
 
-use ctx_scan::cli::{check, dispatch, list_targets, stop_hook, Cli};
+use ctx_scan::cli::{check, dispatch, list_targets, prune, stop_hook, Cli};
 
 /// Write `msg` to `w`, ignoring a broken write channel.
 fn emit<W: Write>(mut w: W, msg: &str) {
@@ -48,22 +48,27 @@ fn main() -> ExitCode {
     run()
 }
 
+/// Map an agent-free mode entry point's result to an exit code.
+fn exit_of(result: Result<(), ctx_scan::error::ScanError>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => fail(&format!("ctx-scan: {e}"), 1),
+    }
+}
+
 /// The normal (non-`--contract`) path: parse argv and route to the
-/// selected mode.
+/// selected mode (dry-run → check → prune → stop-hook → scan/update).
 fn run() -> ExitCode {
     let cli = Cli::parse();
     let mut out = std::io::stdout().lock();
     if cli.dry_run() {
-        return match list_targets(&cli, &mut out) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => fail(&format!("ctx-scan: {e}"), 1),
-        };
+        return exit_of(list_targets(&cli, &mut out));
     }
     if cli.check() {
-        return match check(&cli, &mut out) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => fail(&format!("ctx-scan: {e}"), 1),
-        };
+        return exit_of(check(&cli, &mut out));
+    }
+    if cli.prune() {
+        return exit_of(prune(&cli, &mut out));
     }
     if cli.stop_hook() {
         return run_stop_hook(&cli, &mut out);
@@ -72,8 +77,5 @@ fn run() -> ExitCode {
         Ok(a) => a,
         Err(e) => return fail(&format!("ctx-scan: {e}"), 2),
     };
-    match dispatch(&agent, &cli, &mut out) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => fail(&format!("ctx-scan: {e}"), 1),
-    }
+    exit_of(dispatch(&agent, &cli, &mut out))
 }

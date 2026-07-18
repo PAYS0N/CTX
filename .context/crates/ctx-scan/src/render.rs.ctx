@@ -1,0 +1,7 @@
+Renders human-readable CLI output for scan/staleness/prune results — line-oriented text, explicitly *not* a stable machine contract, so downstream tooling must not parse it.
+
+Every write goes through `stdout_err`/`.map_err(|ref e| stdout_err(e))`, converting `io::Error` into `ScanError::Io` with a hardcoded `"<stdout>"` path; any new writeln call must follow this pattern or errors silently lose the `ScanError` wrapping.
+
+Key functions: `render` prints leaf/rollup counts and readme status. `render_staleness` prints `fresh` on a clean tree (via `Staleness::is_fresh`), else one line per item across five categories in fixed order: `stale-dir:`, `stale-leaf:`, `orphan-leaf:`, `missing-artifact:`, `orphan-artifact:` (empty stale-dir label renders as `.`). `render_pruned` prints `clean` when nothing was pruned, else `pruned:` lines. `staleness_message(dir, s) -> String` builds the one-line suggestion shown to users; it cross-references `ctx_summarize::runner::MAX_TARGETS` to decide whether to append `--approve` to the suggested command, so the suggestion and the actual cost gate in that other crate must stay consistent or the hint will dead-end.
+
+Depends on `crate::hash::Staleness` and `crate::runner::ScanSummary` for the data shapes being rendered — field names/categories there must match the line labels here.

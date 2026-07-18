@@ -1,5 +1,0 @@
-file: crates/ctx-cage/tests/summarize.rs
-purpose: Unit tests for `expected_leaf_path` and `compute_stale` from `ctx_cage::summarize`, covering path mapping and staleness detection.
-invariants:
-external_deps:
-functions:

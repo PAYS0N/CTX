@@ -1,5 +1,0 @@
-Defines the prompt/spec for generating `.ctx` context documents from individual leaf source files. It is the instruction set an LLM follows to produce a replacement `.ctx` file for a given `<SOURCE_PATH>`.
-
-The output format is prose, not a fixed schema: lead with the file's domain-level purpose, then cover only non-obvious behavior, coupling with other files/wire formats, signatures of public (and cross-module-called private) functions, verifiable invariants, and non-obvious dependencies. It explicitly bans filler phrases ("This file contains…", "safely", "Note that…") and requires stating facts once, deduplicated adversarially.
-
-Key invariant for anyone editing this prompt: it must describe the file *as it currently is*, never as a diff or changelog — freshness is tracked externally via a hash tree, so history/ticket references are disallowed. The example at the end (a session-token module) is illustrative filler demonstrating desired density and style, not a spec of actual system behavior — don't treat it as documentation of a real auth module elsewhere in the repo.

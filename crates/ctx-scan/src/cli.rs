@@ -7,8 +7,8 @@ use clap::Parser;
 use ctx_summarize::agent::Agent;
 
 use crate::error::ScanError;
-use crate::hash::Staleness;
-use crate::runner::{check_run, scan_run, update_run, ScanSummary};
+use crate::render::{render, render_pruned, render_staleness, staleness_message, stdout_err};
+use crate::runner::{check_run, prune_run, scan_run, update_run};
 use crate::walker::walk_dir;
 
 /// Self-contained directory scanner — walks `<dir>` and maintains a
@@ -39,8 +39,15 @@ pub struct Cli {
     /// report-only `systemMessage`. Never calls the agent —
     /// regeneration is a post-session concern (`ctx-run`'s refresh or
     /// a manual `--update`). Always exits 0 (fail-open).
-    #[arg(long, conflicts_with_all = ["dry_run", "check", "update"])]
+    #[arg(long, conflicts_with_all = ["dry_run", "check", "update", "prune"])]
     stop_hook: bool,
+
+    /// Delete orphaned `.context/` artifacts — derived summaries and
+    /// sidecars whose source was deleted, moved, or scoped out — and
+    /// sweep emptied mirror directories, without calling the agent.
+    /// Does not require `CTX_AGENT_CMD`.
+    #[arg(long, conflicts_with_all = ["dry_run", "check", "update"])]
+    prune: bool,
 
     /// Which mutually exclusive run mode is active (default: full scan).
     #[command(flatten)]
@@ -55,13 +62,14 @@ pub struct Mode {
     #[arg(long, conflicts_with_all = ["check", "update"])]
     dry_run: bool,
 
-    /// Recompute content hashes and report stale directories/leaves
-    /// without calling the agent. Does not require `CTX_AGENT_CMD`.
+    /// Recompute content hashes and report stale directories/leaves,
+    /// missing artifacts, and orphaned artifacts without calling the
+    /// agent or writing anything. Does not require `CTX_AGENT_CMD`.
     #[arg(long, conflicts_with = "update")]
     check: bool,
 
-    /// Check→rebuild: regenerate only stale leaf summaries and rollups,
-    /// then rewrite the hash sidecars.
+    /// Prune→check→rebuild: delete orphaned artifacts, regenerate only
+    /// stale leaf summaries and rollups, then rewrite the hash sidecars.
     #[arg(long)]
     update: bool,
 }
@@ -77,6 +85,12 @@ impl Cli {
     #[must_use]
     pub const fn check(&self) -> bool {
         self.mode.check
+    }
+
+    /// Whether prune mode is active.
+    #[must_use]
+    pub const fn prune(&self) -> bool {
+        self.prune
     }
 
     /// Whether update mode is active.
@@ -115,48 +129,6 @@ fn validate_dir(dir: &std::path::Path) -> Result<std::path::PathBuf, ScanError> 
     })
 }
 
-/// Map a stdout write error to [`ScanError::Io`].
-fn stdout_err(e: &std::io::Error) -> ScanError {
-    ScanError::Io {
-        path: "<stdout>".to_owned(),
-        detail: e.to_string(),
-    }
-}
-
-/// Write a human-readable summary of a full scan to `out`.
-fn render<W: Write>(out: &mut W, s: &ScanSummary) -> Result<(), ScanError> {
-    writeln!(out, "leaves:  {}", s.leaves_written.len()).map_err(|ref e| stdout_err(e))?;
-    writeln!(out, "rollups: {}", s.rollups_written.len()).map_err(|ref e| stdout_err(e))?;
-    let readme = if s.readme_written {
-        "written"
-    } else {
-        "skipped"
-    };
-    writeln!(out, "readme:  {readme}").map_err(|ref e| stdout_err(e))
-}
-
-/// Write a staleness report to `out` (`fresh` on a clean tree; otherwise
-/// one `stale-dir:` / `stale-leaf:` / `orphan-leaf:` line per item).
-fn render_staleness<W: Write>(out: &mut W, s: &Staleness) -> Result<(), ScanError> {
-    if s.is_fresh() {
-        return writeln!(out, "fresh").map_err(|ref e| stdout_err(e));
-    }
-    for d in &s.stale_dirs {
-        let label = if d.is_empty() { "." } else { d };
-        writeln!(out, "stale-dir: {label}").map_err(|ref e| stdout_err(e))?;
-    }
-    for f in &s.changed_files {
-        writeln!(out, "stale-leaf: {f}").map_err(|ref e| stdout_err(e))?;
-    }
-    for l in &s.orphan_leaves {
-        writeln!(out, "orphan-leaf: {l}").map_err(|ref e| stdout_err(e))?;
-    }
-    for m in &s.missing_artifacts {
-        writeln!(out, "missing-artifact: {m}").map_err(|ref e| stdout_err(e))?;
-    }
-    Ok(())
-}
-
 /// List the files that `ctx-scan` would summarize, one per line, without
 /// calling the agent. Safe to run without `CTX_AGENT_CMD` set.
 ///
@@ -185,22 +157,16 @@ pub fn check<W: Write>(cli: &Cli, out: &mut W) -> Result<(), ScanError> {
     render_staleness(out, &staleness)
 }
 
-/// One line summarizing `s` for a human, with the refresh command
-/// (the `--approve` cost gate is pre-hinted when the backlog exceeds
-/// it, so following the suggestion never dead-ends on the gate).
-fn staleness_message(dir: &std::path::Path, s: &Staleness) -> String {
-    let approve = if s.changed_files.len() > ctx_summarize::runner::MAX_TARGETS {
-        " --approve"
-    } else {
-        ""
-    };
-    format!(
-        "ctx: context tree stale ({} dirs, {} leaves, {} missing); run `ctx-scan {} --update{approve}` after the session",
-        s.stale_dirs.len(),
-        s.changed_files.len(),
-        s.missing_artifacts.len(),
-        dir.display()
-    )
+/// Delete orphaned mirror artifacts, without calling the agent.
+///
+/// # Errors
+///
+/// [`ScanError::DirNotFound`] if `dir` is not a directory; propagates
+/// walk and removal failures.
+pub fn prune<W: Write>(cli: &Cli, out: &mut W) -> Result<(), ScanError> {
+    let base = validate_dir(&cli.dir)?;
+    let pruned = prune_run(&base)?;
+    render_pruned(out, &pruned)
 }
 
 /// Claude Code Stop-hook mode: recompute staleness and report it as a
@@ -227,7 +193,7 @@ pub fn stop_hook<W: Write>(dir: &std::path::Path, out: &mut W) -> Result<(), Sca
 }
 
 /// Validate `cli.dir` and run either the full scan or (with `--update`)
-/// the selective check→rebuild, writing results to `out`.
+/// the selective prune→check→rebuild, writing results to `out`.
 ///
 /// # Errors
 ///

@@ -1,9 +1,0 @@
-{
-  "hash": "6524cef548966b180a3780af06230f2dc63210a3ddb34a0e2dbf7e3d5848d1f8",
-  "children": {
-    "README.md": "f:b6e2b259868ecf52d9b364009e9566df57d246244a8bd8b00ac86955befb931e",
-    "auditor.md": "f:cfc9d9b4db5515634f2a6afe4c2f845c193c5773319b3a4e9d61e14d8f46e539",
-    "summarizer-leaf.md": "f:e9360896f36a810bc3803e402b575c17ac84bdd6e63f7e63e8f72277fadb5f7e",
-    "summarizer-rollup.md": "f:adf9b2869fb09a38486c270fa5d0bfbc3b2bb40f944e4ff600e14ce52f136e02"
-  }
-}

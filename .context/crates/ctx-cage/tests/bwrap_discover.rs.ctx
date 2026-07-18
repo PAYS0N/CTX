@@ -1,8 +1,0 @@
-file: crates/ctx-cage/tests/bwrap_discover.rs
-purpose: Integration tests for `discover_crate_dirs`, verifying correct discovery of `src`/`tests` dirs and clear error when `crates/` is absent.
-invariants:
-  - Each test creates and removes its own tempdir; no shared state beyond the atomic counter.
-external_deps:
-  - ctx_cage::bwrap: function under test.
-  - ctx_cage::error::CageError: used as the error type for test return values.
-functions:

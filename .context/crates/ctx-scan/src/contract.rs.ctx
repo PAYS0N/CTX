@@ -1,3 +1,3 @@
-Defines the single-source-of-truth agent-facing contract string for the `ctx-scan` binary, exposed as `pub const CONTRACT: &str`.
+Defines the single string constant `CONTRACT`, the canonical agent-facing description of the `ctx-scan` CLI's behavior across its `--check`, `--prune`, `--update`, `--dry-run`, and `--stop-hook` modes.
 
-The string's content is load-bearing: it's assembled into the tool-contract block in `CLAUDE.md`/`README.md`, and a `contracts` battery check fails if those generated docs drift from this literal. Editing this string requires regenerating those docs to keep the check passing — the file itself has no logic, only the constant.
+This string is duplicated logic-as-prose: it must stay in sync with the actual CLI behavior in the rest of the crate, and a `contracts` battery test asserts the generated tool-contract block in `CLAUDE.md`/`README.md` matches `--contract`'s output exactly. Editing CLI flag behavior without updating this string will fail that check. No functions here — just the constant.

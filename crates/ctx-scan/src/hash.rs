@@ -18,6 +18,7 @@ use ctx_summarize::cpath;
 use ctx_summarize::fs::Fs;
 
 use crate::error::ScanError;
+pub use crate::staleness::Staleness;
 
 /// Hash nodes for every directory in scope, keyed by repo-relative
 /// directory (`""` = root).
@@ -25,34 +26,6 @@ use crate::error::ScanError;
 pub struct TreeState {
     /// Directory -> node.
     pub dirs: BTreeMap<String, DirNode>,
-}
-
-/// What separates a fresh tree from a stale one.
-#[derive(Debug, Default)]
-pub struct Staleness {
-    /// Directories whose rollup is stale, deepest-first.
-    pub stale_dirs: Vec<String>,
-    /// Source files whose leaf summary is stale (new or changed).
-    pub changed_files: Vec<String>,
-    /// Leaf `.ctx` paths whose source file no longer exists.
-    pub orphan_leaves: Vec<String>,
-    /// Expected `.ctx`/`rollup.ctx` artifacts the hash tree accounts for
-    /// but that are absent on disk — deleted by hand, or never generated.
-    /// Freshness ≠ integrity: the tree only hashes source, so a missing
-    /// summary is otherwise invisible to `--check` (audit finding #11).
-    pub missing_artifacts: Vec<String>,
-}
-
-impl Staleness {
-    /// True when nothing needs regeneration and no expected artifact is
-    /// missing.
-    #[must_use]
-    pub const fn is_fresh(&self) -> bool {
-        self.stale_dirs.is_empty()
-            && self.changed_files.is_empty()
-            && self.orphan_leaves.is_empty()
-            && self.missing_artifacts.is_empty()
-    }
 }
 
 /// Split a repo-relative path into (parent dir, basename).
@@ -64,7 +37,7 @@ fn split_parent(path: &str) -> (String, String) {
 }
 
 /// `dir/name`, with the root directory handled.
-fn join(dir: &str, name: &str) -> String {
+pub(crate) fn join(dir: &str, name: &str) -> String {
     if dir.is_empty() {
         name.to_owned()
     } else {
@@ -73,7 +46,7 @@ fn join(dir: &str, name: &str) -> String {
 }
 
 /// Directory depth (`""` = 0).
-fn depth(dir: &str) -> usize {
+pub(crate) fn depth(dir: &str) -> usize {
     if dir.is_empty() {
         0
     } else {

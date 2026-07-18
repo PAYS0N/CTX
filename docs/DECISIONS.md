@@ -1089,3 +1089,49 @@ another indirection to find the real source. **Supersedes** the
 as a *document* is retired along with the document; the underlying
 discipline (a spec change is a deliberate, recorded event) continues as
 this ledger's own append-only, never-rewritten convention.
+
+## ADR-053 — Mirror reconciliation: orphaned `.context/` artifacts are found by `--check`, deleted by `--prune`/`--update`
+**Decision:** `ctx-scan` gains a reconciliation pass, the inverse of
+`record_missing_artifacts`: enumerate what actually exists under the
+`.context/` mirror and flag every *derived* artifact — leaf `.ctx`,
+`rollup.ctx`, `hashes.json` sidecar — whose source file/directory no
+longer exists or is no longer in scope. The live set is derived from
+the walker's target list (the targets themselves plus their ancestor
+directories), so scope has exactly one implementation: what the walker
+would summarize is what the mirror may contain. Owner-authored
+`intent.md` is never flagged, and the runtime dirs `.context/.cache/`
+and `.context/.reports/` are never entered. `--check` reports the
+orphans (read-only, model-free, deduplicated against the hash diff's
+`orphan_leaves`); a new `--prune` mode deletes them and sweeps emptied
+mirror directories with no agent config and no model call; `--update`
+and the full scan prune first, so a regenerated rollup can never
+inhale a dead child's `rollup.ctx` (the rollup assembler inlines
+whatever child summaries it finds in the mirror — retired-crate
+rollups were poisoning every fresh parent rollup this way).
+**Context:** the hash tree keys on *source* directories: a deleted
+directory's sidecar was never loaded, so its whole mirror subtree was
+invisible to `--check`, and file-level orphan detection worked only
+while the stored sidecar still listed the file. This repo had
+accumulated 61 orphaned artifacts (retired crates, deleted files,
+descoped paths like `prompts/` and `.claude`), plus the retired
+`.context/.manifest`, all silently poisoning rollup regeneration.
+Closes [[ADR-038]]'s residual ("a deleted *directory's* `.context`
+subtree is not auto-pruned"). **Rationale:** pruning must be reachable
+without billing: folding it only into `--update` would couple deletion
+to billed regeneration whenever the tree is also stale, and folding it
+into `--check` would break check's read-only contract (and the Stop
+hook that reuses it). A dedicated `--prune` keeps deletion explicit,
+free, and idempotent, while `--update` pruning first keeps the billed
+path self-cleaning; a tree stale *only* by orphans prunes inside
+`--update` without loading prompts or constructing a model call.
+**Rejected:** reimplementing scope inside reconciliation (matcher +
+deny gate) — a second scope evaluation can drift from the walker;
+deriving the live set from walk output cannot. Also rejected: rewriting
+stored sidecars during prune to silence residual `orphan-leaf` lines
+for descoped files — sidecars are the hash tree's bookkeeping and are
+rewritten wholesale by the next `--update`; prune touches only derived
+mirror artifacts. Also rejected: "delete `.context/` and rescan" (the
+[[ADR-038]] remedy) — it re-bills the entire tree to fix a
+filesystem-only problem. Note: pruning a dead child does not itself
+mark the parent rollup stale (hashes track source only); the parent's
+text self-corrects on its next regeneration.

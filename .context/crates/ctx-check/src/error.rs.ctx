@@ -1,6 +1,0 @@
-file: crates/ctx-check/src/error.rs
-purpose: Defines the typed error enum for all ctx-check failures.
-invariants:
-external_deps:
-  - thiserror: derive-based Display and Error impl generation.
-functions:

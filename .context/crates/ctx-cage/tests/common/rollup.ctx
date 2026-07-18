@@ -1,7 +1,0 @@
-directory: crates/ctx-cage/tests/common
-summary: Shared test-support module for ctx-cage integration tests. Exposes canned `BwrapConfig` and `ClaudeBinds` fixtures with synthetic paths, plus argv-inspection predicates that check for specific bwrap flag sequences without touching the filesystem.
-children:
-  - mod.rs: Sole source of fixtures and argv predicates consumed by sibling integration tests.
-key_invariants:
-  - All helpers are pure and infallible; no panics, unwraps, or I/O.
-  - Fixtures use synthetic paths, so tests never require real disk state.

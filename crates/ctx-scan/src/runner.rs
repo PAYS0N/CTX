@@ -1,11 +1,14 @@
 //! Scan orchestration: walk, summarize, hash, write README.
 //!
-//! [`scan_run`] is the full pipeline (summarize everything);
-//! [`check_run`] recomputes the hash tree and reports staleness without
-//! any model call; [`update_run`] is check→rebuild: it regenerates only
-//! the stale leaf summaries and rollups, then rewrites the hash
-//! sidecars. [`summarize`] is the inner step, generic over [`Fs`] and
-//! [`Agent`], and is usable directly in tests with in-memory fakes.
+//! [`scan_run`] is the full pipeline (prune orphans, summarize
+//! everything); [`check_run`] recomputes the hash tree and reports
+//! staleness — including orphaned mirror artifacts — without any model
+//! call; [`update_run`] is prune→check→rebuild: it deletes orphaned
+//! artifacts, regenerates only the stale leaf summaries and rollups,
+//! then rewrites the hash sidecars; [`prune_run`] is the pruning step
+//! alone (never a model call). [`summarize`] is the inner step, generic
+//! over [`Fs`] and [`Agent`], and is usable directly in tests with
+//! in-memory fakes.
 
 use std::path::Path;
 
@@ -16,6 +19,7 @@ use ctx_summarize::runner::{self as summ, Prompts};
 use crate::error::ScanError;
 use crate::hash::{self, Staleness};
 use crate::readme::write_readme;
+use crate::reconcile;
 use crate::walker::walk_dir;
 
 /// Load the prompt files from `prompts_dir`, resolved against the process
@@ -63,9 +67,10 @@ pub fn summarize<F: Fs, A: Agent>(
     })
 }
 
-/// Full pipeline: walk `base`, summarize everything, write the hash
-/// sidecars and the README. Prompts are loaded from `prompts_dir` (cwd
-/// relative), not from `base`.
+/// Full pipeline: walk `base`, prune orphaned mirror artifacts,
+/// summarize everything, write the hash sidecars and the README.
+/// Prompts are loaded from `prompts_dir` (cwd relative), not from
+/// `base`.
 ///
 /// # Errors
 ///
@@ -79,13 +84,18 @@ pub fn scan_run<A: Agent>(
     let fs = StdFs::new(base.to_path_buf());
     let prompts = load_prompts(prompts_dir)?;
     let targets = walk_dir(base)?;
+    reconcile::prune(base, &reconcile::find_orphan_artifacts(&fs, &targets)?)?;
     let summary = summarize(&fs, agent, &prompts, &targets, approve)?;
     hash::store(&fs, &hash::compute(base, &targets)?)?;
     Ok(summary)
 }
 
 /// Recompute the hash tree for `base` and report staleness against the
-/// stored sidecars. No model is called; safe to run anywhere.
+/// stored sidecars.
+///
+/// Also reports integrity gaps in both directions (missing artifacts,
+/// orphaned artifacts). No model is called and nothing is written; safe
+/// to run anywhere.
 ///
 /// # Errors
 ///
@@ -97,7 +107,24 @@ pub fn check_run(base: &Path) -> Result<Staleness, ScanError> {
     let stored = hash::load_stored(&fs, &current);
     let mut stale = hash::diff(&current, &stored);
     hash::record_missing_artifacts(&fs, &current, &mut stale);
+    let scan = reconcile::find_orphan_artifacts(&fs, &targets)?;
+    stale.orphan_artifacts = scan.artifacts_excluding(&stale.orphan_leaves);
     Ok(stale)
+}
+
+/// Prune orphaned mirror artifacts and sweep emptied mirror
+/// directories, with no model call and no regeneration. Returns the
+/// pruned `.context/...` paths.
+///
+/// # Errors
+///
+/// Propagates walk and removal failures.
+pub fn prune_run(base: &Path) -> Result<Vec<String>, ScanError> {
+    let fs = StdFs::new(base.to_path_buf());
+    let targets = walk_dir(base)?;
+    let scan = reconcile::find_orphan_artifacts(&fs, &targets)?;
+    reconcile::prune(base, &scan)?;
+    Ok(scan.artifacts)
 }
 
 /// Regenerate exactly what `stale` names: changed leaves, orphan leaf
@@ -122,13 +149,18 @@ fn regenerate<F: Fs, A: Agent>(
     Ok(())
 }
 
-/// Check→rebuild: recompute hashes and regenerate only stale summaries,
-/// then persist the fresh hash tree. Returns what was regenerated (a
-/// fresh tree regenerates nothing and is reported as such).
+/// Prune→check→rebuild: delete orphaned mirror artifacts, regenerate
+/// only stale summaries, then persist the fresh hash tree.
+///
+/// Pruning is pure filesystem work, done before rollups can inhale the
+/// orphans; a tree that is stale only by orphan artifacts prunes
+/// without loading prompts or touching the model. Returns what was
+/// pruned/regenerated (a fresh tree does neither and is reported as
+/// such).
 ///
 /// # Errors
 ///
-/// Propagates walk, scope, summarization, and hash failures.
+/// Propagates walk, scope, summarization, prune, and hash failures.
 pub fn update_run<A: Agent>(
     base: &Path,
     prompts_dir: &str,
@@ -139,13 +171,18 @@ pub fn update_run<A: Agent>(
     let targets = walk_dir(base)?;
     let current = hash::compute(base, &targets)?;
     let stored = hash::load_stored(&fs, &current);
-    let stale = hash::diff(&current, &stored);
+    let mut stale = hash::diff(&current, &stored);
+    let scan = reconcile::find_orphan_artifacts(&fs, &targets)?;
+    stale.orphan_artifacts = scan.artifacts_excluding(&stale.orphan_leaves);
     if stale.is_fresh() {
         return Ok(stale);
     }
-    let prompts = load_prompts(prompts_dir)?;
-    regenerate(&fs, agent, &prompts, &stale, approve)?;
-    hash::store(&fs, &current)?;
-    write_readme(&fs)?;
+    reconcile::prune(base, &scan)?;
+    if stale.needs_regeneration() {
+        let prompts = load_prompts(prompts_dir)?;
+        regenerate(&fs, agent, &prompts, &stale, approve)?;
+        hash::store(&fs, &current)?;
+        write_readme(&fs)?;
+    }
     Ok(stale)
 }

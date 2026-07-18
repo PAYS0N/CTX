@@ -1,5 +1,0 @@
-`.claude/` configures Claude Code's tool-use hooks for this template project: its single file, `settings.json`, wires `Read`/`Grep`/`Glob` invocations to trigger `target/debug/ctx-context --hook` as a side effect, keeping context files current as Claude explores the codebase.
-
-The binding is to a debug build path specifically, and failures are swallowed (`|| true`), so a stale or unbuilt `ctx-context` silently degrades to a no-op rather than surfacing an error — anyone changing the build profile or binary location must update this path or context refresh quietly stops happening. Only read-style tools trigger the hook; edits/writes do not, so context updates lag behind write operations by design.
-
-No intent.md exists to check against.

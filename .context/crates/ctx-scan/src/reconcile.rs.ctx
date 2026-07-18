@@ -1,0 +1,9 @@
+Reconciles the `.context/` mirror against the live source tree — the inverse of `record_missing_artifacts`. `find_orphan_artifacts` walks the mirror and flags every derived artifact (leaf `.ctx`, `rollup.ctx`, `hashes.json`) whose source file/dir isn't in the walker's `targets` list; `prune` deletes those and sweeps now-empty mirror dirs.
+
+Scope is derived, not reimplemented: `Live::from_targets` builds the live file set directly from `targets` plus their ancestor dirs (root `""` always included, so an emptied scope can never orphan root artifacts). This must stay consistent with however the walker computes targets elsewhere — if that logic changes, orphan detection silently changes too.
+
+`intent.md` is always skipped (owner-authored, never flagged). `.context/.cache/` and `.context/.reports/` are never entered (`is_runtime`, checked only at dir `""`). A `.ctx` file for a directory-that's-actually-a-plain-file is deliberately not distinguished — `classify` just recurses into anything without a recognized suffix, so a plain (non-artifact) file under the mirror lists as an empty dir and is a no-op.
+
+`prune` sorts visited directories deepest-first before sweeping (`depth` from `hash.rs`) so child dirs empty out before parents are checked — order matters, don't parallelize or reorder this. `remove_file`/`remove_dir_if_empty` treat NotFound as success; only other IO errors propagate as `ScanError::Io`.
+
+Key entry points: `find_orphan_artifacts<F: Fs>(fs: &F, targets: &[String]) -> Result<OrphanScan, ScanError>` (read-only), `prune(base: &Path, scan: &OrphanScan) -> Result<(), ScanError>` (filesystem-only, no model calls). `OrphanScan::artifacts_excluding(&self, known: &[String]) -> Vec<String>` dedupes against artifacts already reported by the hash-diff pass (e.g. `orphan_leaves`) to avoid double-reporting.

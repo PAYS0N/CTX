@@ -5,15 +5,21 @@
 //! files are read at runtime from a configurable directory (default
 //! `prompts/`, relative to the process cwd), decoupled from the tree
 //! being scanned. Change detection is content-hash based ([`hash`]):
-//! `--check` reports staleness with no model call, `--update`
-//! regenerates only what changed. Public surface: [`runner::scan_run`] /
-//! [`runner::check_run`] / [`runner::update_run`] for programmatic use;
-//! [`cli::dispatch`] for CLI-driven use.
+//! `--check` reports staleness with no model call, `--update` prunes
+//! orphaned mirror artifacts and regenerates only what changed, and
+//! `--prune` does the orphan pruning alone ([`reconcile`]; never a
+//! model call). Public surface: [`runner::scan_run`] /
+//! [`runner::check_run`] / [`runner::update_run`] /
+//! [`runner::prune_run`] for programmatic use; [`cli::dispatch`] for
+//! CLI-driven use.
 
 pub mod cli;
 pub mod contract;
 pub mod error;
 pub mod hash;
 pub mod readme;
+pub mod reconcile;
+mod render;
 pub mod runner;
+pub mod staleness;
 pub mod walker;
