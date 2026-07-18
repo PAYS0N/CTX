@@ -1,14 +1,7 @@
-directory: crates/ctx-cage/src/bin
-domain: Three entry-point binaries for the ctx-cage sandbox: `ctx-cage` (generic host launcher for a sandboxed session), `ctx-run` (billed agent-task launcher with post-run summary refresh), and `ctx-cage-client` (the in-cage broker client that runs inside the sandbox and forwards tool calls to the host over a Unix socket). Together they form the host/guest split of one sandboxed execution — the first two run on the host and build a `lifecycle::Resolved` to launch a session, the third runs inside the cage and talks back to the host broker.
-edit_notes:
-  - ctx-cage and ctx-run both resolve sibling ctx-verify/ctx-context/ctx-scan binaries the same way (current_exe's parent dir, overridable via CTX_VERIFY_BIN/CTX_CONTEXT_BIN/CTX_SCAN_BIN); keep this resolution logic in sync between the two if changed in either.
-  - ctx-cage requires explicit --allow-spend/CTX_CAGE_ALLOW_SPEND=1 for billed modes; ctx-run has no such flag because launching it at all is the spend authorization (operator's own Claude Code subscription). Do not conflate the two gating models.
-  - ctx-run's summary refresh (`ctx-scan --update`) is the sole regeneration point in the flow; any hook-based reporting elsewhere must not also regenerate.
-  - ctx_cage_client.rs runs inside the cage and only knows the protocol module and $CTX_SOCK; it has no knowledge of lifecycle/CLI resolution used by the other two — do not couple it to host-side resolution code.
-children:
-  - ctx_cage.rs: Generic host launcher — CLI parsing, mode/spend gating, bin resolution, lifecycle execution, exit-code propagation.
-  - ctx_run.rs: Task-oriented host launcher for billed agent sessions — adds operator env loading and post-run ctx-scan summary refresh on top of the same lifecycle execution path.
-  - ctx_cage_client.rs: In-cage counterpart — busybox-style tool dispatch and broker protocol client that the sandboxed process actually executes as.
-invariants:
-  - All three binaries truncate/clamp process exit codes to a valid range (u8 or ExitCode::FAILURE fallback) rather than propagating out-of-range codes.
-  - Host-side failures (before or outside the cage's own execution) always exit distinctly via ExitCode::FAILURE/1, separate from the cage's propagated exit code.
+This directory holds the two ends of the cage boundary plus the batteries-included wrapper around them: `ctx_cage.rs` builds and drives a cage session from the host side, `ctx_cage_client.rs` runs inside the cage and brokers tool calls back out over a Unix socket, and `ctx_run.rs` is the one-command billed entry point that wraps `ctx_cage`'s lifecycle with pre/post steps (env loading, summary refresh, hook check).
+
+The two cage-facing binaries share exit-code truncation (`i32`/`u32` → `u8`, out-of-range collapses to 1) and the same `emit()`-style suppressed-write convention for stdout/stderr, satisfying repo-wide lint rules against direct print macros — a change to one convention should be checked against the other file. `ctx_cage.rs` and `ctx_run.rs` both resolve sibling binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) relative to `current_exe()`'s directory using the same `CTX_*_BIN` env-var override names; keep that resolution logic consistent if either changes. `ctx_cage_client.rs` is the counterpart that actually uses the socket protocol (`ctx_cage::protocol`) these resolved binaries are bound into at `/cage/bin` — a protocol frame change requires updating both the client's `replay_response` and whatever host-side broker writes those frames.
+
+Spend gating differs by design across the two host-side entry points: `ctx_cage.rs` requires explicit `--allow-spend`/env var for billed modes, while `ctx_run.rs` treats invocation itself as authorization — don't conflate the two when adding a new entry point. Neither `ctx_cage.rs` nor `ctx_run.rs` ever carries an API key for the cage/agent itself; `ctx_run.rs`'s optional env file only feeds the post-run `ctx-scan` child, never the session.
+
+No intent.md exists to check divergence against.

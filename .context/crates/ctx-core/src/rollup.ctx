@@ -1,12 +1,5 @@
-directory: crates/ctx-core/src
-domain: Dependency-free security gate for the CTX system: the single canonical definition of which paths are secrets or binary and therefore must never be read or summarized. All other CTX crates (ctx-access, ctx-summarize, and any manifest builder) call into this crate rather than maintaining their own denylists.
-edit_notes:
-  - Any change to secret/binary detection rules happens only in access.rs; per ADR-023 a divergent denylist in a consumer crate is a security bug, not a style choice.
-  - Ignore-status is intentionally not computed here (kept dependency-free); consumers supply their own ignored bool from .ctxignore/.gitignore scoping.
-  - Consumers must map the returned &'static str reason ("secret"/"binary"/"ignored") into their own typed errors here; do not add crate-specific error types in this crate.
-children:
-  - access.rs: Sole implementation of the deny-by-default gate re-exported at the crate root.
-  - lib.rs: Thin re-export surface; no logic of its own.
-invariants:
-  - Crate has zero external dependencies; this must hold for all future additions, not just access.rs.
-  - deny_reason priority order (secret > binary > ignored) is the crate's external contract — callers must not reorder these checks themselves.
+`ctx-core` is a dependency-free shared kernel: it exists so `ctx-scan` and `ctx-context` (and any future tool) share one canonical answer to two questions — "is this path accessible?" and "what's the on-disk hash-sidecar schema?" — instead of maintaining divergent copies. Depending on this crate gets you pure, panic-free functions; it defines no crate-wide error type, so callers wrap results into their own error enums.
+
+The two submodules are independent (no cross-file coupling) but share a status as single-source-of-truth per ADR-023: any tool reimplementing secret/binary detection or hash-sidecar parsing instead of importing from here is a bug, specifically flagged as a secret-exfiltration risk for `access`. `access.rs` is the deny-by-default gate (secret > binary > ignored priority, ignore-check deferred to caller) used before any read/summarize. `hashtree.rs` is the `DirNode`/`hex_hash` schema for `.context/<dir>/hashes.json`, consumed by `ctx-scan` as writer and `ctx-context` as reader — the `f:`/`d:` child-key prefix convention and SHA-256 hex format must match exactly on both sides or freshness detection silently breaks.
+
+`lib.rs` only re-exports `access` and `hashtree`; no logic lives at the crate root.

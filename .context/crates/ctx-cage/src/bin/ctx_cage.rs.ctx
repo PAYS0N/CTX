@@ -1,27 +1,13 @@
-```
-file: crates/ctx-cage/src/bin/ctx_cage.rs
-behavior: Host binary for ctx-cage; parses CLI args, resolves them into a lifecycle::Resolved (including locating sibling ctx-verify/ctx-context/ctx-scan binaries), and runs the sandboxed lifecycle, propagating its exit code.
-edit_notes:
-  - Billed modes require --allow-spend or CTX_CAGE_ALLOW_SPEND=1; resolve_mode() in cli.rs enforces this gate, this file only computes the bool.
-  - ctx-cage never holds an API key itself, so billed execution is refused further downstream in lifecycle::execute regardless of mode resolution here.
-  - Sibling binary paths default to current_exe's directory but are overridable via CTX_VERIFY_BIN/CTX_CONTEXT_BIN/CTX_SCAN_BIN env vars; keep these names in sync with any install/packaging docs.
-functions:
-  - name: resolve_bin_paths
-    signature: pub fn resolve_bin_paths() -> Result<BinPaths, CageError>
-    purpose: Locates ctx-verify, ctx-context, ctx-scan next to the running binary, with env-var overrides.
-  - name: build_resolved
-    signature: fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError>
-    purpose: Assembles the lifecycle::Resolved struct from parsed CLI args, resolved mode, and sibling bin paths.
-  - name: run
-    signature: fn run() -> Result<i32, HostError>
-    purpose: Parses argv, resolves spend gating and mode, builds Resolved, and executes the lifecycle.
-  - name: main
-    signature: fn main() -> ExitCode
-    purpose: Entry point; maps run()'s Result to a process ExitCode, printing "ctx-cage: {e}" to stderr on host error.
-invariants:
-  - Process exit code from execute() is truncated to u8 via unwrap_or(1) if out of range.
-  - Host-side errors (HostError) always exit with ExitCode::FAILURE (1), distinct from the cage's own propagated exit code.
-external_deps:
-  - clap: Cli derives Parser; Cli::parse() drives argv parsing.
-  - thiserror: HostError wraps CageError and ResolveError for uniform Display in the stderr message.
-```
+`ctx-cage` binary entry point: parses argv into `Cli`, resolves it into a `lifecycle::Resolved`, and drives the cage lifecycle to completion, mapping the child's exit code back to the process exit code.
+
+Billed modes require `--allow-spend` or `CTX_CAGE_ALLOW_SPEND=1`; the always-available mode is `--self-test stub` (no-spend containment probe). `resolve_mode` (from `cli.rs`) does the actual gating — this file just ORs the flag and env var together via `env_allow_spend()` before passing to it.
+
+`--contract` is special-cased outside clap parsing (`wants_contract()` scans raw argv for it) because it must win over the required `<target>` positional; when present, prints `cli::CONTRACT` and exits 0 without touching the rest of the pipeline.
+
+`resolve_bin_paths() -> Result<BinPaths, CageError>` locates sibling binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) relative to `current_exe()`'s directory, overridable via `CTX_VERIFY_BIN`/`CTX_CONTEXT_BIN`/`CTX_SCAN_BIN` env vars — used to bind them into the cage at `/cage/bin`. Fails with `CageError::Protocol` if `current_exe()` has no parent dir.
+
+`build_resolved(cli, mode) -> Result<Resolved, CageError>` assembles the full lifecycle input; note `ctx-cage` never carries an API key itself, so any billed mode must be refused further downstream (in `lifecycle::execute` or `cli::resolve_mode`), not here.
+
+Exit code handling: `run()`'s inner `i32` is truncated to `u8` via `unwrap_or(1)` — any code outside 0-255 collapses to 1. Host-level errors (`HostError::Cage`/`HostError::Resolve`) print to stderr and force exit code 1, distinct from the cage's own propagated exit code.
+
+`emit()` mirrors an in-tree convention suppressing write failures on stdout/stderr, used to satisfy repo-wide lint restrictions on direct `print!`/`eprintln!` macros.

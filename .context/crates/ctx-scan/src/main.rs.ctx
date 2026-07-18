@@ -1,26 +1,9 @@
-file: crates/ctx-scan/src/main.rs
-behavior: CLI entry point for `ctx-scan`; parses argv, builds a `SubprocessAgent` from `CTX_AGENT_CMD` or the target's `.env`, and dispatches to dry-run listing, check, stop-hook, or normal scan/summarize modes, streaming results to stdout.
-edit_notes:
-  - Mode dispatch order matters: dry_run, then check, then stop_hook, then normal dispatch (agent only constructed for the last case).
-  - Stop-hook mode must never fail or exit non-zero — errors are swallowed via `let _ =` so the hook never breaks or bills the agent's session; regeneration happens post-session.
-  - Exit codes are meaningful: 1 for list/check/dispatch errors, 2 for agent construction failure; keep consistent if adding new modes.
-  - Relies on `ctx_scan::cli` (Cli, check, dispatch, list_targets, stop_hook) and `ctx_summarize::agent::SubprocessAgent` for all real logic; this file has no logic beyond routing.
-functions:
-  - name: emit
-    signature: fn emit<W: Write>(mut w: W, msg: &str)
-    purpose: Writes a line to `w`, silently ignoring broken-pipe/write errors.
-  - name: fail
-    signature: fn fail(msg: &str, code: u8) -> ExitCode
-    purpose: Emits `msg` to stderr and returns the given exit code.
-  - name: run_stop_hook
-    signature: fn run_stop_hook<W: Write>(cli: &Cli, out: &mut W) -> ExitCode
-    purpose: Runs stop-hook mode and always returns ExitCode::SUCCESS regardless of internal failure.
-  - name: main
-    signature: fn main() -> ExitCode
-    purpose: Parses CLI args and routes to the appropriate mode (dry-run, check, stop-hook, or dispatch).
-invariants:
-  - run_stop_hook always returns ExitCode::SUCCESS, independent of stop_hook()'s result.
-  - Agent (SubprocessAgent) is only constructed for the default dispatch path, not for dry-run, check, or stop-hook.
-external_deps:
-  - clap: Cli struct derives Parser for argv parsing.
-  - ctx_summarize::agent::SubprocessAgent: resolves agent command/API key from CTX_AGENT_CMD env var or target's .env file.
+Binary entry point for `ctx-scan`; a thin shell that wires argv parsing to `ctx_scan::cli` and streams human-readable output to stdout, with all I/O routed through explicit handles (no hidden globals).
+
+`--contract` is detected via raw `std::env::args()` *before* `clap::Parser::parse()` runs, so it wins over the required `<dir>` positional — this lets `--contract` work as a standalone probe without a directory argument. If `Cli`'s argument shape changes, this manual pre-check must still recognize `--contract` correctly or it'll fall through to normal parsing and fail on missing `<dir>`.
+
+Mode dispatch order in `run()` matters: dry-run → check → stop-hook → normal dispatch, each mutually exclusive and checked via `cli.dry_run()`/`cli.check()`/`cli.stop_hook()`. Only the normal dispatch path constructs a `SubprocessAgent` (via `SubprocessAgent::from_env_or_dotenv(cli.dir())`, reading `CTX_AGENT_CMD` or the target's `.env`); the other three modes never touch the agent.
+
+`run_stop_hook` is fail-open by design: it swallows every error from `stop_hook(cli.dir(), out)` and always returns `ExitCode::SUCCESS`, because this path runs as an automated hook and must never break or bill the calling agent's session — regeneration is deferred to post-session, not enforced per-turn. This is the one place in the file where errors are intentionally discarded rather than reported.
+
+Exit codes: 0 success, 1 generic dispatch/check/list failure, 2 specifically for agent construction failure (`SubprocessAgent::from_env_or_dotenv` error). `emit()` ignores broken pipe/write errors silently everywhere it's used.

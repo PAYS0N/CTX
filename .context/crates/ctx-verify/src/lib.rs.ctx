@@ -1,8 +1,3 @@
-file: crates/ctx-verify/src/lib.rs
-behavior: Crate root for ctx-verify, a broker that runs cargo/clippy/script checks and emits one capped JSON verification report so checking a change has bounded, deterministic token cost.
-edit_notes:
-  - Layering mirrors ctx-access: cli (argv/io) sits over checks (pure orchestration) sits over runner (process boundary); keep new code in the matching layer.
-  - Report schema is described as part of the same family as the spec's audit report; changes to model.rs should stay schema-compatible with that.
-functions:
-invariants:
-external_deps:
+Crate root for ctx-verify — a broker that runs cargo/clippy/script checks and emits one capped JSON report, keeping verification-cost bounded and deterministic (same report-schema family as the spec-audit tool).
+
+No logic lives here beyond module wiring: `cli` (argv/io) sits over `checks` (pure orchestration) sits over `runner` (the actual process-spawning boundary). `parse` turns each check's structured or `FAIL:`-line output into the shared `model` types; `error` holds the crate's error enum. Editors adding a new check type should extend `checks`+`parse`+`model` together, not bypass the layering by calling `runner` directly from `cli`.

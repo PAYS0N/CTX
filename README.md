@@ -1,28 +1,29 @@
 # Opinionated Agentic Coding System — MVP Scaffolding
 
-This repository contains the MVP scaffolding for an opinionated coding system
-designed for autonomous agents. It is **not a complete implementation**. It
-provides the configs, prompts, scripts, and structural decisions that are
-expensive to change later, along with a clearly-scoped TODO list of the parts
-that still need to be built.
+An opinionated coding system for autonomous agents: a strict Rust lint
+regime the workspace itself is built under, a generated context tree
+agents read before editing, and a safety-only sandbox for autonomous
+runs. Doctrine lives in `.context/intent.md`; rationale in
+`docs/DECISIONS.md`; current work in `docs/STATUS.md`.
 
-See `docs/SPEC.md` for the full sealed specification.
-See `docs/UNIMPLEMENTED.md` for the list of items that still need work.
+## Architecture
 
-## Layout
+Sourced from the repo root's generated rollup; regenerate with
+`scripts/gen_readme_architecture.sh --write` after reseeding
+`.context/`. `ctx-verify`'s `architecture` check fails if this drifts.
+Never edit between the markers.
 
-```
-template/         # cargo workspace template — copy this to start a new project
-prompts/          # agent prompts as plain files, decoupled from code
-scripts/          # CI and pre-commit scripts (bash, no Rust dep)
-docs/             # spec and unimplemented list
-agents/           # model-specific agent adapters (CTX_AGENT_CMD targets)
-```
+<!-- BEGIN GENERATED architecture (scripts/gen_readme_architecture.sh --write) -->
+`.` is the CTX system's repository root: an agentic-coding toolchain that makes bad code uncompilable and forces context-reading before edits, plus the docs, prompts, scripts, and scaffolding that support it. Depending on the repo root gets you the whole toolchain — five Rust crates under `crates/`, prompt files consumed by `ctx-summarize`, verification scripts wired through `ctx-verify`, and a `template/` scaffold for stamping new projects — but no shared code lives at this top level; it's organizational only.
 
-The reference project (a real consumer of the system) lives OUTSIDE this
-repo at `../meal-planning/` — a standalone template-instantiated workspace
-(the CLI meal planner), kept separate so the sandbox can cleanly isolate
-its source. See `../meal-planning/README.md`.
+The core lifecycle spans four subtrees and must be read as a chain, not independently: `crates/` implements the binaries; `prompts/` supplies the fixed system-prompt contracts those binaries' agents (`agents/`) feed to an LLM; `scripts/` implements the FAIL:-line checks that `ctx-verify` parses; `docs/` records why decisions were made and what's pending. A convention, not a compiler, holds these together — `ctx-summarize`, `ctx-scan`, and `ctx-context` all read/write the same `.context/` tree independently, and `agents/`'s stdin/stdout JSON contract is mirrored, not shared, between `prompts/`'s auditor.md and any runner.
+
+`README.md`'s generated blocks (tool contracts, architecture) are regenerated from `crates/`'s `--contract` output and this rollup respectively — editing this rollup's shape can ripple into README regeneration. `sandbox/` and parts of `docs/retired/` are retired: functionality fully migrated into `crates/ctx-cage`, kept only as documentation/history. `template/`'s scaffold assumes a sibling tooling repo (`install-tools.sh`) supplies the binaries it wires up, an external dependency not visible elsewhere in this tree.
+
+Layer 3 (architecture audit) is still deferred per intent.md — `prompts/auditor.md` and the `intent_divergence:` label exist, but no automated run of the audit against live rollups is wired into CI yet.
+
+intent_divergence: intent states Layer 3 (audit) hooks "exist" but only the prompt and label convention are present — no CI or script actually invokes the auditor against generated rollups.
+<!-- END GENERATED architecture -->
 
 ## Tools
 

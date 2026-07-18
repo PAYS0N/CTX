@@ -1,9 +1,0 @@
-file: rust-toolchain.toml
-behavior: Pins the Rust toolchain used for building and linting this project to a specific stable version, with rustfmt and clippy components installed via a minimal profile.
-edit_notes:
-  - Updating channel requires re-validating the full clippy lint list; restriction lints occasionally get renamed between releases and can silently stop firing or error out.
-functions:
-invariants:
-  - channel is a specific stable version ("1.95.0"), not a floating channel like "stable".
-  - components always includes rustfmt and clippy; profile stays "minimal" (no docs/extra targets installed).
-external_deps:

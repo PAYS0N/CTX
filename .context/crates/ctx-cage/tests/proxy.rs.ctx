@@ -1,17 +1,9 @@
-file: crates/ctx-cage/tests/proxy.rs
-behavior: Tests header rewriting (`rewrite_head`) for both key-injection and OAuth-passthrough proxy postures, and one end-to-end test driving `serve_conn` over Unix socketpairs against a fake upstream.
-edit_notes:
-  - Depends on ctx_cage::proxy's ProxyConfig/Upstream/UpstreamIo/serve_conn/rewrite_head API; changes to header-rewriting rules (owned headers, Connection: close, Host override) must be reflected in both rewrite tests.
-  - FakeUpstream simulates connect() by handing back one end of a UnixStream::pair() and stashing the other end in a Mutex<Option<UnixStream>>, polled via take_server_end with up to 1s of retry sleeps; flaky if serve_conn's connect timing changes drastically.
-functions:
-  - name: cfg
-    signature: fn cfg() -> ProxyConfig
-    purpose: Builds a key-injection ProxyConfig (api_key set) targeting api.anthropic.com for tests.
-  - name: take_server_end
-    signature: fn take_server_end(up: &FakeUpstream) -> Option<UnixStream>
-    purpose: Polls up to 1s for FakeUpstream::connect to have deposited its server-side socket.
-invariants:
-  - rewrite_head always strips client-supplied Host, x-api-key, Authorization (in key-injection mode), and Connection headers, replacing them with the config's values and forcing Connection: close.
-  - In passthrough mode (api_key: None), client's Authorization header is preserved unchanged and no x-api-key header is added.
-external_deps:
-  - std::os::unix::net::UnixStream: used as an in-memory duplex byte pipe for both the client<->proxy and proxy<->fake-upstream legs, avoiding real sockets/network in tests.
+Tests `ctx_cage::proxy`: HTTP CONNECT-less head rewriting (owned headers replaced, rest passed through) plus one end-to-end connection served over `UnixStream::pair()` sockets against a fake upstream, and a `serve()`-level check that dial failures are written to `cfg.log_path` rather than stderr.
+
+Key fact motivating the last test: during an interactive cage run, the proxy process's stderr is the raw-mode host terminal — writing errors there directly corrupts the PTY relay's display, so `serve`'s per-connection failure branch must go through the log file exclusively. This is asserted by polling the log file for "connection failed" (`wait_for_log_contains`), not by capturing stderr.
+
+`rewrite_head(head, &ProxyConfig)` is exercised for both key-injection mode (`api_key: Some(..)` swaps `Host`/`x-api-key`, forces `Connection: close`, strips any client `Authorization`) and passthrough mode (`api_key: None` preserves the client's own `Authorization: Bearer ...` OAuth header untouched). Output always ends `\r\n\r\n`.
+
+`FakeUpstream` implements `Upstream` by handing back one end of a `UnixStream::pair()` and stashing the other end in a `Mutex<Option<UnixStream>>` for the test to retrieve via `take_server_end` (polls up to 1s). `serve_conn_rewrites_forwards_and_relays_the_response` drives a full request/response cycle through `serve_conn` on real socketpairs, checking rewritten headers, forwarded body, and relayed response arrive intact.
+
+`FailingUpstream` always errors from `connect()`, used only to trigger `serve`'s logging path. `bind_serve_fixture` binds a fresh Unix socket path and returns listener + config; cleanup of socket and log files is manual (`std::fs::remove_file`) at test end — no `Drop` guard, so a panicking assertion mid-test can leak tempfiles (`fresh_tempfile`/`fresh_socket_path` use an atomic counter plus PID to avoid collisions across parallel test runs, not to avoid leaks).

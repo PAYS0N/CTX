@@ -1,25 +1,7 @@
-`crates/ctx-context/tests/` is the integration-test surface for the whole
-crate's public runtime behavior — chain resolution/rendering and the
-hook/session/CLI dedup pipeline — exercised only against an in-memory
-fake filesystem, never real disk I/O.
+crates/ctx-context/tests/ is the integration test suite for the serving layer (`serve::chain_for`, `serve::render`) and the hook/session injection path that sits on top of it — together they pin the external contract of "what text does a session/CLI/hook actually see for a given path."
 
-Both files share the same `FakeEnv` pattern: a flat `BTreeMap<String,
-Vec<u8>>` keyed by repo-relative path, with directory-ness inferred from
-key-prefix matching rather than stored explicitly. Any change to how
-`Env::is_dir` or path lookups are implemented in the main crate must stay
-compatible with this prefix-inference convention, or both test files
-break simultaneously. Seeded tree shapes differ per file (chain_serve.rs
-builds its own ad hoc trees per test; hook_session.rs uses one fixed
-`FakeEnv::seeded()` layout reused across tests), so there's no shared
-fixture to update in lockstep — each file's seeding is self-contained.
+All three files share one `FakeEnv` pattern: an in-memory `BTreeMap<String, Vec<u8>>` (plus env vars in hook_session.rs) where directory-ness is inferred from `"{path}/"` key prefixes rather than declared, mirroring the real `Env::is_dir`. Each file reimplements this fake independently rather than sharing one — seeding must supply exact relative paths as the real code would request them, and the three fakes must stay behaviorally aligned with each other and with the production `Env` impl or tests can pass while diverging from reality.
 
-chain_serve.rs pins the traversal contract of `serve::chain_for`/`render`
-(ordering, soft-missing markers, path-escape rejection). hook_session.rs
-pins the session-dedup contract spanning `hook::run`, `session`
-persistence, and `cli::dispatch`, including the on-disk session file path
-template and fail-open behavior on corrupt state. Together they mean any
-change to chain traversal order, session file path format, or dedup
-keying must update tests in both files if the change touches shared code
-paths (e.g., `chain_for` used inside `hook::run`).
+chain_serve.rs locks the chain-resolution contract itself: ordering (root rollup, root intent, then per-level rollup+intent descending, then leaf), rejection of path-escape (`..`, leading `/`, empty segments), and that missing scaffolding yields `present == false` nodes rather than errors. freshness.rs builds on the same chain/render machinery to pin the three-way distinction between STALE, NEVER GENERATED, and the sparse-intent `(absent: …)` marker (which must classify as `Assessment::Unknown`), and ties expected hashes to `ctx_core::hashtree::hex_hash` — changes to that hashing scheme require updating this file's fixtures. hook_session.rs is the outermost layer: it exercises `hook::run` and CLI `dispatch` sharing one per-session dedup ledger (keyed by `session::ENV_SESSION_ID`), and asserts fail-open behavior on corrupt session state.
 
-No intent.md is present for this directory.
+Cross-cutting invariant: source files never appear as chain node ids, and "absent" states across all three files are always represented as structured markers/enums, never `Err` — an editor changing the missing-scaffolding path must keep both the structured field and the rendered string in sync, since tests check each independently.

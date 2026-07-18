@@ -1,20 +1,7 @@
-file: crates/ctx-verify/src/runner.rs
-behavior: Defines the process-execution boundary used by ctx-verify's checks, providing a `Runner` trait abstraction and a real implementation (`ProcRunner`) that shells out via `std::process::Command`.
-edit_notes:
-  - checks (crate::checks) is written to be pure over Runner; tests inject fake Runner impls instead of spawning real processes, so changes to the Runner trait signature ripple into all check implementations and their tests.
-  - Mirrors the `Env` seam pattern used in ctx-access; keep the abstraction style consistent if both evolve.
-functions:
-  - name: ok
-    signature: pub fn ok(&self) -> bool
-    purpose: Reports whether the captured command exited with status code 0.
-  - name: run (Runner trait)
-    signature: fn run(&self, tool: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<CommandOutcome, CheckError>
-    purpose: Runs an external tool and captures its outcome; implemented by test doubles and ProcRunner.
-  - name: run (ProcRunner)
-    signature: fn run(&self, tool: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<CommandOutcome, CheckError>
-    purpose: Spawns `tool` via std::process::Command with given args/env and captures exit code, stdout, stderr.
-    notes: Maps ErrorKind::NotFound to CheckError::ToolMissing; all other spawn/wait errors become CheckError::Spawn.
-invariants:
-  - stdout/stderr are always valid UTF-8 (lossy-converted from raw bytes), never raw invalid sequences.
-  - code is None only if the process was terminated by a signal rather than exiting normally.
-external_deps:
+Defines the process-execution boundary that `crate::checks` runs external tools through, keeping check logic pure and unit-testable offline (mirrors `ctx-context`'s `Env` seam pattern).
+
+`CommandOutcome` captures exit code (`Option<i32>`), lossy-UTF8 stdout/stderr; `ok()` returns true only when `code == Some(0)` — a `None` code (killed by signal) counts as not-ok.
+
+`Runner` trait's `run(&self, tool: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<CommandOutcome, CheckError>` is the sole entry point checks depend on; real code uses `ProcRunner`, tests substitute a fake implementing the same trait to inject canned output/errors without spawning processes.
+
+`ProcRunner::run` maps `std::io::ErrorKind::NotFound` specifically to `CheckError::ToolMissing(tool)`, distinguishing "binary not on PATH" from any other spawn/wait failure (`CheckError::Spawn { tool, detail }`). Non-zero exit codes are not treated as errors here — they surface via `CommandOutcome::ok()`/`code`, letting callers in `checks` decide what a given tool's exit status means.

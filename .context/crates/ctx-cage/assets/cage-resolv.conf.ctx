@@ -1,0 +1,5 @@
+Static config asset, not code: mounted read-only as `/etc/resolv.conf` inside every cage sandbox (per ADR-049).
+
+Its sole content is `nameserver 192.0.2.1`, chosen deliberately — 192.0.2.1 is RFC 5737 TEST-NET-1, guaranteed unroutable and unreachable from the cage's empty, offline network namespace. This makes DNS lookups fail slowly (timeout) instead of instantly. Editing this to a loopback address (or removing the file, letting the resolver default to 127.0.0.1:53) reintroduces a busy-loop bug: the cage's netns has loopback up with nothing on :53, so queries get refused instantly and retried in a tight loop that pins a full CPU core for the session's lifetime.
+
+Any non-loopback, unreachable address preserves the fix. This file has no other consumers or wire-format coupling — its only contract is being mounted verbatim at `/etc/resolv.conf` by the cage setup code.

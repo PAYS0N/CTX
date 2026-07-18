@@ -1,0 +1,38 @@
+# crates/ctx-cage/src/lifecycle/run/pty/mod.rs
+
+Runs the caged process on a privately allocated PTY and relays bytes
+between it and the host's real terminal, so that `--unshare-pid`
+sandboxing doesn't break interactive readline (Node busy-retries
+`tcgetpgrp`/`tcsetpgrp` when the child's controlling terminal is the
+host's tty directly across a PID namespace boundary — ADR-034). The
+slave side becomes the child's controlling terminal via `setsid --ctty`
+in `super::claude_cmd`; that pairing must stay intact or the fix regresses.
+
+`pub(super) fn run_on_pty(argv: &[OsString]) -> Result<Option<ExitStatus>, CageError>`
+is the sole entry point. Returns `Ok(None)` (not an error) when stdin
+isn't a real terminal, signaling the caller to fall back to plain stdio
+inheritance — piped input, CI, and tests all take this path, so
+`openpty_pair_relays_bytes` in the test module exercises the raw
+`openpty` mechanics directly rather than going through `run_on_pty`.
+
+Key sequencing: `SIGWINCH` is blocked on the calling thread *before* any
+relay thread spawns, so the block is inherited and the later
+`SignalFd` is the only reader — reordering this breaks resize forwarding.
+`RawGuard` restores the host's original termios on drop (covers early
+return/panic), so raw-mode-enter and restore are not symmetric in the
+source but are guaranteed symmetric at runtime.
+
+`openpty(3)` doesn't set `CLOEXEC` on the fds it creates, and `bwrap`
+forwards arbitrary inherited fds into the sandbox instead of closing
+them — `set_cloexec` closes that leak on both master and slave right
+after creation; the subsequent `dup2`-equivalent (`Stdio::from`) when
+wiring the slave into the child clears `CLOEXEC` again on that specific
+target fd, so the deliberate slave→stdio wiring still works.
+
+Three background threads per session: input relay (host stdin → PTY
+master, cancellable via a pipe, module `input_relay`), output relay
+(PTY master → host stdout, joined — exits on EOF when the child closes
+its stdio, since the parent holds no slave fd), and a detached WINCH
+relay copying host terminal size onto the master on each `SIGWINCH`.
+Uses `nix` and `rustix` safe wrappers only — the crate forbids
+`unsafe_code`.

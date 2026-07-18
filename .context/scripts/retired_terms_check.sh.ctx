@@ -1,0 +1,7 @@
+Enforces vocabulary retirement: fails CI-style when any ADR-retired identifier appears outside its permitted historical/audit locations.
+
+Scans `git ls-files -z --cached --others --exclude-standard` (tracked + untracked-not-ignored, not a filesystem walk) so untracked new files are checked but `.gitignore`d ones aren't. `BANNED` array currently holds `ctx-access`, `init-task`, `end-task`, `served_nodes`, `SPEC.md` — append here when a future ADR retires a term. `is_allowed` whitelists `.context/*` (regenerated, staleness fixed by reseed not this check), `docs/DECISIONS.md`, `docs/retired/*`, `docs/AUDIT.md`, `docs/OPUS_CONTEXT_FRESHNESS_PROMPT.md`, and the script itself.
+
+Output format is load-bearing: matches are run through `grep -nHF ... -- "${files[@]}" /dev/null` — the trailing `/dev/null` forces `path:line:content` prefixing even with a single matching file, because ctx-verify's `split_loc` parser expects that shape and misparses a bare `line:content`. The `FAIL: ` label is prepended *before* `$line`, never interleaved, or `split_loc` would mistake the label for the filename. Free-form explanation text is safely appended *after* `$line` since `split_loc` only reads up to the first colon plus digit run.
+
+Mirrors `no_allow_check.sh`'s enumeration approach (git ls-files, not find) — keep both in sync if the file-discovery strategy changes. Exits 1 if any banned term found outside allowed paths, 0 otherwise (including when no files remain to check).

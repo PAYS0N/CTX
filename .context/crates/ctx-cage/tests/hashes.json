@@ -1,8 +1,9 @@
 {
-  "hash": "065141f314ebd6ee4cb68502a496378d59b47feaa960e193dcb4e164c8475b67",
+  "hash": "9bef66115cdd599dfedf453216609c9ad5fe7a18719eb57fd9416f7ac91c8bef",
   "children": {
-    "bwrap_build.rs": "f:26c3310bb62376d23504baf7ad200917ce05b91851f1c512f86169d2bb875b82",
+    "bwrap_build.rs": "f:a10ec005ebcd1f06f4ea0bb9ed3099d4fd3b47b8e0f4060360c421615ff14ded",
+    "cage_assets.rs": "f:0de09d2560133086a83487fa6031d34b8436e2a448f6b72811b4e368834cd7b3",
     "cli.rs": "f:179e9066c22fc73c055b0fb44354dd1105fba9ff9d540257c1cb7af5bf3d8bb0",
-    "proxy.rs": "f:bc86f3a11be99ce0a8909813b8efd289edc74ee02790b3c1263e2f21feaff2f8"
+    "proxy.rs": "f:e68eeed0712ae39b2d764a78ec1a034f94b1c0a48b72e70bfd53cb8abbd3c9d1"
   }
 }

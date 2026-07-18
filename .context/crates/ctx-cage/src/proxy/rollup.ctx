@@ -1,0 +1,7 @@
+`proxy/` is the request-rewriting core the Cage's HTTP proxy loop depends on: it owns wire-level parsing of the client's raw HTTP/1.1 head and the injection/passthrough logic that decides which auth headers reach the upstream. Depending on it gets you two pure functions — read the head off a socket, rewrite it against a `ProxyConfig` — with no I/O side effects in the rewrite path and no panics on malformed client input.
+
+`head.rs` is currently the whole subtree (split out only for a file-length lint, per its own note — there is no architectural boundary here yet). The key cross-cutting contract a caller must honor: `read_head` may return body bytes already consumed past the `\r\n\r\n` terminator, and those bytes must be prepended by the caller before reading the rest of the body from the stream — this leftover-bytes handoff is the seam any future second file in this module would have to preserve.
+
+The load-bearing invariant for the proxy's two operating modes: when `cfg.api_key` is `Some`, client-supplied `Authorization`/`x-api-key` headers are stripped and replaced; when `None`, they pass through untouched, enabling "bring your own key" mode. Any change to header injection logic must preserve this branch exactly, since it's the one difference between the two proxy modes.
+
+No intent.md exists to check against.

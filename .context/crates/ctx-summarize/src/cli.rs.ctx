@@ -1,16 +1,5 @@
-file: crates/ctx-summarize/src/cli.rs
-behavior: Defines the `ctx-summarize` CLI surface (argv parsing via clap) and dispatches either a cache-derived or explicit path list to the runner, writing the resulting JSON summary to a caller-supplied writer.
-edit_notes:
-  - Two target modes (`FromCache`, `Paths`) both funnel into runner::run; adding a new mode requires extending the Command enum and the match in dispatch.
-  - `--approve` bypasses runner::scope_check's blast-radius guard; the guard's threshold (MAX_TARGETS) lives in runner, not here.
-  - dispatch is generic over Fs, Agent, and Write so tests can inject fakes; keep signature generic when modifying.
-functions:
-  - name: dispatch
-    signature: pub fn dispatch<F: Fs, A: Agent, W: Write>(fs: &F, agent: &A, cli: &Cli, out: &mut W) -> Result<(), SummError>
-    purpose: Resolves target paths, runs the summarizer, and writes pretty-printed JSON plus trailing newline to out.
-    notes: Wraps serde_json/write errors as SummError::Io with path "<stdout>".
-invariants:
-  - Command::FromCache always resolves targets via paths_from_cache before scope_check runs, so cache errors surface before the size guard.
-  - Output is always valid JSON followed by exactly one trailing newline, on success.
-external_deps:
-  - clap: derive-based Parser/Subcommand for argv, including global flags shared across subcommands.
+Argv parsing (via `clap`) and top-level orchestration entry for the `ctx-summarize` binary; the only place command-line invocation is translated into a `runner::run` call.
+
+`Cli` has one subcommand, `Command::Paths { paths }`, taking an explicit list of repo-relative source paths — no glob/discovery mode exists here. Global flags: `--prompts` (default `"prompts"`) sets the prompt-file directory, and `--approve` bypasses a size guard in `runner::scope_check` that otherwise refuses runs over `MAX_TARGETS` files.
+
+`pub fn dispatch<F: Fs, A: Agent, W: Write>(fs: &F, agent: &A, cli: &Cli, out: &mut W) -> Result<(), SummError>` is the sole entry point: it checks scope, calls `runner::run`, then serializes the resulting summary as pretty JSON to `out` followed by a trailing newline. JSON write errors are wrapped as `SummError::Io` with path `"<stdout>"` — not the real output destination, so error messages here are synthetic. Depends on `runner::run`'s summary type being `Serialize`-compatible; changing that type's shape changes the emitted JSON without any check in this file.

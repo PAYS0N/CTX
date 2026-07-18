@@ -23,3 +23,8 @@ __pycache__
 CLAUDE.md
 .ctxignore
 .gitignore
+*.toml
+.claude
+prompts
+docs/retired
+README.md

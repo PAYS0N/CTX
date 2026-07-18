@@ -1,11 +1,5 @@
-directory: crates/ctx-core
-domain: Dependency-free crate defining the canonical access-gate (secret/binary/gitignored deny) used across the CTX workspace. Consumers call its functions rather than reimplementing denylist logic; it deliberately excludes ignore-status computation, leaving `.ctxignore`/`.gitignore` scoping to callers.
-edit_notes:
-  - Gate rule changes belong solely in src/access.rs (ADR-023); a divergent denylist elsewhere in the workspace is treated as a security bug.
-  - Zero-dependency constraint applies to the whole crate, not just source: Cargo.toml must have no [dependencies] entries even as the crate evolves.
-children:
-  - Cargo.toml: Crate manifest enforcing the dependency-free constraint.
-  - src/: Implements and re-exports the access gate (access.rs) plus a thin lib.rs surface.
-invariants:
-  - Zero external dependencies, enforced both in Cargo.toml and in all future source additions.
-  - deny_reason priority order (secret > binary > ignored) is fixed and must not be reordered by callers.
+`ctx-core` is the shared kernel that `ctx-scan` and `ctx-context` both depend on for path-safety checks and hash-sidecar schema — everything about its contract, invariants, and module breakdown is already stated correctly in `src/rollup.ctx`.
+
+There is nothing at the `crates/ctx-core` level beyond the `src/` subtree (Cargo.toml aside): no additional modules, tests, or top-level logic to describe. Readers should treat `src/rollup.ctx` as authoritative for this crate's behavior and invariants.
+
+No `intent.md` is present for this crate.

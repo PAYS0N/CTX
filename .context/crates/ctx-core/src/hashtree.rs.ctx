@@ -1,0 +1,5 @@
+Defines the shared on-disk schema for content-hash sidecars (`.context/<dir>/hashes.json`) used by both `ctx-scan` (writer) and `ctx-context` (reader) to detect stale context. Both crates must import `DirNode` and `hex_hash` from here rather than reimplementing them — any divergence (different hash algorithm, different child-key format) silently breaks freshness comparisons across the two sides.
+
+`DirNode` is `{ hash: String, children: BTreeMap<String, String> }`. `children` maps a child name to `f:<hex>` for files or `d:<hex>` for subdirectories — that prefix convention is load-bearing and must be produced/parsed identically everywhere it's consumed. `hash` is the aggregate over the sorted `children` map (BTreeMap guarantees deterministic ordering, which the hash aggregation relies on).
+
+`hex_hash(bytes: &[u8]) -> String` is the single SHA-256 hex-encoding function both the generator and server must call — same output for same input, always 64 lowercase hex chars, never panics. Note the write! result inside is deliberately discarded rather than unwrapped, since writing to a String cannot fail.

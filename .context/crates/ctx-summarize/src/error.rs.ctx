@@ -1,10 +1,5 @@
-file: crates/ctx-summarize/src/error.rs
-behavior: Defines the unified error enum returned by the summarization runner's fallible operations, covering path validation, prompt/cache access, agent subprocess failures, and access-control/scope gating.
-edit_notes:
-  - Variants map to specific runner-side checks (path escape guard, deny-by-default access set, scope-approval gate); adding a new failure mode elsewhere in ctx-summarize likely means adding a variant here rather than reusing an existing one.
-  - All fields are Strings (paths/details pre-formatted by callers), not PathBuf or source errors, so no error chaining via #[from]/source() is available.
-functions:
-invariants:
-  - AccessDenied and ScopeTooLarge are the only variants carrying structured fields (path+reason, count+max respectively); all others carry a single String.
-external_deps:
-  - thiserror: derives Display/Error impls from the #[error("...")] format strings.
+Defines `SummError`, the single error enum returned by every fallible operation in the ctx-summarize runner (path resolution, prompt loading, agent invocation, access control, scope gating, filesystem I/O), built with `thiserror` for `Display`/`Error` impls.
+
+Notable variants: `AccessDenied { path, reason }` — the deny-by-default gate that blocks secret/binary/ignored files even if explicitly named as a target; `ScopeTooLarge { count, max }` — the target-count gate requiring `--approve` to bypass; `NoAgentCommand` — signals the agent command must come from `CTX_AGENT_CMD` env var or a target's `.env` file, with no other fallback. `Io` and other variants store stringified paths/details rather than wrapping source errors, so no `#[from]` conversions exist — callers must construct variants explicitly with already-formatted strings.
+
+No behavior lives here; it's a pure data/display definition. Any caller matching on these variants (e.g. CLI exit-code mapping) will break if variant names or field shapes change.

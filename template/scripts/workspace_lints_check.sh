@@ -2,8 +2,8 @@
 # Assert every member crate opts into the workspace lint table.
 #
 # The workspace Cargo.toml's [workspace.lints] table is the single source
-# of truth for the entire restriction lint set (see docs/SPEC.md, Compiler
-# section). That table binds ONLY to member crates that declare:
+# of truth for the entire restriction lint set. That table binds ONLY to
+# member crates that declare:
 #
 #     [lints]
 #     workspace = true

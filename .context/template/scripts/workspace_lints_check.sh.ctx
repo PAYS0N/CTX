@@ -1,14 +1,7 @@
-```
-file: template/scripts/workspace_lints_check.sh
-behavior: CI check that every git-tracked member-crate Cargo.toml (any manifest with a [package] table) declares a [lints] table with `workspace = true`, so the workspace's central lint set actually applies to it.
-edit_notes:
-  - Enumerates manifests via `git ls-files -z --cached --others --exclude-standard` (not a filesystem walk), matching the rationale in no_allow_check.sh; keep both scripts consistent if the enumeration strategy changes.
-  - Virtual workspace root Cargo.toml (no [package] table) is intentionally skipped.
-  - Detection is a manual awk state machine, not a TOML parser: it tracks entry into `[lints]` and exit on any other `[...]` header, then looks for a `workspace = true` line inside that span. A `[lints]` table with unconventional formatting (e.g. inline table `lints.workspace = true` or workspace=true on same line as header) will not match.
-functions:
-invariants:
-  - Exits non-zero if any tracked Cargo.toml with a [package] table lacks a [lints] table containing `workspace = true`.
-  - Only files under git (tracked or untracked-but-not-ignored) named Cargo.toml or */Cargo.toml are checked.
-external_deps:
-  - git: source of truth for which manifests exist, to stay independent of build artifacts/target dirs.
-```
+CI check script that fails if any member crate's `Cargo.toml` omits `[lints]\nworkspace = true`, which is the only thing that binds a crate to the workspace root's `[workspace.lints]` restriction table.
+
+Enumerates manifests via `git ls-files -z --cached --others --exclude-standard -- 'Cargo.toml' '*/Cargo.toml'`, not a filesystem walk — untracked-but-unignored manifests are included, ignored ones are not, and it never races a concurrent `target/` writer (rationale shared with `no_allow_check.sh`). Skips any manifest lacking a `[package]` table, treating it as the virtual workspace root.
+
+The `[lints]` check is a small awk state machine, not a plain grep: it tracks whether it's currently inside the `[lints]` table specifically and requires `workspace = true` to appear there — a `workspace = true` line under `[workspace]` or any other table does not count. Any new top-level table header (`^\[`) closes the `in_lints` state.
+
+Invariant: exits 1 if any package-manifest lacks the property; exits 0 only if every discovered package manifest has it. This is a manifest-shape check only — it does not verify the workspace root's `[workspace.lints]` table actually contains meaningful lints, and does not invoke cargo or dylint.

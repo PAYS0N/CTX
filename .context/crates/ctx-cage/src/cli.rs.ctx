@@ -1,20 +1,11 @@
-```
-file: crates/ctx-cage/src/cli.rs
-behavior: Defines the ctx-cage argv schema and resolves parsed flags into a lifecycle::Mode (self-test, headless task, or interactive), enforcing mode exclusivity and the spend gate before the lifecycle runs.
-edit_notes:
-  - Mode resolution precedence is fixed: --self-test wins, then --task/--task-file, else Interactive; encoded in check_flag_conflicts + compute_mode, not in Cli's derive.
-  - Billed-mode gating is double-checked: resolve_mode enforces --allow-spend/CTX_CAGE_ALLOW_SPEND=1 here, and the host binary (only ctx-run) separately supplies the API key to the lifecycle; this file only knows about the flag, not the key.
-  - TaskFlags/SpendFlags are split into sub-structs solely to keep struct_excessive_bools under threshold without #[allow], per workspace clippy policy.
-functions:
-  - name: mode_is_billed
-    signature: pub const fn mode_is_billed(mode: &Mode) -> bool
-    purpose: Reports whether a Mode requires the spend gate (false only for SelfTestStub).
-  - name: resolve_mode
-    signature: pub fn resolve_mode(cli: &Cli, allow_spend: bool) -> Result<Mode, ResolveError>
-    purpose: Validates flag combinations, reads --task-file if used, computes the Mode, and enforces the spend gate on billed modes.
-invariants:
-  - --self-test, --task/--task-file, and --interactive are pairwise mutually exclusive; any combination yields ResolveError::Conflict before Mode computation.
-  - resolve_mode never returns Mode::Task or Mode::Interactive unless allow_spend is true.
-external_deps:
-  - clap: Args/Parser/ValueEnum derive the CLI schema and enum flag parsing directly from these structs.
-```
+Parses `ctx-cage`'s argv into a `Mode` the lifecycle executes; owns mode resolution and the spend gate, but not path resolution (done by host binaries) or actual sandboxing.
+
+Mode precedence is strict: `--self-test <kind>` wins outright and conflicts with any `--task`/`--task-file`/`--interactive`; `--task` and `--task-file` are mutually exclusive with each other and with `--interactive`; absent all of those, default is `Mode::Interactive`. All conflict checks happen in `check_flag_conflicts` before `compute_mode` runs, so `compute_mode` can assume a clean, single-mode `Cli`.
+
+Billed modes (`Task`, `Interactive`) are double-gated: `resolve_mode(cli, allow_spend)` rejects them unless `allow_spend` is true, but the caller supplies that bool — it's meant to come from `--allow-spend` OR `CTX_CAGE_ALLOW_SPEND=1`, ORed together by the host binary before calling in; this file doesn't read env vars itself. `mode_is_billed` is the single source of truth for which modes cost money — `SelfTestStub` is always free.
+
+`TaskFlags`/`SpendFlags` are split into `#[command(flatten)]` sub-structs specifically to dodge clippy's `struct_excessive_bools` lint without an `#[allow]`, per workspace policy banning those.
+
+`CONTRACT` is a hard-synced string: the `contracts` battery test fails if this text drifts from the generated tool-contract block in `CLAUDE.md`/`README.md` — edit both together.
+
+`resolve_mode(cli: &Cli, allow_spend: bool) -> Result<Mode, ResolveError>` is the sole public entry point; reads `--task-file` from disk (`ResolveError::Io` on failure) as part of resolution, so it can fail on I/O, not just flag logic.

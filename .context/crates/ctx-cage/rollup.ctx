@@ -1,7 +1,25 @@
-`crates/ctx-cage` is the offline sandbox crate: it runs an agent subprocess under `bwrap` with a masked filesystem, fresh namespaces, and no egress except a proxied API relay, then guarantees teardown. Depending on it means either shelling out to the `ctx-cage`/`ctx-run` binaries or embedding `lifecycle::execute(&Resolved) -> Result<i32, CageError>` and `bwrap::build_bwrap_args` directly.
+`crates/ctx-cage/` is the process-sandboxing crate: it builds bwrap-based
+cages, brokers tool execution and API egress across the sandbox boundary,
+and ships the static mount assets and test suite that pin its ADR-encoded
+security guarantees. A caller depends on this crate for `lifecycle::execute`,
+`cli::resolve_mode`, and the bwrap/proxy/protocol types; internal argv
+construction, frame encoding, and header rewriting stay private to `src/`.
 
-The crate has three parts. `src/` is the implementation, split cleanly along the cage boundary (host-side CLI/bwrap/proxy/runtime/lifecycle vs. guest-side broker/spawn/protocol), with `summarize.rs` as an unrelated post-run concern. `assets/` supplies the two static payloads the sandbox injects verbatim at runtime — an nsswitch config and the agent's system-prompt doctrine (`cage-rules.md`) — which must stay synchronized with tool names and NSS sources actually present in the cage; nothing here is parsed, so a rename in `src/` silently breaks the prompt unless the asset is updated too. `tests/` exercises each subsystem in isolation, with `common/` as the only shared fixture (synthetic `BwrapConfig`) and duplicated (not shared) socket-uniqueness and shape-mirroring conventions against `bwrap`, `cli`, and `proxy`.
+The three subtrees are tightly bound by shared invariants rather than by
+any code relationship: `assets/`'s `cage-resolv.conf` and `cage-nsswitch.conf`
+implement the offline-DNS-fallback behavior that `src/bwrap/` mounts into
+the cage and that `tests/bwrap_build.rs` + `tests/cage_assets.rs` jointly
+verify (ADR-049) — a change to the DNS strategy touches all three
+directories together. `src/`'s length-prefixed frame format is exercised
+in `tests/protocol.rs`, `broker_loopback.rs`, and `proxy.rs` via real
+transports rather than mocks, so a protocol change requires updating the
+crate and revalidating all three test files. The real API key/credential
+never crosses into the cage except through `src/proxy.rs`; nothing in
+`assets/` or `tests/` bypasses that boundary.
 
-Crate-wide invariants that span these directories: `ANTHROPIC_API_KEY` must never enter cage env (both `src/proxy.rs` and `src/runtime.rs` depend on this); `target_root` is canonicalized once and used verbatim everywhere (bwrap binds, trust-map key, git-dirty check); secrets/masks are always empty regular files, never `/dev/null`; and `CAGE_RULES_MD` (compiled from `assets/cage-rules.md`) must be passed via `--append-system-prompt-file` on every real `claude` launch — any new launcher path or asset rename has to preserve that link across `src/lib.rs`, `assets/`, and the launcher code together.
+`assets/` is passive configuration mounted by (external-to-this-crate)
+setup code plus one prompt-injection doc; `src/` is the sandbox engine;
+`tests/` is the executable spec for bwrap layout, DNS fallback, secret
+masking, and stderr-safety during interactive PTY use.
 
-No `intent.md` exists at any level, so no divergence can be assessed.
+No intent.md exists, so no divergence can be assessed.

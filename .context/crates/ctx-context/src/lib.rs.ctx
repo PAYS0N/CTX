@@ -1,8 +1,5 @@
-file: crates/ctx-context/src/lib.rs
-behavior: Crate root for ctx-context; declares the module tree that computes and prints the summary/rollup chain above a path and injects it into Claude Code sessions via hook mode. Carries no logic itself.
-edit_notes:
-  - Post "lead-by-hooks pivot": agents edit source directly with native tools; this crate is read-only context serving, not an editing surface.
-  - serve, session, and hook are documented as pure over the env::Env boundary — keep argv/process/network I/O out of those modules and confined to the binary shell that calls cli::dispatch.
-functions:
-invariants:
-external_deps:
+Crate root for `ctx-context`, the read-side of the CTX context system: computes and prints the rollup/intent summary chain above a given path, and provides a Claude Code hook that injects that chain into a session.
+
+The file itself is just module declarations plus a doc comment establishing the architecture; no logic lives here. Key architectural fact stated in the doc comment: agents edit source directly with native tools now (post "lead-by-hooks pivot") — this crate is read-only tooling, not a write-side context manager. `serve`, `session`, and `hook` are described as pure over the `env::Env` boundary, meaning they take an `Env` abstraction rather than touching argv/filesystem/network directly; if editing those modules, preserve that boundary rather than reaching for `std::env` or `std::process` directly.
+
+The binary entrypoint (elsewhere) is a thin wrapper over `cli::dispatch`, so CLI parsing/dispatch logic belongs in `cli`, not in `main`. Module list: `chain` (builds the summary chain), `cli` (argv dispatch), `env` (the `Env` abstraction), `error`, `freshness` (staleness checks against the hash tree implied by the wider CTX system), `hook` (Claude Code injection), `repo_path`, `serve` (prints the chain), `session`.

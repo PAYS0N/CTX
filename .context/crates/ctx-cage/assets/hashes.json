@@ -1,7 +1,8 @@
 {
-  "hash": "3e56b51f8cf3cdcbb55d3ea761130c6a839af30065bb3281527df6a471e3c4b8",
+  "hash": "f5bc0bd2c3a5d8d5475e3b1b59f2124571c2457f4615c3c920d597f9f40c2ea7",
   "children": {
     "cage-nsswitch.conf": "f:7cde27ca7cbe54e57d7219d4d9c7dac237be6b59e710d17d3c2239e2cf2e37f5",
-    "cage-rules.md": "f:d365741254622e30baa8c35d9e11475271348f273adb982e1ef571d54e76cf80"
+    "cage-resolv.conf": "f:885ad8275e35f2e9b25afff9c90cb0da99b9d1ee5c838151ca0fd46f57c95b3c",
+    "cage-rules.md": "f:49b0d3163c94696dd818808ec6eb42f9defe8d2a9e59c38fe50389cfa11d0939"
   }
 }

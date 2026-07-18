@@ -1,11 +1,41 @@
-## crates/ctx-cage/src/proxy.rs
+# crates/ctx-cage/src/proxy.rs
 
-Host-side HTTP-over-UNIX-socket-to-TLS proxy: the sole egress point for an offline cage. The in-cage relay forwards `127.0.0.1:8080` to a UNIX socket bind-mounted at `/run/ctx/api.sock`; this file accepts those connections, rewrites the request head, dials the upstream API over TLS, and pumps bytes in both directions.
+Host-side API proxy: the only egress path for the offline cage. Listens
+on a UNIX socket bind-mounted into the cage at `/run/ctx/api.sock`; the
+in-cage relay forwards `127.0.0.1:8080` to it. Per connection: reads the
+HTTP/1.1 request head, rewrites it, dials upstream over TLS, and pumps
+bytes both ways.
 
-Two auth postures, selected by `ProxyConfig.api_key`: `Some(key)` strips any client-supplied `x-api-key`/`Authorization` header and injects the real key host-side (cage never sees it); `None` passes the client's own `Authorization` through untouched (subscription-OAuth posture). `is_owned_header` encodes exactly which headers the proxy takes over — `Host` and `Connection` always, `x-api-key`/`Authorization` only when injecting — and `rewrite_head` is a pure function over head text built from that predicate, easy to unit-test without sockets.
+Two auth postures via `ProxyConfig.api_key`: `Some(key)` strips any
+client credential and injects the real `x-api-key` host-side (cage only
+sees a placeholder); `None` passes the client's own `Authorization`
+through unmodified (subscription-OAuth posture — the bound credential
+authenticates, proxy is just the controlled egress).
 
-TLS/process-spawning is quarantined behind the `Upstream` trait; the real impl (`SocatUpstream`) shells out to `socat -t 86400 - OPENSSL:<host>:443,verify=1,...` rather than linking a TLS crate — the long timeout (`86400`s) is a deliberate half-close workaround referenced as "the ADR-028 lesson." No TLS library is used directly in this crate; swapping upstream behavior means implementing `Upstream`, not editing this file's socket code.
+Header rewriting (`rewrite_head`, in `head.rs`) is a pure function over
+text; TLS/sockets are isolated behind the `Upstream` trait seam. Default
+impl `SocatUpstream` shells out to `socat - OPENSSL:<host>:443,verify=1,...`
+with a 24h (`-t 86400`) timeout — this long half-close timeout is
+deliberate (referenced as "the ADR-028 lesson"); no TLS stack lives in
+this crate.
 
-`read_head` scans for `\r\n\r\n`, capping at `MAX_HEAD` (64 KiB) and erroring (`CageError::Protocol`) on EOF-before-terminator or oversize — never panics on malformed input, but leftover body bytes already read past the head are captured and forwarded verbatim (not re-parsed as HTTP framing — no chunked/length awareness anywhere in this file).
+Diagnostics go to `cfg.log_path` via `log_line`/`log_stdio`, never to
+inherited stdio — during interactive runs stdio is the host terminal in
+raw mode owned by `pty.rs`'s PTY relay thread, and writing there directly
+would race/corrupt the display. Logging failures are swallowed, never
+propagated or panicking.
 
-`serve_conn<U: Upstream>(client, cfg, upstream) -> Result<(), CageError>` handles one connection: reads head, rewrites it, dials, writes rewritten head + leftover bytes upstream, then pumps client→upstream on a spawned thread while pumping upstream→client on the calling thread; shuts down and joins on completion. `serve<U: Upstream + 'static>(listener, cfg: &Arc<ProxyConfig>, upstream: &Arc<U>, stop: &AtomicBool) -> Result<(), CageError>` is a nonblocking accept loop, one thread per connection, polling `stop` every `ACCEPT_IDLE` (20ms) for shutdown. `pump` is best-effort — read/write errors silently end the connection, never propagated.
+Key functions: `serve_conn<U: Upstream>(client, cfg, upstream) ->
+Result<(), CageError>` handles one connection (head read, rewrite, dial,
+bidirectional pump via a spawned thread for the client→upstream
+direction). `serve<U>(listener, cfg, upstream, stop: &AtomicBool)` is the
+accept loop — nonblocking, one thread per connection, polls `stop` every
+`ACCEPT_IDLE` (20ms) to allow clean shutdown.
+
+`pub(crate) fn pump` is reused by the interactive PTY relay in
+`lifecycle::run::pty` — best-effort byte copy, silently stops on any
+read/write error, always flushes on exit.
+
+Coupling: `ProxyConfig` and the placeholder-credential convention must
+stay consistent with whatever code constructs the in-cage relay pointing
+at `/run/ctx/api.sock`.

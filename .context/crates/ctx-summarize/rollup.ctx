@@ -1,29 +1,7 @@
-`crates/ctx-summarize` is the leaf-up context summarization tool: given
-repo-relative source paths, it produces `.ctx` files per file and
-`rollup.ctx` files per ancestor directory by driving a pluggable `Agent`
-(subprocess wire contract) over prompts loaded from disk, gated by
-filesystem/scope/safety checks. Depending on this crate's binary gets you
-a CLI with two target-selection modes (`FromCache` off ctx-access's task
-cache, or explicit `Paths`) and an `--approve` bypass for oversized scope;
-depending on the library gets you `dispatch`/`run`/`run_with_prompts` as
-the stable entry points, with everything else swappable for testing.
+`crates/ctx-summarize` is the `ctx-summarize` binary crate as a whole: a repo-scoped summarizer that generates leaf `.ctx` files via an LLM agent and rolls them up bottom-up into `rollup.ctx`, plus its integration test suite.
 
-The crate is a strict layer stack — `Cargo.toml` fixes the package/binary
-split and the `../ctx-core` path dependency that must stay in sync with
-workspace layout; `src/` enforces cli → runner → {fs, agent, cache, cpath,
-error} and owns the one true source-path-to-`.context`-path mapping,
-the prompt-loading-not-embedding rule, and the shared `SummError` type
-that crosses every module boundary; `tests/` is a single integration file
-whose fakes (`FakeFs`, `RecordingAgent`) must track the `Fs`/`Agent` trait
-signatures defined in `src/` and whose assertions pin the crate's two
-load-bearing behaviors: leaves are always written before rollups, and
-`intent.md` is never written by any code path here, only read.
+`src/` holds all logic: strict layering (main.rs → cli.rs → runner.rs), the `Fs`/`Agent` trait seams, `cpath.rs` path handling, and the shared `SummError` type. The two load-bearing cross-cutting contracts are the `--- label ---` rollup input format and the `.context` mirror-path duplication with `ctx-context` — both must be checked wherever they're touched. Prompts live in files, never as code constants; `intent.md` is read-only to this crate. Rollup ordering (leaf-to-root, strictly-decreasing depth) is guaranteed by `runner::affected_dirs`.
 
-Cross-cutting invariant for anyone editing across `src/` and `tests/`:
-every distinct failure mode (path traversal, missing prompt, oversized
-unapproved scope, secret-like path) must surface as its own `SummError`
-variant, and the integration tests are the single place all of these are
-exercised together — a new failure mode added in `src/error.rs` without a
-matching case in `tests/summarize.rs` is untested by construction.
+`tests/` is a single integration file (`summarize.rs`) exercising this ordering guarantee, gating errors (path traversal, missing prompts, oversized scope, secret-like paths), and the Fs/Agent contracts via fakes and real subprocess calls. Its `FakeFs`/`RecordingAgent` doubles must track any trait signature change in `src/fs.rs` / `src/agent.rs` — this is the one coupling that spans the two subdirectories: a trait change in `src/` breaks compilation in `tests/` until the doubles are updated.
 
-No `intent.md` exists for this directory, so no divergence can be assessed.
+No divergence from stated intent at this level (no `intent.md` present here).

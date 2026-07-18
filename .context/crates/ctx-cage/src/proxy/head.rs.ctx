@@ -1,0 +1,7 @@
+Parses and rewrites raw HTTP/1.1 request heads over a Unix socket for the proxy in `super` (crates/ctx-cage/src/proxy/); split into this file purely to satisfy a workspace file-length lint, not for architectural reasons.
+
+`read_head(stream: &mut UnixStream) -> Result<(String, Vec<u8>), CageError>` reads until `\r\n\r\n`, returning the head text (lossy UTF-8) and any body bytes already read past the terminator — callers must prepend that leftover to subsequent body reads. Enforces `MAX_HEAD` (64 KiB); returns `CageError::Protocol` on EOF before a terminator or oversized head, `CageError::Io` on read failure. Never panics on malformed input.
+
+`rewrite_head(head: &str, cfg: &ProxyConfig) -> String` strips `Host`, `Connection`, and — only when `cfg.api_key.is_some()` — `x-api-key`/`Authorization` from the client's head, then appends proxy-controlled `Host`, optional `x-api-key` (from `cfg.api_key`), and always `Connection: close`. Client-supplied credential headers are only dropped in injection mode; if no `api_key` is configured, client `Authorization`/`x-api-key` headers pass through untouched — this is load-bearing for the "bring your own key" proxy mode. `head` passed in must exclude the trailing blank line (already split off by `read_head`'s terminator logic).
+
+Pure string logic, no I/O in `rewrite_head`; `is_owned_header` is case-insensitive via `to_ascii_lowercase`.

@@ -1,0 +1,9 @@
+## `crates/ctx-cage/src/lifecycle/run/pty/input_relay.rs`
+
+Relays host stdin bytes into the PTY master during a cage session, on a dedicated thread that must be cancellable rather than left blocked in `read` forever.
+
+The core risk this file guards against: a detached, unjoined relay thread outlives the cage session and can steal input from a later, unrelated read of real stdin (e.g. `ctx-run`'s post-session summarize y/n prompt), causing that prompt to hang. To avoid this, cancellation uses a self-pipe (`cancel` fd) polled alongside stdin via `nix::poll`, not a blocking `read` alone — dropping the pipe's write end raises `POLLHUP` and wakes the loop.
+
+`spawn_input_relay(to_master: File, cancel: OwnedFd) -> Option<thread::JoinHandle<()>>` dups stdin and spawns the relay thread; returns `None` if the dup fails. `stop_input_relay(cancel_write: OwnedFd, input: Option<thread::JoinHandle<()>>)` drops the write end to trigger `POLLHUP` and joins the thread — callers must call this to guarantee the thread (and its duped stdin fd) is gone before proceeding, e.g. before any subsequent read of real stdin.
+
+`input_relay_loop` and `wait_for_input` are private but structured for direct unit testing (see `cancel_wakes_a_blocked_relay_loop`, which regresses the y/n hang by asserting a blocked loop exits within 2s of cancellation). `wait_for_input` returns `false` (stop) on poll error or when the cancel fd is readable/hung-up, treating an ambiguous `any()` result on the cancel fd as "stop" and on stdin as "don't proceed" — i.e. failure modes bias toward exiting the loop rather than spinning.

@@ -1,7 +1,7 @@
-Enforces the project's zero-unused-dependency policy (docs/SPEC.md) by wrapping `cargo-machete` in the same offline static-check style as `cycle_check.sh`. Invoked as `machete_check.sh [ROOT=.]`, it `cd`s into `ROOT` before running.
+Runs `cargo-machete` to detect unused Cargo dependencies across the workspace and reports each finding as a `FAIL:` line to stderr; exits nonzero if any unused dependency is found or the tool errors.
 
-A missing `cargo-machete` binary is a hard `FAIL` (exit 1), not a skipped check — reflecting stated policy that "no unused dependencies" must always be verified, never silently bypassed.
+A missing `cargo-machete` binary is a hard `FAIL` (with an install hint), not a skipped check — deliberately different from tools that degrade gracefully, because this check's whole job is asserting "no unused deps," so silently skipping would make ctx-verify's pass look meaningful when it wasn't. Same posture as `cycle_check.sh`.
 
-The interesting logic is the awk parser translating cargo-machete's grouped report format (`<crate> -- <path>/Cargo.toml:` header followed by tab-indented dep names) into one `FAIL: <path> unused dependency '<dep>'` line per dependency, printed to stderr. If cargo-machete exits nonzero but produces no line matching that shape (e.g. it can't read a manifest), the script still emits a generic `FAIL: cargo machete failed` line rather than exiting silently — this is the fallback branch guarding against format drift in cargo-machete's own output.
+Takes one optional arg, the workspace root (default `.`), and `cd`s into it before running.
 
-Exit code is 0 only if cargo-machete ran and reported zero unused dependencies; any parsed failure or unparseable error sets exit 1.
+Parses `cargo machete`'s stdout+stderr via `awk`, expecting its exact report shape: a header line `<crate> -- <path/Cargo.toml>:` followed by tab-indented dep names. Each dep line becomes `FAIL: <path> unused dependency '<dep>'`. If `cargo machete` exits nonzero but the awk parse yields zero findings (e.g., it couldn't read a manifest), emits a generic `FAIL: cargo machete failed` fallback so errors are never silently swallowed. Tracks pass/fail via a `FAIL` flag rather than trusting `cargo machete`'s own exit code directly, since that code conflates "found unused deps" with "tool error."

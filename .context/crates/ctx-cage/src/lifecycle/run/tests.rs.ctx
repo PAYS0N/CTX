@@ -1,0 +1,9 @@
+Test module for `crates/ctx-cage/src/lifecycle/run/` covering two distinct behaviors: the relay-wait snippet's readiness probe, and the `setsid --ctty` controlling-terminal fix (ADR-048).
+
+`waits_out_a_delayed_relay_bind_then_proceeds` simulates a `socat` listener binding 300ms late, asserting `wait_for_relay_snippet` (from `super`) blocks past the delay (≥250ms) but succeeds well within its 5s budget — guards against both a false-pass and an overlong stall.
+
+`never_opens_a_connection_to_the_listener` is a regression test: the probe must use `/proc/net/tcp` inspection, not an actual TCP connect, because a real connect on the production `socat ...,fork` relay gets forwarded into the host-side proxy and produces spurious "EOF before request head" errors on every startup. Asserts zero accepts occur on a bound listener during the probe window.
+
+The `setsid_ctty_*` test validates `super::claude_cmd`'s interactive launch wraps in `setsid --ctty --wait`, needed because under `--unshare-pid` a caged process with no controlling terminal makes Node's readline busy-spin (`tcgetpgrp` → ENOTTY). Uses `nix::openpty` to build a private PTY and a `/proc/self/stat`-parsing shell probe (`stat_probe_script`) to check session-leader/foreground-pgrp/tty invariants directly, without needing bwrap or a user namespace. The probe reads `/proc/self/stat` via a shell `read` builtin redirect specifically so `/proc/self` resolves to the shell itself (session leader), not a `cat` subprocess — using `$(cat …)` would break the test.
+
+Test ports are derived from `std::process::id()` (`test_port`) to avoid collisions between parallel `cargo test` runs and pre-existing bound ports on dev machines.

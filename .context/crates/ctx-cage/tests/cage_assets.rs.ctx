@@ -1,0 +1,5 @@
+Tests guarding the embedded `CAGE_RESOLV_CONF` asset (from `ctx_cage`) against two content regressions that would only manifest as runtime hangs, not compile errors.
+
+Defines a local `nameservers()` helper that parses `nameserver` lines (trimmed, comments stripped) out of the embedded resolv.conf string. Two invariants enforced, both tied to ADR-049: (1) the file must declare at least one nameserver — an empty/comment-only file makes the resolver silently default to `127.0.0.1:53`; (2) no declared nameserver may be loopback (`127.*`, `::1`, `[::1]`) — inside the cage's netns, loopback:53 is refused instantly, causing the resolver to spin in a tight retry loop and burn a full core, whereas a non-loopback address (never actually reachable, since the cage is offline) fails slowly, which is the desired behavior.
+
+Editing `cage-resolv.conf`'s embedded content must keep at least one non-loopback nameserver line or these tests fail.

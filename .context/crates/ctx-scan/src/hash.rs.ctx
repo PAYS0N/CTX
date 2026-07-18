@@ -1,29 +1,35 @@
-file: crates/ctx-scan/src/hash.rs
-behavior: Computes and persists a CACT-style content-hash Merkle tree over source files for change detection, and diffs stored vs. recomputed trees to determine which directory rollups and leaf summaries are stale.
-edit_notes:
-  - Freshness is defined entirely by these hashes, never by git; must stay decoupled from git state to catch gitignore-invisible edits.
-  - Sidecar format is `.context/<dir>/hashes.json` holding one `DirNode` per directory; path derived via `cpath::context_dir_of`/`ancestor_dirs`, must stay in sync with ctx-summarize's cpath module.
-  - Aggregate hash is over newline-joined `name=entry` pairs sorted by BTreeMap key order; changing serialization format invalidates all existing sidecars.
-  - Orphan leaf detection assumes leaf `.ctx` files are named `<name>.ctx` under `context_dir_of(dir)`.
-functions:
-  - name: compute
-    signature: pub fn compute(base: &Path, files: &[String]) -> Result<TreeState, ScanError>
-    purpose: Builds the current hash tree by reading and hashing each file under base, then aggregating directory nodes.
-  - name: load_stored
-    signature: pub fn load_stored<F: Fs>(fs: &F, current: &TreeState) -> TreeState
-    purpose: Loads previously persisted DirNode sidecars for every directory the current tree covers.
-    notes: Missing or corrupt sidecar is treated as absent rather than erroring, forcing that directory stale.
-  - name: store
-    signature: pub fn store<F: Fs>(fs: &F, state: &TreeState) -> Result<(), ScanError>
-    purpose: Writes each directory's DirNode as pretty JSON to its sidecar path.
-  - name: diff
-    signature: pub fn diff(current: &TreeState, stored: &TreeState) -> Staleness
-    purpose: Compares current against stored trees to produce stale directories (deepest-first), changed files, and orphaned leaves.
-invariants:
-  - stale_dirs is sorted deepest-first so callers can regenerate bottom-up.
-  - A directory's hash changes if and only if any child entry (file hash or subdirectory hash) changes, propagating up to root.
-  - Staleness::is_fresh() true iff all three fields are empty.
-external_deps:
-  - sha2: SHA-256 used for both leaf file hashes and directory aggregate hashes.
-  - ctx_summarize::cpath: shared path-mapping helpers (ancestor_dirs, context_dir_of) that define the on-disk sidecar layout, must match ctx-summarize's own usage.
-  - ctx_summarize::fs::Fs: injected filesystem trait for testability of load_stored/store.
+## crates/ctx-scan/src/hash.rs
+
+Computes and diffs the content-hash tree that drives change detection for
+the whole summarization pipeline — the CACT (content-addressed context
+tree) mechanism. Freshness is decided purely from SHA-256 hashes stored
+in `.context/<dir>/hashes.json`, never from git state, so gitignored or
+uncommitted edits are still detected and a clean git tree isn't mistaken
+for a fresh summary tree.
+
+Core model: `TreeState.dirs` maps repo-relative directory (`""` = root)
+to a `DirNode` (from `ctx_core::hashtree`) whose `children` map holds
+either `f:<hex>` (file hash) or `d:<hex>` (child directory's aggregate
+hash) entries. `aggregate()` computes each directory's hash deepest-first
+by hashing its sorted `name=hash\n` child lines, then folds the result
+into the parent as a `d:` entry — this is what makes any leaf change
+propagate to the root.
+
+Key functions: `compute(base, files) -> Result<TreeState, ScanError>`
+rebuilds the tree from current file contents. `load_stored<F: Fs>(fs,
+current) -> TreeState` reads sidecars per directory in `current`; a
+missing or corrupt sidecar is treated as absent (not an error), meaning
+that directory reads as stale. `store<F: Fs>(fs, state) ->
+Result<(), ScanError>` persists all nodes. `diff(current, stored) ->
+Staleness` yields `stale_dirs` (deepest-first order, for bottom-up
+regeneration), `changed_files`, and `orphan_leaves` (source deleted but
+`.ctx` still recorded). `record_missing_artifacts<F: Fs>(fs, current,
+out: &mut Staleness)` separately checks that every expected
+`rollup.ctx`/leaf `.ctx` actually exists on disk — this catches summaries
+deleted by hand or never generated, since hash-only diffing can't see
+artifact absence (a gap here is invisible to plain `diff`).
+
+Depends on `ctx_summarize::cpath` for the `.context/` mirroring
+convention and `ctx_summarize::fs::Fs` trait for testable I/O — both
+must stay in sync with how the rest of the summarizer lays out context
+directories.

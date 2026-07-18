@@ -1,10 +1,13 @@
 {
-  "hash": "e44f22cbd95280f272ec70aecea6e37df3973ef226d55a81f86d4a0050b38976",
+  "hash": "13bbae51a00eaac5756afe641adcfe288ed249afcaf7a241169b376770af6556",
   "children": {
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
-    "machete_check.sh": "f:360bf22094b1f192a2e480f1578b0654d30a169f26af19e455c1818bb2982c17",
+    "gen_readme_architecture.sh": "f:767add4806fb1862cb6d4d2981a37236a7baf398e8c1ac5095e5ba26b4c0fc6c",
+    "gen_tool_contracts.sh": "f:ef2d2771fa6c1417c73e969b8a6652d20d3e87c80cc5f17c11b177e63ec9493a",
+    "machete_check.sh": "f:28bdcd70df8fd6cbcc17480e40a9f1647aac557758ed537cece9e86b61def759",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",
-    "workspace_lints_check.sh": "f:f4f449d45adb735b7a42897d8ea4187fbc47930b8db7e80761a4a0c0dbed61e7"
+    "retired_terms_check.sh": "f:8d0d8f0e704ad980feceaec44bd861cd3550a63b1094f4196769bef7fa572f30",
+    "workspace_lints_check.sh": "f:ecfd025caf75a20dbeab3cec14524c5599f62d286787d3faa031d88e3dec43c8"
   }
 }

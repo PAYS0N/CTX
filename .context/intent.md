@@ -11,10 +11,10 @@ agents to read project context **top-down before acting on any file**.
 
 Three standing goals, stated so they survive a change of mechanism. *How*
 each is currently realized — the tools, their flags, the hook wiring — is
-described in the regenerated root rollup (`ctx-context .`), specified in
-`docs/SPEC.md`, and tracked in `docs/STATUS.md`; it is deliberately not
-restated here, because a goal that names its implementation drifts the
-moment the implementation changes.
+described in the regenerated root rollup (`ctx-context .`) and tracked in
+`docs/STATUS.md`; it is deliberately not restated here, because a goal
+that names its implementation drifts the moment the implementation
+changes.
 
 - **Layer 1 — enforcement:** make whole classes of defect
   *unrepresentable*, not merely discouraged, by building every crate —
@@ -56,6 +56,6 @@ Autonomous agents. Human ergonomics is an explicit non-goal.
 
 This document states *what* and *must*. For *why* a choice was made and
 what was rejected, see `docs/DECISIONS.md` (ADR log). Current state and
-the active plan are in `docs/STATUS.md`; current mechanism is in
-`docs/SPEC.md` and the regenerated rollups. Do not restate ADR content or
+the active plan are in `docs/STATUS.md`; current mechanism is in the
+regenerated rollups (`ctx-context .`). Do not restate ADR content or
 current mechanism here; point to them.

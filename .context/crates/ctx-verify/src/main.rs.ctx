@@ -1,17 +1,9 @@
-file: crates/ctx-verify/src/main.rs
-behavior: CLI entry point for ctx-verify; parses argv, executes verification checks via ProcRunner, streams a JSON report to stdout, and maps pass/fail/error to a process exit code.
-edit_notes:
-  - All actual logic lives in ctx_verify::cli::run and ctx_verify::runner::ProcRunner; this file is only argv parsing, I/O wiring, and exit code mapping.
-  - Output must go through writer handles (stdout/stderr locks), never println!/eprintln!, to keep run() testable with arbitrary writers.
-functions:
-  - name: emit
-    signature: fn emit<W: Write>(mut w: W, msg: &str)
-    purpose: Writes a message to a handle, silently ignoring write failures.
-    notes: Deliberately swallows the write error; no fallback if the error channel is broken.
-  - name: main
-    signature: fn main() -> ExitCode
-    purpose: Parses CLI args, runs checks, and returns SUCCESS (0), 1 on failure, or 2 on error.
-invariants:
-  - Exit code is 0 only when run() returns Ok(true); Ok(false) yields 1; any Err yields 2.
-external_deps:
-  - clap: Cli derives Parser for argv parsing.
+Binary entry point for `ctx-verify`; contains no verification logic itself — all real work is delegated to `ctx_verify::cli::run` and `ctx_verify::runner::ProcRunner`.
+
+Handles `--contract` specially: checked via raw `std::env::args()` scan *before* `Cli::parse()` runs, so it bypasses clap entirely and prints `ctx_verify::cli::CONTRACT` then exits 0. Any new clap-level flag named `--contract` would be shadowed by this pre-check.
+
+Exit code convention: `Ok(true)` → 0 (checks passed), `Ok(false)` → 1 (checks failed), `Err` → 2 (tool error, message written to stderr). Callers scripting around this binary rely on that three-way split.
+
+All output goes through explicit writer handles (`stdout().lock()`, `stderr().lock()`), never `println!`/`eprintln!` — this is deliberate so `cli::run` can be tested by passing an in-memory writer instead of real stdout.
+
+`emit` swallows write failures silently (empty `if result.is_err() {}`) — intentional, since if the output/error channel itself is broken there's no way to report that failure.

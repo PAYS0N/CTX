@@ -1,5 +1,22 @@
-`crates/ctx-cage/assets` holds static, non-Rust payloads that ctx-cage bind-mounts or injects into the sandboxed environment at runtime — a config file for the container's network stack and a markdown system prompt for the agent running inside it. Depending on this directory means depending on exact file contents, not an API; nothing here is parsed or transformed by the crate before use.
+`crates/ctx-cage/assets/` holds static configuration files bind-mounted into
+the sandboxed container at cage setup time — they are data, not code, and
+their contracts are entirely about what gets mounted where and why the
+specific values were chosen.
 
-The two files serve orthogonal layers of the same sandbox: `cage-nsswitch.conf` fixes how the *container* resolves hostnames (must keep `files`+`dns`, must omit systemd-only NSS sources that don't exist in the cage), while `cage-rules.md` fixes how the *agent* is told to behave inside that container (native tools, `.context/` as authoritative, `ctx-verify` over raw cargo, no network/secrets/destructive git). Neither references the other, but both must stay synchronized with the actual sandbox setup code elsewhere in the crate: renaming `ctx-verify`, changing `.context/` mechanics, or altering the container's available NSS sockets requires updating the corresponding file here, or the mount/prompt will lie to whatever it constrains.
+Two files govern network behavior inside the offline netns: `cage-nsswitch.conf`
+(mounted at `/etc/nsswitch.conf`) enables `files`+`dns` resolution, while
+`cage-resolv.conf` (mounted at `/etc/resolv.conf`) points DNS at an
+intentionally unreachable TEST-NET-1 address so lookups fail slowly instead
+of busy-looping the CPU. These two are coupled only through the cage's mount
+setup code (not present in this directory) — an editor changing one should
+check that the other still makes sense for the same offline-network model.
+Neither has any other consumer.
 
-Edits to either file are prompt/config engineering, not code: changes should be evaluated against what the live sandbox actually provides (available sockets, actual tool names), not general correctness.
+`cage-rules.md` is unrelated to the network files — it's a prompt asset
+injected into the agent's session, defining the operating contract (real
+writable repo, native tools, ignore stale brokered-access docs). Wording
+changes here affect agent behavior directly, not sandbox mechanics.
+
+All three files are mounted read-only and consumed by the (external) cage
+setup code; nothing in this directory itself enforces the mounts or reads
+these files at runtime.

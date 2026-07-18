@@ -150,6 +150,13 @@ const SPECS: &[Spec] = &[
         parser: script_parser,
     },
     Spec {
+        name: "architecture",
+        tool: "bash",
+        args: &["scripts/gen_readme_architecture.sh", "--check", "."],
+        envs: &[],
+        parser: script_parser,
+    },
+    Spec {
         name: "retired_terms",
         tool: "bash",
         args: &["scripts/retired_terms_check.sh", "."],

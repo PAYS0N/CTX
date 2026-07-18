@@ -1,12 +1,15 @@
-Test suite for `ctx_cage::bwrap::build_bwrap_args`, the pure argv builder that turns a `BwrapConfig` into the `bwrap(1)` command-line sandboxing a build. No sandbox is actually invoked — assertions only inspect the constructed `Vec<OsString>`.
+Test suite for `ctx_cage::bwrap::build_bwrap_args`, the pure argv builder that constructs the `bwrap` sandbox command line. Exercises every bind family against a `sample_config()` fixture rather than testing the real binary.
 
-Encodes several load-bearing invariants of the builder that must be preserved if it's edited:
+Key asserted invariants an editor must preserve in `bwrap.rs`:
 
-- The workspace (`target_root`) is bound read-write at its own real host path, not a fixed `/work` alias (ADR-046) — a build compiled inside the cage must see the identical absolute path outside it.
-- Secret masks (`secret_masks`) are `--ro-bind`-mounted from `mask_file`, which must be a regular file, never `/dev/null` — bind mounts carry `nodev`, so masking with a device node breaks readers like git.
-- `--chdir` always matches the workspace bind path exactly.
-- Network is unconditionally unshared (`--unshare-net`) and env is cleared (`--clearenv`) regardless of config; `--die-with-parent` is always present. `--new-session` is present only when `cfg.new_session` is true (dropped in interactive mode), while `--unshare-net` stays present either way.
-- Toolchain paths and tool binds are read-only (`--ro-bind`), with tool binds remapped into `CAGE_BIN` (e.g. `${CAGE_BIN}/ctx-verify`); `cage_rules_path` is bound to the fixed `CAGE_RULES_PATH`, and `rundir` to `CAGE_RUN_DIR`.
-- `rw_binds` entries are emitted as `--bind` (writable), `env` entries as `--setenv`, and `cage_cmd` follows a `--` separator as the final argv tail.
+- Workspace is bound at its own real host path (`--bind /home/u/proj /home/u/proj`), not a fixed `/work` alias — required so a build compiled inside the cage sees identical paths outside it (ADR-046).
+- Secret masks bind a regular file (`mask_file`), never `/dev/null` — bind mounts carry `nodev`, so masking with a device node breaks readers like git. Test explicitly checks `/dev/null` never appears in argv.
+- `--chdir` must equal the workspace bind target exactly.
+- A stub `resolv.conf` must be `--ro-bind`ed over `CAGE_RESOLV_PATH`; omitting it makes DNS fall back to `127.0.0.1:53` and spin on ECONNREFUSED (ADR-049).
+- Network is unconditionally unshared (`--unshare-net`) and env is cleared (`--clearenv`), plus `--die-with-parent` always present, regardless of `new_session`.
+- `new_session` config flag toggles only `--new-session` presence; network unsharing is independent of it.
+- Toolchain paths and tool binds (mapped into `CAGE_BIN`) are always `--ro-bind`; `rw_binds` entries use `--bind`.
+- `cage_rules_path` binds RO to `CAGE_RULES_PATH`; `rundir` binds RO to `CAGE_RUN_DIR`.
+- Trailing `--` separator precedes the literal `cage_cmd` argv.
 
-Depends on `ctx_cage::bwrap` for `BwrapConfig`, `build_bwrap_args`, and the constants `CAGE_BIN`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR` — any rename/relocation of these constants must be mirrored here. Helper `assert_bind` checks for a contiguous `flag host cage` triple anywhere in argv via windowing, not fixed offsets, so builder reordering of unrelated args won't break these tests.
+Helper `assert_bind` checks the triple `flag host cage` appears as a contiguous window in argv — order/adjacency of bind arguments matters and is implicitly asserted. Depends on `ctx_cage::bwrap`'s public constants (`CAGE_BIN`, `CAGE_RESOLV_PATH`, `CAGE_RULES_PATH`, `CAGE_RUN_DIR`) staying in sync with the builder's own internal use of them.

@@ -51,7 +51,9 @@ sentence. That literal label is read by the auditor, so keep it. Don't
 edit `intent.md`, and don't hedge.
 
 Stay tight: a rollup that runs long is almost always duplicating its
-children, not saying more. (The line budget is fixed in `docs/SPEC.md`.)
+children, not saying more. Target 15 lines; 40 is a hard ceiling. A
+directory whose rollup cannot fit in 40 lines has too much surface area;
+emit anyway and let the audit flag it.
 
 ## Rules
 

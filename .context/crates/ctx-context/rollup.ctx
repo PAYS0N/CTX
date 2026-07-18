@@ -1,27 +1,5 @@
-`crates/ctx-context` is the crate root: a binary+lib that computes and
-delivers the rollup/intent/`.ctx` context chain for a path, either via
-direct CLI invocation or a fail-open Claude Code hook mode. Depending on
-this crate as a library gets you exactly two entry points —
-`cli::dispatch` and `hook::run` — everything else is internal.
+`crates/ctx-context/` is the ctx CLI/hook crate as a whole: a read-only tool that resolves a repo path to its chain of rollup/intent/leaf context documents and serves that chain as rendered text, either printed directly or injected via a Claude Code `PostToolUse` hook. Depending on this crate as a binary gets you the `ctx` CLI and the hook entry point; both are fail-open and never panic.
 
-The manifest (`Cargo.toml`) fixes the two binary/lib entry points that
-must stay in sync with `src/lib.rs`/`src/main.rs`, and pulls in `clap`
-(CLI parsing) and `thiserror` (the `CtxError` taxonomy used crate-wide
-instead of `anyhow`). `src/` holds the actual pipeline — path validation,
-chain assembly, rendering, session-scoped dedup, and the two callers
-(hook and CLI) that must agree on `session::ENV_SESSION_ID` and the
-"nothing new" `Option<Vec<Node>>` convention. `tests/` exercises that
-pipeline end-to-end against an in-memory `FakeEnv`, never real disk I/O,
-and is split so that chain/render behavior and hook/session dedup
-behavior are pinned in separate files that must be updated together
-whenever a change touches code both traverse (e.g. `chain_for` inside
-`hook::run`).
+`src/` holds the full pipeline (`repo_path` → `chain` → `serve` → `session`) behind a single `Env` I/O abstraction and a single `CtxError` error type, plus the CLI/hook wiring that calls it. `tests/` is the integration suite that pins the external contract of that pipeline — chain ordering and path-escape rejection, the STALE/NEVER-GENERATED/absent-marker freshness trichotomy, and cross-process session dedup — using independently-reimplemented `FakeEnv`s that must stay behaviorally aligned with each other and with the real `Env`.
 
-The crate-spanning invariant carried from `src/`: hook mode must never
-error or panic, only degrade to empty/placeholder output — this is
-enforced in `src/` and independently checked in `tests/hook_session.rs`.
-Any change to `Env::is_dir`/path lookup semantics in `src/env.rs` must
-preserve the prefix-inference convention both test fakes depend on, or
-`tests/` breaks wholesale.
-
-No intent.md exists for this directory, so no divergence check applies.
+The tightest cross-cutting fact spanning both subtrees: chain node ordering, `NodeKind::label()` values, and the rendered `=== id [kind] ===` format are contracts shared by `src`'s renderer and `tests`' fixtures — changing one without the other breaks the suite silently in spirit even where assertions still pass. Similarly, "absent" is always a structured marker/enum on both sides, never an `Err`, and source files never appear as chain node ids. The crate-wide invariant is strict read/serve/inject: nothing here writes `.ctx` or `rollup.ctx` content.

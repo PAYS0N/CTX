@@ -8,9 +8,9 @@
 # checks — unlike `cargo deny`, which needs the full resolved graph.
 #
 # A missing tool is a loud FAIL, not a skip: "no unused dependencies" is
-# stated project policy (docs/SPEC.md, Dependency policy), so silently
-# mapping the missing binary to `skipped` would make ctx-verify's pass
-# misleading. Same posture as cycle_check.sh.
+# enforced here directly, so silently mapping the missing binary to
+# `skipped` would make ctx-verify's pass misleading. Same posture as
+# cycle_check.sh.
 
 set -euo pipefail
 

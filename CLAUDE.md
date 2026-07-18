@@ -1,4 +1,4 @@
-Doctrine: `.context/intent.md` + `docs/SPEC.md`. Rationale:
+Doctrine: `.context/intent.md`. Rationale:
 `docs/DECISIONS.md`. Current focus: `docs/STATUS.md`.
 
 Call `target/debug/ctx-context .`. Do not skip this. 

@@ -1,7 +1,37 @@
-`scripts/` is the repo's CI static-check suite: a set of independent, single-purpose pass/fail scripts enforcing the policies in docs/SPEC.md (no unused deps, no bare `#[allow]`, workspace-wide lint inheritance, function/file size limits) plus two placeholders reserved for future dylint rules. Depending on this directory means running these as gates in CI; each script exits 0/1 with no other side effects and no shared state between them.
+`scripts/` is the collection of CI/lint checks and doc-generators invoked
+by `ctx-verify`'s battery and by manual doc regeneration — each script is
+a standalone bash/python check that either exits nonzero with `FAIL:`
+lines on stderr, or (for the two `gen_*` scripts) rewrites a marked block
+in a doc and supports `--check`/`--write` symmetry.
 
-All git-enumerating scripts (`no_allow_check.sh`, `workspace_lints_check.sh`, `machete_check.sh` indirectly via cd+external tool, `rationale_check.py`) use `git ls-files --cached --others --exclude-standard` rather than a filesystem walk, specifically to avoid racing concurrent `target/` writes and to get `.gitignore` pruning for free — this is a deliberate cross-script convention, not per-file happenstance; if one script's enumeration logic changes, check the others for consistency. Failure output convention is also shared: `FAIL: ` prefixed lines to stderr, `path:line` format where applicable (grep-forced multi-file mode in `no_allow_check.sh`) matching what ctx-verify's parser expects.
+All the `*_check.sh` lint scripts share one enumeration contract: file
+discovery goes through `git ls-files -z --cached --others
+--exclude-standard`, never a filesystem walk, so results are a pure
+function of git state and don't race concurrent `target/` writes or scan
+gitignored paths. They also share an output contract: failures are
+`FAIL: path:line: message` lines on stderr, produced via `grep -nHF ...
+-- files /dev/null` (the trailing `/dev/null` forces multi-file
+`path:line:` prefixing) so ctx-verify's `split_loc` parser can extract
+`path:line` uniformly — any new check script must follow this shape or
+ctx-verify's parser breaks silently. `no_allow_check.sh` and
+`retired_terms_check.sh` are explicit siblings on this pattern;
+`workspace_lints_check.sh` and `machete_check.sh` follow the same git
+enumeration but with awk-based parsing of tool-specific output.
 
-Two scripts are explicit non-functional placeholders pending dylint rules (see docs/DYLINT_RULES.md): `cycle_check.sh` only checks that `cargo-modules` runs, never that cycles are absent; `rationale_check.py` uses heuristic brace-counting rather than AST parsing and is scoped as an MVP stand-in. `machete_check.sh` and `workspace_lints_check.sh` are the two scripts enforcing hard, always-on policies with no waiver mechanism. `no_allow_check.sh` similarly has no suppression path by design (pre-MVP).
+`cycle_check.sh` and `rationale_check.py` are both explicit MVP
+placeholders deferring real logic to future dylint rules (see
+`docs/DYLINT_RULES.md`) — cycle_check never actually detects cycles yet,
+rationale_check uses brace-heuristics instead of an AST. `machete_check.sh`
+and `no_allow_check.sh`/`retired_terms_check.sh` differ in failure
+philosophy: machete/no_allow/retired_terms hard-fail on missing tools or
+git-tree violations (no graceful skip), since their entire job is a
+negative assertion that would otherwise silently pass.
 
-A caller integrating these into CI must not conflate `cycle_check.sh`'s exit code with actual cycle-freedom — that's the one cross-script trap that isn't obvious from any single script's contract.
+`gen_readme_architecture.sh` and `gen_tool_contracts.sh` both rewrite
+marked blocks in docs using paired `BEGIN GENERATED .../END GENERATED`
+markers and an awk-based `committed_block` extractor plus in-place
+splice; both require pre-existing markers (hard-fail if absent) and both
+support `--check` (accumulate `FAIL=1`, keep going) vs `--write` (exit 1
+immediately on error). `gen_tool_contracts.sh` additionally depends on
+four binaries' `--contract` flag as a de facto wire format — changing
+that output requires re-running `--write`.

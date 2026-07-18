@@ -51,6 +51,9 @@ they opened the file cold:
 If the file is small and does one plain thing, two sentences is the right
 length. Don't pad it to look thorough.
 
+Target 10 lines; 40 is a hard ceiling. A file whose leaf can't fit has too
+much surface area; emit anyway and let the audit flag it.
+
 ## Rules
 
 - Describe what the file IS now, not what changed. No diffs, history,

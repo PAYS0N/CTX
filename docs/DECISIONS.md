@@ -1,8 +1,9 @@
 # Decision Log (ADRs)
 
 Why things are the way they are — including roads not taken. Lightweight
-ADR format. Outcomes also live in `SPEC.md`/code; this file is the
-*rationale and rejected alternatives*, which are otherwise undiscoverable.
+ADR format. Outcomes also live in code and the generated rollups; this
+file is the *rationale and rejected alternatives*, which are otherwise
+undiscoverable.
 `intent.md` files should point here rather than restate this. Append a
 new ADR for every non-obvious choice; never rewrite history (supersede
 with a new ADR).
@@ -1049,3 +1050,42 @@ commit, and history belongs in the ledger. **Owner sign-off:** the
 this SPEC rewrite is itself a sealed-doc change — both are recorded here as
 the mechanical half of "sealed", but the `intent.md` content change needs
 explicit owner confirmation (a human step) before merge.
+
+## ADR-052 — SPEC.md retired; content redistributed
+**Decision:** `docs/SPEC.md` moves to `docs/retired/SPEC.md` (plain
+`git mv`, no content rewrite — historical record, same treatment as
+`docs/retired/SANDBOX.md`). Its content is redistributed rather than
+deleted: **Goals/Non-goals** were already near-duplicates of
+`.context/intent.md` and carry no new content to move. The **Layer 1**
+lint/threshold prose was already mechanically encoded in `Cargo.toml`,
+`clippy.toml`, and `scripts/` — SPEC's own body was descriptive of
+those, not the source of truth. The **Layer 2** leaf/rollup line
+budgets (leaf 10 lines target/40 hard ceiling; rollup 15 lines
+target/40 hard ceiling) are relocated verbatim into
+`prompts/summarizer-leaf.md` and `prompts/summarizer-rollup.md`
+themselves, so those prompts become self-contained — matching SPEC's
+own admission that the prompts, not SPEC's prose, were already the
+authoritative format definition. The **reference-project** rev-3
+dating (2026-05-17; the meal planner replacing the rev-1
+config-validator, the `MealIdeator` trait seam, the deliberately-dropped
+"no networking/async" constraint as dependency-policy stress) is
+recorded here since it was never captured by [[ADR-002]]/[[ADR-003]].
+`docs/DYLINT_RULES.md` stays in `docs/` unchanged — it never referenced
+SPEC.md and needs no inbound pointer to stay discoverable.
+**Rationale:** post-[[ADR-051]], every remaining section of SPEC.md had
+a better home — `.context/intent.md` (goals/invariants), config files
+(lint thresholds), the summarizer prompts (format budgets), the
+generated rollups (context-delivery mechanics as they currently are),
+or this ledger/`docs/STATUS.md` (deferred work, reference-project
+history) — so the document was doing no work a pointer couldn't do, and
+its "sealed, normative" framing had drifted into active contradiction:
+it still read "All checks block in CI. No local overrides," which
+[[ADR-047]] made false the moment the CI stack was retired in favor of
+`ctx-verify` as the local gate. **Rejected:** keeping SPEC.md as a
+thin pointer-only stub — a stub with no unique content is worse than no
+file, since a weak model's grep still lands on it and has to follow yet
+another indirection to find the real source. **Supersedes** the
+"sealed spec" process framing of [[ADR-001]]/[[ADR-051]]: sealedness
+as a *document* is retired along with the document; the underlying
+discipline (a spec change is a deliberate, recorded event) continues as
+this ledger's own append-only, never-rewritten convention.

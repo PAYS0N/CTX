@@ -1,0 +1,9 @@
+Determines whether a served context node (`.ctx` leaf or `rollup.ctx`) still matches its current source, for annotating stale/never-generated markers at serve time. Central entry point is `assess`, called per node as it's served.
+
+This is a per-node, sidecar-local check, not a whole-tree recompute — it fires on every file access, so re-hashing the entire repo would be too costly. Consequence: a deep edit surfaces staleness on the changed leaf and its immediate owning directory's rollup, but not on ancestor rollups further up (their recorded child hashes haven't moved, since they only ever record their direct children's entries, not a transitive hash). Everything is fail-open — missing/unparseable sidecar, unparseable path, or non-hashable node (`NodeKind::Intent`) all yield `Assessment::Unknown`, never an error.
+
+Reads `.context/<dir>/hashes.json` sidecars using `ctx_core::hashtree::{hex_hash, DirNode}` — same schema and hash function `ctx-scan` writes when generating, so the two must stay in sync or every node reads as stale/unknown. Sidecar child entries are tagged `f:<hex>` (file) or `d:<hex>` (subdirectory hash); `current_entry` recomputes one live entry for comparison during rollup checks, recursing into a child dir's own sidecar for `d:` entries but not hashing recursively further than that.
+
+Four-way `Assessment` result: `Unknown` (no basis to judge), `Fresh`, `Stale`, `NeverGenerated` (source exists, nothing was ever generated for it — signaled via `present: bool` param to `assess`, which reflects whether the node's own `.ctx`/`rollup.ctx` file exists as observed by the caller during serving, not recomputed here).
+
+Root directory is represented as `""` throughout (path joins, sidecar path `.context/hashes.json` with no subdir). Depends on `crate::env::Env` trait for all repo I/O (`read`, `exists`, `is_dir`) and `crate::repo_path::RepoPath` for path validation — no direct filesystem calls.
