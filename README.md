@@ -1,4 +1,4 @@
-# Opinionated Agentic Coding System — MVP Scaffolding
+# CTX - Opinionated Agentic Coding System
 
 An opinionated coding system for autonomous agents: a strict Rust lint
 regime the workspace itself is built under, a generated context tree
