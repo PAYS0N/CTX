@@ -1,36 +1,11 @@
-# crates/ctx-verify/src/checks.rs
+Orchestrates the full set of wrapped tool checks (fmt, clippy, tests, contracts, architecture, etc., defined in `specs.rs`/`SPECS`) into one `Report`, via an injected `Runner` abstraction (so callers can substitute a fake runner in tests).
 
-Defines the fixed catalog of agent-checkpoint checks (`fmt`, `clippy`,
-`doc`, `test`, `rationale`, `workspace_lints`, `no_allow`, `machete`,
-`contracts`, `architecture`, `retired_terms`) and orchestrates running a
-selected subset through a [`Runner`], parsing each tool's output into
-[`Diagnostic`]s and assembling one [`Report`].
+Key mechanics: `fmt` is special-cased upstream (per module doc) as the only check allowed to mutate mechanically and unconditionally; here, the more general self-healing behavior is in `run_spec`: if `contracts` or `architecture` fails, `specs::regen_command(spec.name)` is invoked once (the generator's `--write` mode) and the check is re-run once — the *recheck's* outcome is what's reported, not the original failure, unless the regen command itself fails to execute, in which case the original outcome is kept. This is a single attempt, not a retry loop.
 
-`fmt` is listed first and is the only check that *mutates* — it runs
-`cargo fmt --all` and applies formatting rather than reporting on it
-(`noop_parser` always returns empty; failure is caught only via nonzero
-exit). Every other check is read-only/report-only. The `SPECS` order
-matters only for `fmt`'s position; `run_selected` stores results in a
-`BTreeMap` so output order is alphabetical by name, not spec order.
+`run_spec` distinguishes three outcomes carefully: `CheckReport::skipped` (tool binary missing — `CheckError::ToolMissing`), `CheckReport::errored` (spawn/exec failure, e.g. infra issue), and a normal parsed report. A failing check whose parser (`spec.parser`) yields zero diagnostics gets a synthesized one via `failure_hint`, which pulls the last non-empty trimmed line from stderr then stdout — so a failing check is never silently empty.
 
-Each `Spec` pairs a tool invocation with a `Parser` function: `compiler_parser`
-expects clippy/rustdoc `--message-format=json` output, `script_parser` scans
-combined stdout+stderr for `FAIL:` lines (shared contract with the
-`scripts/*.sh`/`.py` checks — changing their output format breaks parsing
-here), and `test_parser` greps for `FAILED`/`error[`/`error:` substrings in
-`cargo test` output (fragile pattern match, not a real test-harness parser).
+`effective_args` injects `-p <package>` right after the subcommand (position `1..1`) only for `spec.tool == "cargo"`; non-cargo checks ignore `package` entirely.
 
-`effective_args` injects `-p <package>` right after the subcommand for
-`cargo`-tool specs when `package` is `Some`; non-cargo script checks silently
-ignore package scoping. `run_spec` distinguishes three outcomes: `ToolMissing`
-becomes `CheckReport::skipped()`, other spawn errors become `errored()`
-(carrying the message, kept distinct from a real failing check), and a
-completed-but-failed run with zero parsed diagnostics gets a synthesized
-`failure_hint` (last non-empty line of stderr/stdout) so failures are never
-silently empty.
+Entry point: `pub fn run_selected<R: Runner>(runner: &R, max: usize, only: Option<&[String]>, package: Option<&str>) -> Report` — iterates `SPECS`, filters by `only` via `wanted`, runs each into a `BTreeMap<String, CheckReport>`. Diagnostics per check are capped at `max` via `CheckReport::build`.
 
-`run_selected(runner, max, only, package) -> Report` is the sole public
-entry point; `only: None` runs the full default set (used for the agent
-checkpoint), `Some(names)` restricts to a name-matching subset (tight-loop
-`--checks`/single-check use). `max` caps diagnostics per check via
-`CheckReport::build`.
+Depends on `specs` submodule for the check table and regen command mapping — adding a new check means editing `specs.rs`, not this file.

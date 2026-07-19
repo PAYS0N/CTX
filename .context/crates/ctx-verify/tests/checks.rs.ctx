@@ -1,16 +1,11 @@
-Integration test suite for `ctx-verify`'s parsing and orchestration logic; entirely hermetic — no real subprocess is ever spawned, all command output is canned via a `FakeRunner`.
+Behavioral tests for `ctx-verify`'s check parsers and orchestration, run hermetically against a `FakeRunner` — no real subprocess is ever spawned. Covers `parse_compiler_json`, `parse_fail_lines`, `parse_fmt`, and `run_selected`'s handling of skipped/missing tools, diagnostic capping, and overall-status precedence.
 
-Covers two layers: pure parsers (`parse_compiler_json`, `parse_fail_lines`, `parse_fmt` from `ctx_verify::parse`) tested directly against literal tool-output strings, and orchestration (`run_selected` from `ctx_verify::checks`) tested against a `FakeRunner` that implements the `Runner` trait by keying canned `CommandOutcome`s off each command's first argument.
+`FakeRunner` dispatches canned `CommandOutcome`s keyed by the command's *first argument only* (`by_first_arg: BTreeMap<String, Option<CommandOutcome>>`); `None` for a key or an absent key both simulate `CheckError::ToolMissing`. This first-arg keying is too coarse to distinguish `--check` vs `--write` invocations of `contracts`/`architecture`, so tests needing that live in `checks_regen.rs` with a different fake runner that varies output across successive calls to the same key.
 
-Key behaviors asserted, load-bearing for anyone touching `checks.rs` or `parse.rs`:
-- `parse_compiler_json` dedups identical diagnostics, extracts only the primary span, and handles `code: null` (raw rustc errors) by leaving `lint` empty while still populating file/line/message.
-- `parse_fail_lines` splits `FAIL: <path>:<line> ...` into file+line, but falls back to putting the whole message in `file` with `line: 0` when no path:line prefix is found.
-- `parse_fmt` dedups diff lines per file.
-- `run_selected(runner, cap, Some(&[names]), None)` is the orchestration entry point; missing tools (runner returns `Err(CheckError::ToolMissing)`) produce `Status::Skipped`, not `Fail`, and an all-skipped report has overall `Status::Pass`.
-- Diagnostics are capped at the given limit: `CheckReport.count` holds the true total, `.diagnostics.len()` is capped, `.truncated` holds the overflow count.
-- A nonzero exit with no parseable diagnostics still yields `Status::Fail` with a synthesized single diagnostic from stderr — never an empty diagnostic list on failure.
-- `CheckReport::errored(msg)` produces `Status::Errored`, which outranks `Fail` in `Report::new`'s overall status computation.
-- Serde output is intentionally minimal: `CheckReport::build(true, vec![], cap)` serializes to exactly `{"status":"pass"}`; `skipped()` to `{"status":"skipped"}` — fields are omitted, not null, when not applicable.
-- The `machete` check is driven by `scripts/machete_check.sh`, keyed in `FakeRunner` by that literal path (not a bare tool name like `"clippy"`), and its `FAIL: <path> unused dependency '<dep>'` stderr lines must parse into diagnostics whose message contains "unused dependency".
-
-Coupling: the `FakeRunner` keys strictly on `args[0]`, so if `checks.rs` changes how it invokes a tool (e.g., adds a flag before the subcommand), these tests' `by_first_arg` maps must be updated to match the new first argument.
+Key invariants asserted here, load-bearing for `ctx_verify::checks`/`model`:
+- overall `Report.status` is `Skipped` (not `Pass`) when every selected check is skipped — fail-closed.
+- `Errored` outranks `Fail` in overall status precedence.
+- diagnostics are deduped on exact match (identical compiler-message JSON collapses to one entry) but capped independently, with `count` reflecting the pre-cap total and `truncated` the overflow.
+- a non-zero exit with no parseable diagnostics still yields `Status::Fail` with a synthesized single diagnostic from stderr — never a silent/empty failure.
+- `CheckReport::build(true, ..)` serializes to the minimal `{"status":"pass"}`; skipped/errored reports carry a message field.
+- `machete` findings come from stderr `FAIL: <path> unused dependency '<dep>'` lines routed through the same fail-line parser as other script-based checks.

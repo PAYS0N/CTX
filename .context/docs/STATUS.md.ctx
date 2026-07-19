@@ -1,5 +1,7 @@
-Tracking file. Just noting its role: a prioritized markdown backlog for the `ctx-*` toolchain, sorted by impact then difficulty.
+This file is the project's living priority queue — a markdown table of open engineering tasks ranked by impact then difficulty, read by contributors deciding what to work on next.
 
-Structure: single markdown table with columns `task | description | impact | difficulty`. References `docs/DECISIONS.md` for architectural rationale (ADR numbers cited inline, e.g. ADR-043, ADR-054, ADR-020, ADR-035, ADR-039, ADR-049) and states architecture is derived via `ctx-context .`.
+It's a flat data file, not code: one Markdown table with columns `task | description | impact | difficulty`, sorted high-impact/easy-difficulty first within each impact band. The header points to `ctx-context .` as the source of truth for derived architecture and `docs/DECISIONS.md` for rationale — this file itself carries no rationale, only action items.
 
-Not code — no functions, no invariants to verify. An editor updating this file should preserve the sort order (impact desc, then difficulty asc) and keep ADR cross-references accurate since several rows describe work that depends on specific ADR decisions still being current. Content is task descriptions for a context-generation/agent-tooling system (crates named `ctx-core`, `ctx-context`, `ctx-scan`, `ctx-summarize`, `ctx-brief`, `ctx-verify`); several entries reference exact file:line locations in that codebase (e.g. `checks.rs:211`, `model.rs:157`, `cli.rs:90`) that would need updating if those files change.
+Non-obvious behavior: several rows reference specific line numbers and behaviors in other files as of when they were written (e.g. "checks.rs:103,113", "`is_secret` compares the basename case-sensitively") — these can drift out of sync with the actual code since nothing re-validates the table against source. Treat row contents as claims to verify, not guaranteed-current facts.
+
+Editing this file means adding/removing/reprioritizing rows — no schema enforcement, so keep column order and sort convention (impact desc, then difficulty asc within impact) consistent when inserting new tasks.

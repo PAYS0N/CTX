@@ -43,9 +43,10 @@ pub struct Diagnostic {
 
 /// Per-check result with a bounded diagnostic list.
 ///
-/// Serialization is token-frugal: a non-failing check emits only
-/// `status` (its `count`/`diagnostics`/`truncated` are always trivial);
-/// the full detail is emitted only when `status` is `fail`.
+/// Serialization is token-frugal: a passing check emits only `status`;
+/// the full detail (`count`/`diagnostics`/`truncated`) is emitted for
+/// `fail`, `errored`, and `skipped` alike, so a missing-tool skip still
+/// surfaces which tool was missing.
 #[derive(Debug, Clone)]
 pub struct CheckReport {
     /// Pass/fail/skipped for this check.
@@ -59,13 +60,22 @@ pub struct CheckReport {
 }
 
 impl CheckReport {
-    /// A skipped check (tool absent).
+    /// A skipped check (`tool` is absent from `PATH`). Carries the tool
+    /// name as a diagnostic, mirroring [`Self::errored`], so the render
+    /// layers can say *what* is missing, not just that something is.
     #[must_use]
-    pub const fn skipped() -> Self {
+    pub fn skipped(tool: &str) -> Self {
+        let d = Diagnostic {
+            file: "<runner>".to_owned(),
+            line: 0,
+            col: 0,
+            lint: "missing-tool".to_owned(),
+            message: format!("tool not installed: {tool}"),
+        };
         Self {
             status: Status::Skipped,
-            count: 0,
-            diagnostics: Vec::new(),
+            count: 1,
+            diagnostics: vec![d],
             truncated: 0,
         }
     }
@@ -112,7 +122,10 @@ impl CheckReport {
 
 impl Serialize for CheckReport {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let full = matches!(self.status, Status::Fail | Status::Errored);
+        let full = matches!(
+            self.status,
+            Status::Fail | Status::Errored | Status::Skipped
+        );
         let fields = if full { 4 } else { 1 };
         let mut st = serializer.serialize_struct("CheckReport", fields)?;
         st.serialize_field("status", &self.status)?;
@@ -125,12 +138,14 @@ impl Serialize for CheckReport {
     }
 }
 
-/// The whole-run report. Token-frugal: an all-pass run serializes to
-/// just `{"status":"pass"}` (the per-check map is omitted entirely);
-/// only a failing run carries the `checks` map.
+/// The whole-run report.
+///
+/// Token-frugal: an all-pass run serializes to just `{"status":"pass"}`
+/// (the per-check map is omitted entirely); any other run (a check
+/// failed, errored, or was skipped) carries the `checks` map.
 #[derive(Debug, Clone)]
 pub struct Report {
-    /// `fail` if any non-skipped check failed, else `pass`.
+    /// `errored` > `fail` > `skipped` > `pass`, in that precedence.
     pub status: Status,
     /// Per-check reports, keyed by check name (stable order).
     pub checks: BTreeMap<String, CheckReport>,
@@ -154,12 +169,17 @@ impl Report {
     pub fn new(checks: BTreeMap<String, CheckReport>) -> Self {
         // Precedence: an inconclusive run (a check could not execute)
         // outranks a code failure — "I could not verify" is more urgent
-        // for the agent than "your code failed". Skipped is ignored.
+        // for the agent than "your code failed" — which in turn outranks
+        // a skipped (missing-tool) check: the gate fails closed
+        // (intent.md), so a shrinking tool set must never silently read
+        // as a full pass.
         let any = |s: Status| checks.values().any(|c| c.status == s);
         let status = if any(Status::Errored) {
             Status::Errored
         } else if any(Status::Fail) {
             Status::Fail
+        } else if any(Status::Skipped) {
+            Status::Skipped
         } else {
             Status::Pass
         };

@@ -82,7 +82,7 @@ fn run_spec<R: Runner>(runner: &R, spec: &Spec, max: usize, package: Option<&str
     let owned = effective_args(spec, package);
     let args: Vec<&str> = owned.iter().map(String::as_str).collect();
     let outcome = match runner.run(spec.tool, &args, spec.envs) {
-        Err(CheckError::ToolMissing(_)) => return CheckReport::skipped(),
+        Err(CheckError::ToolMissing(tool)) => return CheckReport::skipped(&tool),
         Err(e) => return CheckReport::errored(e.to_string()),
         Ok(outcome) => outcome,
     };
@@ -96,7 +96,7 @@ fn run_spec<R: Runner>(runner: &R, spec: &Spec, max: usize, package: Option<&str
         return report_from_outcome(spec, &outcome, max);
     }
     match runner.run(spec.tool, &args, spec.envs) {
-        Err(CheckError::ToolMissing(_)) => CheckReport::skipped(),
+        Err(CheckError::ToolMissing(tool)) => CheckReport::skipped(&tool),
         Err(e) => CheckReport::errored(e.to_string()),
         Ok(recheck) => report_from_outcome(spec, &recheck, max),
     }

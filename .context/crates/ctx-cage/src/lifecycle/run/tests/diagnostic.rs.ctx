@@ -1,0 +1,9 @@
+Tests for `proxy_diagnostic` (in `super::super`, i.e. `run/mod.rs` or similar), the capped diagnostic summary shown to users after a billed run, built from the proxy's log file plus the accept thread's `ProxyJoin` outcome.
+
+Key behaviors verified: with no log content and a clean join (`Ok(Ok(()))`), returns `None` — this is the common-case zero-behavior-change path. Non-verbose mode reports an issue count plus only the *last* logged line (not full history). `--verbose-proxy-log` mode (`verbose=true`) prints the full log but caps at the last 50 lines, dropping earliest entries, with the header line reporting the true total count (e.g. "60 lines") while the body is capped. A join `Err(CageError::...)` folds into the same diagnostic text/count as per-connection log lines rather than producing a separate message. A panicked join (`Err(Box::new(...))`) also folds in, producing text containing "panicked", even with an empty log.
+
+`fresh_log_path(label)` generates unique temp-file paths per test using an atomic counter + PID, since tests write real files to disk and must avoid collisions; each test is responsible for `fs::remove_file` cleanup (some paths in the panic test omit cleanup).
+
+`ProxyJoin` is `Result<Result<(), CageError>, Box<dyn Any + Send>>` (std thread join type) — tests construct it directly instead of spawning/panicking real threads, since `clippy::panic` is denied crate-wide including in tests.
+
+Coupling: exact output string format ("N issue(s)", "N lines" header, line ordering/tail semantics) is asserted via `contains`/`assert_eq` here — changing `proxy_diagnostic`'s output format requires updating these assertions in lockstep.

@@ -1,13 +1,13 @@
-`ctx-cage` binary entry point: parses argv into `Cli`, resolves it into a `lifecycle::Resolved`, and drives the cage lifecycle to completion, mapping the child's exit code back to the process exit code.
+Binary entry point for `ctx-cage`: parses argv via `clap::Cli`, resolves it against filesystem/env state into a `lifecycle::Resolved`, and runs the sandbox lifecycle, mapping its outcome to a process exit code.
 
-Billed modes require `--allow-spend` or `CTX_CAGE_ALLOW_SPEND=1`; the always-available mode is `--self-test stub` (no-spend containment probe). `resolve_mode` (from `cli.rs`) does the actual gating — this file just ORs the flag and env var together via `env_allow_spend()` before passing to it.
+`--contract` is special-cased and checked via raw `std::env::args()` before `Cli::parse()` runs, so it bypasses clap's required `<target>` positional entirely — it's a standalone probe (prints `ctx_cage::cli::CONTRACT` to stdout) not a real invocation. This ordering matters: any change to `Cli`'s required args must not break the contract short-circuit.
 
-`--contract` is special-cased outside clap parsing (`wants_contract()` scans raw argv for it) because it must win over the required `<target>` positional; when present, prints `cli::CONTRACT` and exits 0 without touching the rest of the pipeline.
+Billed-mode gating: `resolve_mode` receives `allow_spend = cli.spend_flags.allow_spend || env_allow_spend()`, where the env fallback is `CTX_CAGE_ALLOW_SPEND=1` (exact string, not any truthy value). `ctx-cage` intentionally never holds an API key, so billed modes are ultimately refused further downstream in `cli::resolve_mode`/`lifecycle`, not here.
 
-`resolve_bin_paths() -> Result<BinPaths, CageError>` locates sibling binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) relative to `current_exe()`'s directory, overridable via `CTX_VERIFY_BIN`/`CTX_CONTEXT_BIN`/`CTX_SCAN_BIN` env vars — used to bind them into the cage at `/cage/bin`. Fails with `CageError::Protocol` if `current_exe()` has no parent dir.
+Sibling binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) are located relative to `current_exe()`'s directory, overridable via `CTX_VERIFY_BIN`/`CTX_CONTEXT_BIN`/`CTX_SCAN_BIN` env vars — `resolve_bin_paths()` errors with `CageError::Protocol` only if the exe path has no parent directory.
 
-`build_resolved(cli, mode) -> Result<Resolved, CageError>` assembles the full lifecycle input; note `ctx-cage` never carries an API key itself, so any billed mode must be refused further downstream (in `lifecycle::execute` or `cli::resolve_mode`), not here.
+`default_task_id()` produces `"cage-{pid}"` when `--task-id` is absent — not stable across runs, don't rely on it for reproducibility.
 
-Exit code handling: `run()`'s inner `i32` is truncated to `u8` via `unwrap_or(1)` — any code outside 0-255 collapses to 1. Host-level errors (`HostError::Cage`/`HostError::Resolve`) print to stderr and force exit code 1, distinct from the cage's own propagated exit code.
+Exit code handling: `run()` returns `outcome.exit_code: i32` from the lifecycle, truncated via `u8::try_from(code).unwrap_or(1)` in `main` — negative or >255 codes silently become 1. Any `outcome.diagnostic` is written to stderr as a trailer after the cage's inherited-stdio output completes, using the local `emit` helper (ignores write failures, per the crate's `print_stdout`/`print_stderr` clippy-lint convention).
 
-`emit()` mirrors an in-tree convention suppressing write failures on stdout/stderr, used to satisfy repo-wide lint restrictions on direct `print!`/`eprintln!` macros.
+Two distinct error enums: `CageError` (from the cage/bwrap/proxy stack) and local `HostError` wrapping it plus `ResolveError`, kept separate so CLI rejection messages render without cage-specific noise.

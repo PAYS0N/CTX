@@ -1,26 +1,7 @@
-file: crates/ctx-verify/src/model.rs
-behavior: Defines the capped JSON report model for verification runs — a top-level Status plus a per-check map, where each check's diagnostics are truncated to a fixed budget and serialization omits detail fields on non-failing checks/runs to keep token cost deterministic.
-edit_notes:
-  - Schema is part of a "spec's audit report" family shared with other tooling; field names/shapes (status, count, diagnostics, truncated, checks) must stay in sync with whatever consumes this JSON elsewhere.
-  - Custom Serialize impls on CheckReport and Report hand-control field count/emission (not #[derive(Serialize)] with skip_serializing_if) — editing fields requires updating the manual serialize_field calls and the `fields`/`full` counts together.
-  - Status::Errored is intentionally distinct from Fail and takes precedence in Report::new's status computation; do not merge the two.
-functions:
-  - name: CheckReport::skipped
-    signature: pub const fn skipped() -> Self
-    purpose: Constructs a CheckReport for a tool that is not installed.
-  - name: CheckReport::errored
-    signature: pub fn errored(detail: String) -> Self
-    purpose: Constructs a CheckReport for a check that could not execute, embedding the error message as a synthetic diagnostic.
-  - name: CheckReport::build
-    signature: pub fn build(cmd_ok: bool, mut diagnostics: Vec<Diagnostic>, max: usize) -> Self
-    purpose: Derives status from exit code/diagnostic presence and truncates diagnostics to max, recording the truncated count.
-  - name: Report::new
-    signature: pub fn new(checks: BTreeMap<String, CheckReport>) -> Self
-    purpose: Aggregates per-check statuses into a top-level Status, prioritizing Errored over Fail over Pass (Skipped ignored).
-invariants:
-  - Diagnostics list on a CheckReport never exceeds `max`; any excess count is recorded in `truncated`, not silently dropped.
-  - Serialized CheckReport includes count/diagnostics/truncated only when status is Fail or Errored; otherwise only `status` is emitted.
-  - Serialized Report includes `checks` only when status != Pass.
-  - Report::new returns Errored if any check errored, else Fail if any failed, else Pass; Skipped checks never affect the top-level status.
-external_deps:
-  - serde::ser::SerializeStruct: used directly (not derive) to conditionally omit fields for token-frugal JSON output.
+Defines the JSON report schema for `ctx-verify`'s check runner, tuned to keep passing runs cheap to emit and failing ones fully diagnostic.
+
+Custom `Serialize` impls on `CheckReport` and `Report` (not derived) implement the token-frugal shape: a passing check/run serializes to just `{"status":"pass"}`, omitting `count`/`diagnostics`/`truncated`/`checks` entirely; anything else (`fail`, `errored`, `skipped`) emits the full struct. Changing field names or this collapsing behavior will break whatever consumes the report JSON expecting either the terse or full shape.
+
+`Status` has four variants with a fixed precedence enforced only in `Report::new`: `Errored` > `Fail` > `Skipped` > `Pass` — an infra error outranks a code failure, which outranks a missing tool, so a shrinking toolchain never silently reads as a pass. `Skipped` and `Errored` are distinct from `Fail` by design; the gate fails closed if a tool is missing rather than defaulting to pass.
+
+Key constructors: `CheckReport::skipped(tool: &str)` and `CheckReport::errored(detail: String)` both synthesize a single synthetic `Diagnostic` (file `"<runner>"`, lint `"missing-tool"` or `"exec"`) carrying the reason as a message — neither is ever an empty/silent result. `CheckReport::build(cmd_ok: bool, diagnostics: Vec<Diagnostic>, max: usize)` derives `Status::Fail` if `count > 0 || !cmd_ok`, else `Pass`, and truncates diagnostics to `max`, recording the overflow count in `truncated`. `Report::new(checks: BTreeMap<String, CheckReport>)` computes the aggregate status per the precedence above.

@@ -94,3 +94,39 @@ fn json_flag_still_emits_the_machine_contract() {
     let value: serde_json::Value = serde_json::from_str(&text).expect("valid json");
     assert_eq!(value.get("status").and_then(|v| v.as_str()), Some("pass"));
 }
+
+#[test]
+fn terse_skip_names_the_missing_tool_and_fails_the_run() {
+    // No entry for "fmt" => FakeRunner returns ToolMissing. A skipped
+    // check must never render as a bare "pass" and must fail the run.
+    let map = BTreeMap::new();
+    let (passed, text) = render(&["ctx-verify", "--checks", "fmt"], map).expect("render");
+    assert!(!passed);
+    assert_ne!(text, "pass\n");
+    assert!(text.contains("SKIP: fmt"), "header: {text}");
+    assert!(text.contains("tool not installed: fmt"), "detail: {text}");
+}
+
+#[test]
+fn json_flag_surfaces_skipped_detail_instead_of_bare_pass() {
+    let map = BTreeMap::new();
+    let (passed, text) = render(&["ctx-verify", "--checks", "fmt", "--json"], map).expect("render");
+    assert!(!passed);
+    let value: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        value.get("status").and_then(|v| v.as_str()),
+        Some("skipped")
+    );
+    let fmt = value
+        .get("checks")
+        .and_then(|c| c.get("fmt"))
+        .expect("fmt entry");
+    assert_eq!(fmt.get("status").and_then(|v| v.as_str()), Some("skipped"));
+    let message = fmt
+        .get("diagnostics")
+        .and_then(|d| d.get(0))
+        .and_then(|d| d.get("message"))
+        .and_then(|m| m.as_str())
+        .expect("message");
+    assert!(message.contains("tool not installed: fmt"));
+}

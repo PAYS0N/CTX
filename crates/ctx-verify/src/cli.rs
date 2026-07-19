@@ -1,9 +1,10 @@
 //! Argv parsing and report rendering — the thin `cli` layer.
 //!
 //! Two output modes over the same [`Report`]: the default terse render
-//! (a single `pass` line, or one `FAIL:`/`ERROR:` block per failing
-//! check with truncated diagnostics) and, behind `--json`, the full
-//! machine contract via `serde_json` for ctx-run/CI.
+//! (a single `pass` line, or one `FAIL:`/`ERROR:`/`SKIP:` block per
+//! failing, errored, or skipped check with truncated diagnostics) and,
+//! behind `--json`, the full machine contract via `serde_json` for
+//! ctx-run/CI.
 
 use std::io::Write;
 
@@ -27,9 +28,11 @@ it applies `cargo fmt`, then builds, lints (clippy + rustdoc, warnings \
 denied), tests, and runs the repo's script battery in one call; an \
 optional crate name scopes the cargo-based checks. The default terse \
 render prints the single word `pass` when every check passed, otherwise \
-one FAIL:/ERROR: block per failing check — the `{\"status\":\"pass\"}` \
-JSON envelope is emitted only under `--json`. Serving fails open; this \
-gate fails closed.";
+one FAIL:/ERROR:/SKIP: block per failing, errored, or skipped \
+(missing-tool) check — a skipped check is never a silent pass — and the \
+`{\"status\":\"pass\"}` JSON envelope is emitted only under `--json` and \
+only when every check passed. Serving fails open; this gate fails \
+closed.";
 
 /// The agent checkpoint: formats, builds, lints, and tests; emits one
 /// capped report (`pass` when all-pass).
@@ -57,7 +60,8 @@ pub struct Cli {
 
 /// Run the selected checks and write the report to `out`.
 ///
-/// Returns `true` when the run passed (no non-skipped check failed).
+/// Returns `true` when the run passed: every check ran and passed (a
+/// failed, errored, *or skipped* check makes this `false`).
 ///
 /// # Errors
 ///
@@ -80,14 +84,16 @@ pub fn run<R: Runner, W: Write>(runner: &R, cli: &Cli, out: &mut W) -> Result<bo
     Ok(report.status == Status::Pass)
 }
 
-/// Write the terse render: a single pass line, or one block per failing
-/// check. Pass/skipped checks contribute nothing.
+/// Write the terse render: a single pass line, or one block per
+/// failing, errored, or skipped check. Passing checks contribute
+/// nothing; a skipped check is never silently dropped (the gate fails
+/// closed).
 fn render_terse<W: Write>(report: &Report, out: &mut W) -> Result<(), CheckError> {
     if report.status == Status::Pass {
         return line(out, "pass");
     }
     for (name, check) in &report.checks {
-        if matches!(check.status, Status::Pass | Status::Skipped) {
+        if check.status == Status::Pass {
             continue;
         }
         render_check(name, check, out)?;
@@ -95,13 +101,13 @@ fn render_terse<W: Write>(report: &Report, out: &mut W) -> Result<(), CheckError
     Ok(())
 }
 
-/// Write one `FAIL:`/`ERROR:` header plus its aligned, clipped
+/// Write one `FAIL:`/`ERROR:`/`SKIP:` header plus its aligned, clipped
 /// diagnostics and a `… +N more` tail when the list was capped.
 fn render_check<W: Write>(name: &str, check: &CheckReport, out: &mut W) -> Result<(), CheckError> {
-    let label = if check.status == Status::Errored {
-        "ERROR"
-    } else {
-        "FAIL"
+    let label = match check.status {
+        Status::Errored => "ERROR",
+        Status::Skipped => "SKIP",
+        Status::Fail | Status::Pass => "FAIL",
     };
     line(out, &format!("{label}: {name} ({})", check.count))?;
     let locs: Vec<String> = check.diagnostics.iter().map(locator).collect();

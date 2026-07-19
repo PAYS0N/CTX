@@ -1,11 +1,5 @@
-file: crates/ctx-cage/tests/cli.rs
-behavior: Tests `ctx_cage::cli::resolve_mode`'s pure logic for turning `Cli` flag combinations into a `Mode`, covering self-test, inline task, task-file, interactive default, and spend/conflict gating.
-edit_notes:
-  - Mirrors the `Cli`/`Mode`/`ResolveError`/`SelfTestKind`/`TaskFlags`/`SpendFlags` shapes defined in ctx_cage::cli; update tests if any field or variant changes.
-  - task_file_is_read_from_disk is the only test touching the filesystem, via a unique tempdir path per-process/counter to avoid collisions across parallel test runs.
-  - base() helper avoids unwrap/expect per workspace lint rule; test bodies still use expect/expect_err freely.
-functions:
-invariants:
-  - resolve_mode(cli, allow_spend) blocks with ResolveError::NotAllowed when a billed mode (interactive default or inline task) is requested without allow_spend=true.
-  - Combining task with task_file, self_test, or interactive yields ResolveError::Conflict.
-external_deps:
+Integration tests for `ctx_cage::cli::resolve_mode`, exercising the mapping from `Cli` flags to `Mode` (or `ResolveError`) without touching clap or the filesystem, except `--task-file` which reads a real tempfile.
+
+Provides two test-only helpers: `fresh_tempfile(label) -> PathBuf` (unique path under the OS tempdir, keyed by an atomic counter + pid, caller must delete) and `base(target) -> Cli` (a `Cli` with every flag at default, used as a builder base per test). These helpers encode the current `Cli`/`TaskFlags`/`SpendFlags` field layout directly (no `..Default::default()`), so adding a field to those structs requires updating `base()` here too or the crate fails to build.
+
+Documents `resolve_mode`'s contract via cases, which is the real spec surface if `cli.rs` changes: self-test mode never requires spend approval; interactive/task modes require `allow_spend=true` or return `ResolveError::NotAllowed`; `--task` and `--task-file` together, `--self-test` with `--task`, and `--task` with `--interactive` are all `ResolveError::Conflict`; `--task-file` content becomes the `Mode::Task` string verbatim (including trailing newline).

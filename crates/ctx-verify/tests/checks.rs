@@ -93,8 +93,8 @@ fn missing_tool_is_skipped_not_failed() {
     let report = run_selected(&runner, 20, Some(&["fmt".to_owned()]), None);
     let fmt = report.checks.get("fmt").expect("fmt present");
     assert_eq!(fmt.status, Status::Skipped);
-    // A run of only skipped checks does not fail overall.
-    assert_eq!(report.status, Status::Pass);
+    // A run of only skipped checks fails closed overall, not Pass.
+    assert_eq!(report.status, Status::Skipped);
 }
 
 #[test]
@@ -123,8 +123,9 @@ fn diagnostics_are_capped_and_counted() {
 fn passing_check_serializes_to_status_only() {
     let pass = serde_json::to_string(&CheckReport::build(true, vec![], 20)).expect("ser");
     assert_eq!(pass, r#"{"status":"pass"}"#);
-    let skipped = serde_json::to_string(&CheckReport::skipped()).expect("ser");
-    assert_eq!(skipped, r#"{"status":"skipped"}"#);
+    let skipped = serde_json::to_string(&CheckReport::skipped("rustfmt")).expect("ser");
+    assert!(skipped.contains(r#""status":"skipped""#));
+    assert!(skipped.contains("tool not installed: rustfmt"));
     let d = Diagnostic {
         file: "f.rs".to_owned(),
         line: 1,

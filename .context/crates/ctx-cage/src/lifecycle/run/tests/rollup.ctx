@@ -1,0 +1,7 @@
+`crates/ctx-cage/src/lifecycle/run/tests/` is a test-only subtree validating `proxy_diagnostic`, the post-run diagnostic summary shown to users after a billed run. Depending on this directory gets you nothing at runtime — it exists purely to pin the exact output contract of that function against regressions.
+
+The single file, `diagnostic.rs`, owns the full behavioral matrix: no-op path (empty log + clean join → `None`), non-verbose truncation to the last line, verbose mode's 50-line tail cap with accurate total-count header, and folding of both `CageError` joins and thread panics into the same diagnostic text. It also owns `fresh_log_path`, the PID+counter-based temp file naming used to avoid collisions since tests write real files to disk — any test needing a log file should reuse this helper rather than inventing another naming scheme.
+
+The binding invariant: assertions here check exact output strings ("N issue(s)", "N lines", tail-vs-full-log semantics), so this file and `proxy_diagnostic`'s implementation change in lockstep — any format change on one side requires an update on the other. `ProxyJoin` values are constructed directly rather than via real thread spawn/panic, since `clippy::panic` is denied crate-wide.
+
+No intent.md exists for this directory, so no divergence check is possible.

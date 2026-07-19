@@ -1,0 +1,7 @@
+specs.rs is the entire checks/ subtree — no other files, no submodules. It exists as the single source of truth for what checkpoint verification runs and how each tool's output is turned into diagnostics.
+
+Anything upstream that needs to run or interpret a check goes through `SPECS` and `Spec::name` string keys; there is no other indexing scheme, so adding, renaming, or removing a check here is a breaking change to every caller that matches on those name strings (notably `regen_command`, and any reporting code keyed by name elsewhere in ctx-verify). Order in `SPECS` is meaningful — `fmt` must stay first since it mutates the tree before the read-only checks run.
+
+The four parser flavors are the only diagnostic-shaping logic in the subtree; a new check must reuse one of them (compiler_parser, script_parser, noop_parser, test_parser) or extend this file with a fifth — there's no separate parsing module to touch. `regen_command`'s two-entry allowlist (contracts, architecture) is a deliberate ADR-022 constraint, not an oversight, so extending auto-fix to a new check requires checking that ADR first, not just adding a match arm.
+
+No intent.md exists to check divergence against.

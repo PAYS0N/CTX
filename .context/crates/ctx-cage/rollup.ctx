@@ -1,25 +1,28 @@
-`crates/ctx-cage/` is the process-sandboxing crate: it builds bwrap-based
-cages, brokers tool execution and API egress across the sandbox boundary,
-and ships the static mount assets and test suite that pin its ADR-encoded
-security guarantees. A caller depends on this crate for `lifecycle::execute`,
-`cli::resolve_mode`, and the bwrap/proxy/protocol types; internal argv
-construction, frame encoding, and header rewriting stay private to `src/`.
+`crates/ctx-cage` is a self-contained crate that builds and runs an offline,
+bind-mounted `bwrap` sandbox around an agent process, brokers the sandbox's
+only network egress through a host-side proxy, and drives a single run's
+prepare→run→teardown lifecycle behind one `execute()` entry point. External
+callers get `lifecycle::execute`, the bwrap-arg builder, and proxy
+request-rewrite logic; nothing else in the workspace should construct bwrap
+flags or touch the API key directly.
 
-The three subtrees are tightly bound by shared invariants rather than by
-any code relationship: `assets/`'s `cage-resolv.conf` and `cage-nsswitch.conf`
-implement the offline-DNS-fallback behavior that `src/bwrap/` mounts into
-the cage and that `tests/bwrap_build.rs` + `tests/cage_assets.rs` jointly
-verify (ADR-049) — a change to the DNS strategy touches all three
-directories together. `src/`'s length-prefixed frame format is exercised
-in `tests/protocol.rs`, `broker_loopback.rs`, and `proxy.rs` via real
-transports rather than mocks, so a protocol change requires updating the
-crate and revalidating all three test files. The real API key/credential
-never crosses into the cage except through `src/proxy.rs`; nothing in
-`assets/` or `tests/` bypasses that boundary.
+The three subtrees are tightly interlocked around ADR-046/ADR-049: `assets/`
+supplies the two files (`cage-nsswitch.conf`, `cage-resolv.conf`) that make the
+sandboxed resolver fail slow instead of busy-looping, embedded into the binary
+via `lib.rs`'s `include_str!` and bind-mounted by `src/`'s lifecycle/env code;
+`tests/` is the only place that verifies both halves of that contract actually
+hold (`bwrap_build.rs` checks the mount happens, `cage_assets.rs` checks the
+asset's content isn't loopback-only). Changing the resolv.conf asset, the
+`CAGE_RESOLV_PATH` bind constant, or the mount call in `lifecycle/env.rs`
+requires updating all three subtrees together, since only their combination
+proves the invariant.
 
-`assets/` is passive configuration mounted by (external-to-this-crate)
-setup code plus one prompt-injection doc; `src/` is the sandbox engine;
-`tests/` is the executable spec for bwrap layout, DNS fallback, secret
-masking, and stderr-safety during interactive PTY use.
+Secrets never cross into the sandbox — `runtime.rs` and `lifecycle/env.rs`
+independently enforce this, and only `proxy.rs` (host side) ever touches the
+real API key, reached via a UNIX socket bind-mounted at `/run/ctx/api.sock`.
+`cage-rules.md` (assets) is embedded and mounted at `/opt/cage/rules.md`
+(src), the one path constant that both an asset file and crate code must
+agree on by name.
 
-No intent.md exists, so no divergence can be assessed.
+No `intent.md` exists anywhere in this subtree, so there is no intent to
+diverge from.

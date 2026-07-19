@@ -8,13 +8,13 @@ impact band.
 
 | task | description | impact | difficulty |
 |---|---|---|---|
-| switch to claude -p | where the claude code injected context isn't poison, use the subscription billing. `ctx-brief` (ADR-054) is the first consumer; the summarizer path (`ctx-scan`/`ctx-summarize`) still uses the masked key and is unaffected | high | easy |
-| ctx-verify: skipped checks must be visible | `ToolMissing` → `Skipped` is ignored by overall status and the terse render prints a bare `pass` (`checks.rs:211`, `model.rs:157`, `cli.rs:90`); a missing python3/cargo-machete silently shrinks the gate. Doctrine says gates fail closed — at minimum render `pass (skipped: …)` | high | easy |
 | mechanical validation of generated summaries | nothing checks generator output before it is written and served: line budgets, banned/hedging phrases, truncation, or cheap factual sanity (root rollup says "five Rust crates"; six exist — persisted into README's generated block). Add a write-time lint in ctx-scan with retry-once | high | medium |
+| force template to be kept in sync | nothing enforces that template is kept up to date; copying it should get you the full system. | high | medium |
 | wire the Layer 3 auditor | `prompts/auditor.md` and the `intent_divergence:` label exist but nothing invokes the audit against regenerated rollups; the root rollup itself flags this divergence. Wire it into the regeneration flow | high | medium |
 | work on summarization prompts | do research research into how to modify the prompts to convey more important info | high | hard |
 | phase 5 e2e smoke fixture | throwaway workspace, buggy file + failing test, generated tree, `--stub` and billed modes; asserts hook injection, native Edit, `ctx-verify` pass, post-session rollup regen, no egress beyond proxy, no writes outside workspace; include degraded-tree cases (stale, absent, truncated) | high | hard |
 | clean rollup prompts | prevent text like 'No intent.md exists for this directory.', just omit it. | medium | easy |
+| remove ctx-brief from claude.md | only tools relevant to an agent should be included | medium | easy |
 | move model choice into rust | model choice should be passed to the tool, not an env var. `ctx-brief` (ADR-054) already takes `--gather-model`/`--plan-model` flags; the summarizer path (`ctx-scan`/`ctx-summarize`) still reads the model from the environment and remains open | medium | easy |
 | summarizer adapter: handle truncation | `agents/summarizer-claude.py` never checks `stop_reason`, so a `max_tokens` cut is written to disk as truth; `CTX_AGENT_TEMPERATURE` is documented in the docstring but never read (dead option) | medium | easy |
 | hook matcher: add Edit\|Write | `.claude/settings.json` matches `Read\|Grep\|Glob` only, though `hook.rs` already parses `file_path` from Edit events; an agent that Writes a new file gets no chain. Also document post-compaction recovery ("if you've lost the chain, run `ctx-context <path>`") | medium | easy |
@@ -24,7 +24,6 @@ impact band.
 | ctx-core test gaps | `hashtree.rs` (shared writer/reader schema; "silently breaks" on mismatch) has zero in-crate tests; `access.rs` has two. Concrete case: `is_secret` compares the basename case-sensitively, so `.ENV` evades the secret gate | medium | easy |
 | add visual feedback during context generation and while waiting on ctx-brief| medium | easy |
 | fix ctx-scan flags | --dry-run and --check return different vals. Should --dry-run be retired? What is the difference? | medium | medium |
-| add update step to template | allow local projects using this system to fully update themselves to this project; install tools was the start of that, but not enough. | medium | medium |
 | inject verify and context output to start of run | print `ctx-verify` and `ctx-context` results at session start to ground the agent in actual tree state and recent check results | medium | medium |
 | make sure interrupting context regen doesn't break anything | verify that stopping mid-scan (SIGINT/timeout) leaves `.context/` in a consistent state; no partial hashes, no orphaned sidecars | medium | medium |
 | stop consuming tools from target/debug | the hook, CLAUDE.md, and permissions all point at debug binaries with `2>/dev/null \|\| true`; a fresh clone serves no context and a stale binary serves old behavior (the ADR-035 incident class). Install to a versioned path or add a binary-staleness check | medium | medium |

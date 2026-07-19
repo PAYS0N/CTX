@@ -1,7 +1,23 @@
-`docs/` is the project's rationale-and-planning layer for the CTX toolchain — no code, but the authoritative source an editor consults before touching architecture, lint policy, or backlog priority. Anything asking "why does this work this way" is answered here, not in code comments.
+`docs/` is the project's non-code memory: architectural rationale, a
+task-priority queue, and a spec for lint rules not yet built. Nothing
+here is executed or imported by the codebase — it's read by contributors
+and by other `.ctx`/`intent.md` files that point back here instead of
+restating history.
 
-DECISIONS.md is the load-bearing piece: an append-only ADR log (never renumbered or deleted) that both STATUS.md and DYLINT_RULES.md implicitly depend on for context. STATUS.md's backlog rows cite specific ADR numbers as justification, so if an ADR is superseded (e.g. the ADR-035/036/037/040 pivot from cage-enforced sandboxing to hook-injected sandboxing), any STATUS.md row referencing the old model needs re-evaluation, not just DECISIONS.md. DYLINT_RULES.md doesn't cite ADRs but describes not-yet-built lint rules that partially overlap live enforcement mechanisms in `scripts/` (rationale_check.py, cycle_check.sh) — changes to those scripts or to CHANGES.md format should be checked against this file's rule descriptions for drift.
+The three files serve distinct, non-overlapping purposes and shouldn't be
+merged or cross-copied: DECISIONS.md is the append-only ADR log (why
+things are the way they are, including reversed designs — check for
+superseding ADRs before treating any entry as current), STATUS.md is the
+mutable priority-ranked task table (claims about code that can drift
+out of sync, unverified against source), and DYLINT_RULES.md is a spec
+for nine not-yet-implemented lint rules, two of which have partial
+mechanical equivalents already live in `scripts/` (rationale line-count
+check, circular-dependency check via cargo-modules) that must stay in
+sync until the real dylint rules supersede them.
 
-STATUS.md also references exact file:line locations in the live codebase (e.g. `checks.rs:211`); those go stale independently of ADR content and need separate upkeep. Sort order in STATUS.md (impact desc, difficulty asc) is a convention, not enforced — an editor adding rows must preserve it manually.
+Editors should treat DECISIONS.md as the authoritative source of "why,"
+never restate rationale elsewhere in docs/, and should verify STATUS.md
+row claims against actual source before acting on them rather than
+trusting line numbers as current.
 
-No intent.md exists for this directory, so no divergence check applies.
+No intent.md exists for this directory to check against.

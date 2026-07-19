@@ -1206,3 +1206,24 @@ still-failing report already surfaces. Also rejected: generalizing
 `test`, and the other script checks require judgement to fix, not a
 mechanical rewrite, so scope stays a `match` over exactly these two
 names.
+
+## ADR-056 — `ctx-verify`: a skipped (missing-tool) check now fails the run
+**Decision:** `Report::new`'s status precedence becomes
+`Errored > Fail > Skipped > Pass` (was: skipped checks ignored
+entirely). `CheckReport::skipped(tool: &str)` now carries a diagnostic
+naming the missing tool, mirroring `errored`'s message-carrying shape,
+so both the terse and `--json` renders name *which* tool was absent —
+the terse renderer's `SKIP:` block reuses the same header/diagnostic
+machinery as `FAIL:`/`ERROR:`, and the JSON `CheckReport` serializer now
+emits full detail (`count`/`diagnostics`/`truncated`) for `Skipped`
+alongside `Fail`/`Errored`.
+**Rationale:** doctrine says the gate fails closed (intent.md); before
+this change a missing `python3`/`cargo-machete` silently shrank the
+effective check set while still printing bare `pass` and
+`{"status":"pass"}`, which is exactly the "looks enforced but isn't"
+failure class this project exists to prevent (cf. [[ADR-005]]).
+**Rejected:** keeping `Skipped` out of the overall-status precedence and
+only making it *visible* (e.g. `pass (skipped: …)`) — visibility without
+a non-zero exit code doesn't stop CI/an agent from treating a
+tool-starved run as a real pass, which is the actual failure mode
+reported.

@@ -1,0 +1,9 @@
+Defines the fixed catalog of agent-checkpoint checks run against the workspace: each `Spec` pairs a shell/cargo invocation with a parser that turns its output into `Diagnostic`s.
+
+`SPECS` is a static `&[Spec]` array, order-significant — `fmt` runs first because it mutates files (applies formatting) before read-only checks (`clippy`, `doc`, `test`, and various `scripts/*.sh` lint scripts) inspect the tree. Each `Spec` has `name`, `tool`, `args`, `envs`, and a `parser: Parser` (`fn(&CommandOutcome) -> Vec<Diagnostic>`). Adding/removing/renaming a check here changes the report's key set, and callers elsewhere in ctx-verify key off `Spec::name` strings (e.g. `regen_command` matches on `"contracts"`/`"architecture"` literally — keep names in sync).
+
+Four parser flavors: `compiler_parser` parses clippy/rustdoc `--message-format=json` stdout via `parse::parse_compiler_json`; `script_parser` concatenates stdout+stderr and extracts `FAIL:` lines via `parse::parse_fail_lines`; `noop_parser` always returns empty (fmt has no diagnostics — failures there only show via nonzero exit status, handled outside this file); `test_parser` scans stdout+stderr lines for trimmed lines ending in `"FAILED"` or starting with `"error["`/`"error:"`, synthesizing `Diagnostic`s with `file: "test"`, `line: 0`, `col: 0`.
+
+`regen_command(name: &str) -> Option<(&'static str, &'static [&'static str])>` is the only mechanism for mechanical auto-fix, and it's hardcoded to exactly two checks (`contracts`, `architecture`) per ADR-022 — every other check is report-only by design, not oversight; don't add new entries here without checking that ADR.
+
+`clippy` and `doc` build with `-D warnings` (via both env var and/or CLI flag), so any new warning anywhere in the workspace fails these checks, not just the target crate (`--workspace`/`--all-targets`).

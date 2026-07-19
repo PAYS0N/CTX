@@ -1,11 +1,12 @@
 {
-  "hash": "9a7ff5d738c2a62b7375ed8e376cc1c2b8e236301e2835b9e934e51bc48cacc6",
+  "hash": "04409dc93d3b8a60df333aebb5978dd0e8bfbb9fb683459254e04d63b0e2f022",
   "children": {
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
-    "install-tools.sh": "f:492c2bf580de4639822aa0f968f72917c5f1e6d39fba5054ebaa23765fd6c601",
+    "install-tools.sh": "f:c8930172d6f2970165c7cc3bbe923115347474fd3e5a3b3b412868485352e7fe",
     "machete_check.sh": "f:28bdcd70df8fd6cbcc17480e40a9f1647aac557758ed537cece9e86b61def759",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",
+    "update-template.sh": "f:ed094019a06c75299cf791367969234d8c480706737e2d60f23e4aa354644a53",
     "workspace_lints_check.sh": "f:ecfd025caf75a20dbeab3cec14524c5599f62d286787d3faa031d88e3dec43c8"
   }
 }

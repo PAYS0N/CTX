@@ -6,11 +6,13 @@
 # lives in the CTX repo this template was copied from. The Claude Code
 # hook and CLAUDE.md both call these by their target/debug path, so a
 # freshly copied project needs them built and placed there before first
-# use. ctx-scan and ctx-summarize also read their summarizer prompt files
-# from ./prompts at runtime (cwd-relative), so those are copied in too.
-# Both binaries and prompts are refreshed on every run, so re-run this
-# once after copying template/, and again whenever the tooling repo
-# updates.
+# use. Binaries are refreshed on every run, so re-run this once after
+# copying template/, and again whenever the tooling repo updates.
+#
+# This script builds and installs binaries only. Several of those
+# binaries (ctx-scan, ctx-summarize, ctx-brief) also read prompt files
+# from ./prompts at runtime (cwd-relative) — that sync is
+# scripts/update-template.sh's job, not this script's, so run that too.
 #
 # Usage:
 #   scripts/install-tools.sh [path-to-CTX-repo]
@@ -31,8 +33,8 @@ fi
 
 # ctx-cage's Cargo.toml produces two binaries (ctx-cage, ctx-run) from one
 # package, so the -p list (packages) and the binary list (files) differ.
-PACKAGES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-summarize)
-BINARIES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-run ctx-summarize)
+PACKAGES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-summarize ctx-brief)
+BINARIES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-run ctx-summarize ctx-brief)
 
 CARGO_ARGS=()
 for pkg in "${PACKAGES[@]}"; do
@@ -46,14 +48,4 @@ mkdir -p target/debug
 for bin in "${BINARIES[@]}"; do
     cp "$CTX_REPO/target/debug/$bin" "target/debug/$bin"
     echo "OK: installed target/debug/$bin"
-done
-
-# Summarizer prompts: ctx-scan/ctx-summarize load these from ./prompts at
-# runtime, resolved against cwd (the project root), not the tooling repo.
-PROMPTS=(summarizer-leaf.md summarizer-rollup.md)
-
-mkdir -p prompts
-for prompt in "${PROMPTS[@]}"; do
-    cp "$CTX_REPO/prompts/$prompt" "prompts/$prompt"
-    echo "OK: installed prompts/$prompt"
 done
