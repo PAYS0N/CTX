@@ -54,6 +54,12 @@ pub struct Cli {
     /// Spend / runtime-binding flags (`--claude`/`--net`/`--allow-spend`).
     #[command(flatten)]
     pub spend_flags: SpendFlags,
+
+    /// Print the full (capped) proxy log instead of a one-line summary
+    /// when the run's proxy diagnostic is non-empty. Not spend-related,
+    /// so it lives at the top level rather than in `SpendFlags`.
+    #[arg(long)]
+    pub verbose_proxy_log: bool,
 }
 
 /// Task-shape flags. Reserved for turn 6.

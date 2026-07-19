@@ -179,3 +179,8 @@ fn setsid_ctty_makes_the_pty_the_controlling_terminal() {
         "a bare cage process must not be a session leader: {bare:?}"
     );
 }
+
+/// Tests for [`super::proxy_diagnostic`] (surfacing proxy trouble to the
+/// user). Split into its own file purely to stay under the workspace
+/// file-length tier alongside the relay-wait/PTY tests above.
+mod diagnostic;

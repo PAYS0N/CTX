@@ -3,10 +3,11 @@
 
 use std::ffi::OsString;
 use std::os::unix::net::UnixListener;
+use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread::JoinHandle;
+use std::thread::{self, JoinHandle};
 
 use crate::bwrap::{build_bwrap_args, BwrapConfig, API_SOCK_NAME, CAGE_RULES_PATH};
 use crate::cli::{mode_is_billed, Mode};
@@ -15,7 +16,7 @@ use crate::proxy::{self, ProxyConfig, SocatUpstream};
 
 use super::env;
 use super::prepare::Prep;
-use super::Resolved;
+use super::{Resolved, RunOutcome};
 
 /// The upstream API host the proxy dials.
 const API_HOST: &str = "api.anthropic.com";
@@ -23,6 +24,13 @@ const API_HOST: &str = "api.anthropic.com";
 /// TCP port the in-cage relay listens on, and what `claude`'s
 /// `ANTHROPIC_BASE_URL` (see `runtime::CAGE_BASE_URL`) points at.
 const RELAY_PORT: u16 = 8080;
+
+/// Filename of the proxy's best-effort diagnostic log inside the run
+/// dir (see [`ProxyConfig::log_path`]).
+const PROXY_LOG_NAME: &str = "proxy.log";
+
+/// Lines kept from the tail of the log in `--verbose-proxy-log` mode.
+const VERBOSE_LOG_TAIL: usize = 50;
 
 /// Build the shell snippet that blocks until a TCP listener on
 /// `127.0.0.1:port` is actually bound (up to 5s), so `claude`'s first
@@ -58,23 +66,65 @@ struct ProxyHandle {
 }
 
 /// Start the proxy (billed modes only), exec the cage, stop the
-/// proxy, and return the cage's exit code.
+/// proxy, and return the cage's exit code plus an optional proxy
+/// diagnostic. The diagnostic is read from the run dir while it still
+/// exists (before `execute` invokes `teardown_run`) and never affects
+/// `exit_code` — a transient proxy dial failure shouldn't fail an
+/// otherwise-fine billed session (ADR-027).
 ///
 /// # Errors
 ///
 /// [`CageError::Io`] on socket / bwrap spawn failures.
-pub fn run_until_exit(r: &Resolved, prep: &Prep) -> Result<i32, CageError> {
+pub fn run_until_exit(r: &Resolved, prep: &Prep) -> Result<RunOutcome, CageError> {
     let proxy = if mode_is_billed(&r.mode) {
         Some(start_proxy(prep)?)
     } else {
         None
     };
     let status = exec_cage(r, prep);
-    if let Some(p) = proxy {
+    let diagnostic = proxy.map(|p| {
         p.stop.store(true, Ordering::Relaxed);
-        let _ = p.handle.join();
+        let join = p.handle.join();
+        proxy_diagnostic(&prep.rundir.join(PROXY_LOG_NAME), join, r.verbose_proxy_log)
+    });
+    Ok(RunOutcome {
+        exit_code: status?.code().unwrap_or(1),
+        diagnostic: diagnostic.flatten(),
+    })
+}
+
+/// Join outcome of the proxy accept-loop thread.
+type ProxyJoin = thread::Result<Result<(), CageError>>;
+
+/// Build a capped diagnostic from the proxy's log file plus the accept
+/// thread's join outcome, folding a panic or returned error into the
+/// same message rather than surfacing it separately. `None` when
+/// there's nothing to report: an empty/absent log and a clean join.
+fn proxy_diagnostic(log_path: &Path, join: ProxyJoin, verbose: bool) -> Option<String> {
+    let log = std::fs::read_to_string(log_path).unwrap_or_default();
+    let mut lines: Vec<String> = log.lines().map(str::to_owned).collect();
+    match join {
+        Ok(Ok(())) => {},
+        Ok(Err(e)) => lines.push(format!("proxy accept loop error: {e}")),
+        Err(_) => lines.push("proxy accept loop panicked".to_owned()),
     }
-    Ok(status?.code().unwrap_or(1))
+    if lines.is_empty() {
+        return None;
+    }
+    if verbose {
+        let start = lines.len().saturating_sub(VERBOSE_LOG_TAIL);
+        let tail = lines.get(start..).unwrap_or(&lines).join("\n");
+        return Some(format!(
+            "proxy diagnostics ({} lines):\n{tail}",
+            lines.len()
+        ));
+    }
+    lines.last().map(|last| {
+        format!(
+            "proxy diagnostics: {} issue(s) logged; last: {last}",
+            lines.len()
+        )
+    })
 }
 
 /// Bind the proxy socket in the run dir and spawn the accept loop.
@@ -84,7 +134,7 @@ fn start_proxy(prep: &Prep) -> Result<ProxyHandle, CageError> {
     let sock = prep.rundir.join(API_SOCK_NAME);
     let _ = std::fs::remove_file(&sock);
     let listener = UnixListener::bind(&sock)?;
-    let log_path = prep.rundir.join("proxy.log");
+    let log_path = prep.rundir.join(PROXY_LOG_NAME);
     let cfg = Arc::new(ProxyConfig {
         api_key: None,
         upstream_host: API_HOST.to_owned(),

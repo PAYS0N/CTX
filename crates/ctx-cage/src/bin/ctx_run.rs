@@ -186,12 +186,16 @@ fn run() -> Result<i32, CageError> {
         ctx_context_bin: bins.context,
         ctx_scan_bin: bins.scan.clone(),
         allow_dirty: cli.allow_dirty,
+        verbose_proxy_log: false,
     };
-    let code = execute(&resolved)?;
-    if code == 0 && !cli.skip_summarize {
+    let outcome = execute(&resolved)?;
+    if let Some(diag) = &outcome.diagnostic {
+        emit(std::io::stderr().lock(), diag);
+    }
+    if outcome.exit_code == 0 && !cli.skip_summarize {
         maybe_refresh_summaries(&cli.dir, &bins.scan, &env);
     }
-    Ok(code)
+    Ok(outcome.exit_code)
 }
 
 /// The chain hook only leads when the target commits its own

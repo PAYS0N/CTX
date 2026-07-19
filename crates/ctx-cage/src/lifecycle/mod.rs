@@ -44,6 +44,24 @@ pub struct Resolved {
     /// Permit a billed run on a dirty tree (default: refuse — plain
     /// git from a clean commit is the recovery story).
     pub allow_dirty: bool,
+    /// Print the full (capped) proxy log instead of a one-line summary
+    /// when the run's diagnostic is non-empty.
+    pub verbose_proxy_log: bool,
+}
+
+/// Outcome of one cage run: the caged process's exit code, plus an
+/// optional capped diagnostic surfaced when the API proxy logged trouble.
+///
+/// The diagnostic is best-effort reporting only — it never changes
+/// `exit_code` (matches `teardown_run`'s own
+/// best-effort-never-overrides-outcome philosophy, ADR-027).
+#[derive(Debug)]
+pub struct RunOutcome {
+    /// The caged process's own exit code.
+    pub exit_code: i32,
+    /// Non-empty when the proxy logged connection trouble during the
+    /// run; `None` for the common clean-run case.
+    pub diagnostic: Option<String>,
 }
 
 /// Run the full lifecycle. Teardown runs even if `run` fails, so a
@@ -53,7 +71,7 @@ pub struct Resolved {
 ///
 /// Any propagated [`CageError`] from `prepare` or `run`. Teardown
 /// errors are swallowed (best-effort cleanup).
-pub fn execute(r: &Resolved) -> Result<i32, CageError> {
+pub fn execute(r: &Resolved) -> Result<RunOutcome, CageError> {
     let r = &canonicalize_target(r)?;
     let prep = prepare::prepare_run(r)?;
     let result = run::run_until_exit(r, &prep);

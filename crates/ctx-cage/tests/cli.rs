@@ -37,6 +37,7 @@ fn base(target: &str) -> Cli {
             allow_spend: false,
             allow_dirty: false,
         },
+        verbose_proxy_log: false,
     }
 }
 

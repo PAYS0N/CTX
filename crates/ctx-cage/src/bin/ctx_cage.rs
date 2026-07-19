@@ -93,17 +93,24 @@ fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError> {
         ctx_context_bin: bins.context,
         ctx_scan_bin: bins.scan,
         allow_dirty: cli.spend_flags.allow_dirty,
+        verbose_proxy_log: cli.verbose_proxy_log,
     })
 }
 
 /// Inner entry point — returns the cage's process exit code so `main`
-/// can map it to an `ExitCode`.
+/// can map it to an `ExitCode`. Any proxy diagnostic is printed to
+/// stderr as a trailer, after the cage's own inherited-stdio output has
+/// already completed.
 fn run() -> Result<i32, HostError> {
     let cli = Cli::parse();
     let allow_spend = cli.spend_flags.allow_spend || env_allow_spend();
     let mode = resolve_mode(&cli, allow_spend)?;
     let resolved = build_resolved(cli, mode)?;
-    Ok(execute(&resolved)?)
+    let outcome = execute(&resolved)?;
+    if let Some(diag) = &outcome.diagnostic {
+        emit(std::io::stderr().lock(), diag);
+    }
+    Ok(outcome.exit_code)
 }
 
 /// Whether `--contract` was passed. Handled before `clap` so it wins
