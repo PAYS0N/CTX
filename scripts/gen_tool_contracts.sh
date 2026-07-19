@@ -50,7 +50,7 @@ fail_or_die() {
 # Build the four contract-bearing binaries so `--contract` reflects the
 # current source, not a stale artifact. Quiet; failure is a hard error.
 if ! cargo build -q \
-    --bin ctx-context --bin ctx-verify --bin ctx-scan --bin ctx-cage \
+    --bin ctx-context --bin ctx-verify --bin ctx-scan --bin ctx-cage --bin ctx-brief \
     >/dev/null 2>&1; then
     fail_or_die "cargo build of the contract binaries failed"
     exit $FAIL
@@ -69,6 +69,7 @@ BLOCK+="$(one_contract ctx-context ctx-context)"$'\n'
 BLOCK+="$(one_contract ctx-verify ctx-verify)"$'\n'
 BLOCK+="$(one_contract ctx-scan ctx-scan)"$'\n'
 BLOCK+="$(one_contract ctx-cage ctx-cage)"$'\n'
+BLOCK+="$(one_contract ctx-brief ctx-brief)"$'\n'
 BLOCK+="$END"
 
 # Extract the committed block (markers inclusive) from a doc, or empty.

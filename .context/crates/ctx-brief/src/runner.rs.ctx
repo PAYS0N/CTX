@@ -1,0 +1,11 @@
+## crates/ctx-brief/src/runner.rs
+
+Orchestrates brief generation: resolves a backlog item from `docs/STATUS.md`, runs a read-only "gather" pass via `claude -p` to build a grounded dossier, then runs a "plan" pass (headless adjudication or interactive interview) to produce the brief. Generic over the `Fs` and `Claude` trait seams for testability.
+
+Key asymmetry: in headless mode the runner captures the plan's stdout and writes it to `cfg.out_fs` itself; in interactive mode the Claude session writes the file directly (using `cfg.out_rel`, repo-relative), and `run` only verifies via `fs.exists` afterward, returning `BriefError::BriefNotWritten` if absent. Both gather and plan run with cwd set to `target` (the repo being briefed) so its own context hooks (including `ctx-context` itself, allowed via `GATHER_TOOLS`) ground the reads.
+
+`GATHER_TOOLS` restricts the gather pass to `Read`, `Grep`, `Glob`, and a `Bash` invocation scoped to `target/debug/ctx-context *` — no edit/write tools, and the exact bash pattern must match what's actually invokable in the target repo's build.
+
+`Config` fields distinguish `out_rel` (repo-relative, handed to the interactive session) from `out_fs` (cwd-relative, used by this process to write/verify) — mixing these up breaks either the write or the verification.
+
+Public entry point: `pub fn run<F: Fs, C: Claude>(fs: &F, claude: &C, cfg: &Config, target: &Path) -> Result<String, BriefError>`, returning the cwd-relative brief path on success. Prompt files are loaded from `cfg.prompts_dir` by fixed names (`briefer-gather.md`, `briefer-plan-headless.md`, `briefer-plan.md`); missing any maps to `BriefError::PromptMissing`. Depends on `status_item::resolve` for backlog item disambiguation — coupling to whatever ambiguity rules that module enforces.

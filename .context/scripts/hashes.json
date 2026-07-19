@@ -1,9 +1,9 @@
 {
-  "hash": "13bbae51a00eaac5756afe641adcfe288ed249afcaf7a241169b376770af6556",
+  "hash": "6ac937fb7963f89109357c006e90781d9383b7c8a931a36a91a8b379db6b5f3b",
   "children": {
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
     "gen_readme_architecture.sh": "f:767add4806fb1862cb6d4d2981a37236a7baf398e8c1ac5095e5ba26b4c0fc6c",
-    "gen_tool_contracts.sh": "f:ef2d2771fa6c1417c73e969b8a6652d20d3e87c80cc5f17c11b177e63ec9493a",
+    "gen_tool_contracts.sh": "f:de4d0a2b0b36fb9ff1add70ff84ed1e60f3bf6c9a62285a55c590fc4f42f1145",
     "machete_check.sh": "f:28bdcd70df8fd6cbcc17480e40a9f1647aac557758ed537cece9e86b61def759",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",

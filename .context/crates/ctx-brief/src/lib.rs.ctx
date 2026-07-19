@@ -1,0 +1,5 @@
+This is the crate root for `ctx-brief`, whose job is turning a `docs/STATUS.md` backlog item (or free-text ask) into a self-contained executor brief. It does nothing but declare and document the module layout — no logic lives here.
+
+The doc comment states the architectural contract: `main` (outside this file, in `src/main.rs`) wires real filesystem/Claude boundaries, `cli` parses argv, `runner` orchestrates using the `fs::Fs` and `claude::Claude` trait seams, and prompts are never embedded in Rust source — they live in separate files. Two Claude invocations happen inside the *target* repo (not this crate's repo) so its context hooks apply: a cheap read-only gather pass builds a verified dossier, then a plan pass writes the brief, either interactively (default) or headlessly for adjudication under `--headless`.
+
+Module list to know when navigating: `claude`, `cli`, `contract`, `error`, `fs`, `runner`, `status_item`. Anyone changing the two-stage Claude flow or the trait seams should look in `runner` and `claude`; anyone changing brief structure should check `contract`.

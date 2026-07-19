@@ -1,0 +1,7 @@
+`crates/ctx-brief` is a standalone binary crate: it turns a backlog item or free-text ask into an executor brief by driving two `claude` CLI passes inside the target repo. External consumers depend on the built binary/CLI surface, not on any of its internals directly.
+
+`src/` holds the implementation — trait-seamed (`Fs`, `Claude`) orchestration in `runner.rs`, config/path derivation in `cli.rs`, the `BriefError` funnel, and `contract.rs`'s must-stay-synced `CONTRACT` string. `tests/` is the integration boundary, exercising `runner::run` against fakes and asserting exact prompt/model/tool wire details plus a literal fixture output path. This creates a real cross-directory coupling beyond what either rollup states on its own: changing `GATHER_TOOLS`, prompt filenames, or model strings in `src/runner.rs` requires updating both the prompt files on disk and `tests/brief.rs`'s hardcoded assertions, and vice versa — nothing enforces this link at compile time. Similarly, `contract.rs`'s `CONTRACT` string must track actual behavior in `cli.rs`/`runner.rs`, checked by a build-time battery test.
+
+A typical cross-cutting change (e.g., altering the two-stage flow) touches `runner.rs`, the on-disk prompt files, `contract.rs`, and `tests/brief.rs` together.
+
+No intent.md exists for this directory, so no divergence can be assessed.

@@ -16,6 +16,12 @@ prompt).
   directory.
 - `auditor.md` — judges whether a directory's `rollup.ctx` is consistent
   with its `intent.md`.
+- `briefer-gather.md` — grounds a `docs/STATUS.md` backlog item in the live
+  repository, producing a verified dossier (the `ctx-brief` gather stage).
+- `briefer-plan.md` — interactive plan stage: interviews the human on the
+  open decisions, then composes and writes the executor brief.
+- `briefer-plan-headless.md` — headless plan stage: adjudicates tactical
+  decisions and escalates doctrinal ones, emitting the brief on stdout.
 
 ## Iteration policy
 

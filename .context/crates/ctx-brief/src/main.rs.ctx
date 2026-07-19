@@ -1,0 +1,9 @@
+Binary entry point for `ctx-brief`; thin shell that wires real dependencies and delegates all logic to `ctx_brief::cli::dispatch`.
+
+`--contract` is detected manually via raw `std::env::args()` scanning *before* `clap::Cli::parse()` runs, and short-circuits everything else — this is deliberate because `clap` would otherwise reject the missing required `<request>` positional when only `--contract` is passed. If new required positionals/flags are added to `Cli`, this bypass still must run first.
+
+`target_abs` is resolved via `std::fs::canonicalize`, so the target path must exist on disk; a nonexistent target fails here with exit code 2 before `dispatch` ever runs. Failure to resolve `cwd` also exits 2; any error from `dispatch` itself exits 1.
+
+All output goes through writer handles (`std::io::stdout().lock()` / `stderr().lock()`) passed into `emit`/`dispatch`, never `println!` — keep this convention for testability. `emit` swallows write errors intentionally (no fallback if the error channel is itself broken).
+
+Couples to `ctx_brief::contract::CONTRACT` (static text probe output), `ctx_brief::fs::StdFs` (needs a cwd at construction), and `ctx_brief::claude::ClaudeCli::default()` — signature/behavior changes to `dispatch`'s parameters must be mirrored here.

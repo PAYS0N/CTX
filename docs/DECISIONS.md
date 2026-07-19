@@ -1135,3 +1135,44 @@ mirror artifacts. Also rejected: "delete `.context/` and rescan" (the
 filesystem-only problem. Note: pruning a dead child does not itself
 mark the parent rollup stale (hashes track source only); the parent's
 text self-corrects on its next regeneration.
+
+## ADR-054 — `ctx-brief`: status item → grounded brief via two subscription-billed `claude` stages
+**Decision:** the "turn a backlog item into an executor brief" step is a
+Rust crate, `ctx-brief`, not a bespoke question/answer protocol. It
+resolves a `docs/STATUS.md` row (case-insensitive substring match of the
+task column — one match formats the row, several is an
+`AmbiguousItem` error, none passes the raw request through as free text),
+then drives two `claude -p` stages inside the target repo so that repo's
+own context hooks ground every read: a cheap read-only **gather** pass
+(`--gather-model`, default `haiku`; tools `Read`/`Grep`/`Glob` plus
+`Bash(target/debug/ctx-context *)`) emits a verified dossier, then a
+**plan** pass composes the brief. Plan runs interactively by default —
+it interviews the human on the open decisions and the session writes the
+brief to `.context/.reports/briefs/<slug>.md` itself — or, under
+`--headless`, adjudicates the tactical decisions, escalates the doctrinal
+ones, and emits the brief on stdout for the runner to write. The crate
+mirrors `ctx-summarize`'s seams (`main.rs` → `cli.rs` → `runner.rs` over
+`Fs`/`Claude` traits; pure `status_item.rs` parse; `claude.rs` boundary),
+and billing is the subscription `claude` CLI throughout — never the
+summarizer key. **Context:** STATUS.md carried three converging items —
+"create prompting flow for initial request", "switch to claude -p" where
+injected context isn't poison, and "move model choice into rust". The
+brief step is exactly the place where Claude Code's injected context is a
+feature (grounding), not poison, so it is the first consumer of the
+subscription `claude` path, with the model chosen by a Rust flag rather
+than an env var. **Rationale:** the two-stage split keeps the expensive
+plan pass off the cheap grounding work and makes each stage's tool
+surface auditable; folding adjudication into the headless plan prompt
+(rather than a third "adjudicate" stage) keeps the billed stages to two.
+The default output under `.context/.reports/` rides the existing
+never-pruned carve-out, so `ctx-scan` never reclaims a brief. **Rejected:**
+a bespoke `REQ:`/`ANSWER:` interview protocol parsed by the runner — it
+reinvents a conversation loop the `claude` CLI already provides
+interactively, and pushes prompt logic into code the prompt files are
+supposed to own (per `prompts/README.md`). Also rejected: a separate
+`briefer-investigate`/`briefer-adjudicate`/`briefer-compose` prompt trio
+(the earlier design) — collapsed to `briefer-gather` + `briefer-plan`
++ `briefer-plan-headless`, matching the two code stages. Also rejected:
+billing brief generation through the summarizer key — the summarizer key
+is masked in the cage and reserved for `.context/` generation; the brief
+is an interactive, network-billed authoring step outside that boundary.

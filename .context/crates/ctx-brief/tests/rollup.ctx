@@ -1,0 +1,7 @@
+`crates/ctx-brief/tests/` is the integration test boundary for the `ctx-brief` crate: it exercises `runner::run` end-to-end against fakes rather than real disk/model access, giving downstream readers confidence that gather→plan wiring, prompt selection, and error propagation work as a whole rather than per-unit.
+
+The only file, `brief.rs`, depends entirely on `common/` for its fixture world (`cfg`, `seeded`, `FakeClaude`, `FakeFs`) and asserts exact wire details of `runner.rs`'s prompt construction (system prompt names, model strings, tool lists, cwd) plus a literal output path `.context/.reports/briefs/item.md` tied to `seeded()`'s fixture identifier "item". This creates a three-way coupling: changes to `runner.rs`'s prompts/models/tools, or to `common`'s `cfg()`/`seeded()` fixture shape, can silently break `brief.rs`'s assertions since nothing enforces the link at compile time — a change in one almost always requires checking the other two.
+
+`FakeClaude` call queues must be sized to match how many times the code path under test invokes them, and `assert_headless_calls` returning `Option<()>` (rather than panicking outright) is the mechanism for diagnosing which of the two expected calls went missing.
+
+No intent.md exists for this directory, so no divergence can be assessed.

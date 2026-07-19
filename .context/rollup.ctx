@@ -1,35 +1,7 @@
-`.` is the CTX project root: an agentic coding system whose crates,
-scripts, docs, and templates jointly enforce compiler-level defect
-prevention, context-before-code ordering, and (eventually) intent-audit
-divergence detection. Depending on the repo root gets you the full
-pipeline — sandboxed execution (`ctx-cage`), context-chain
-resolution/serving (`ctx-context`), staleness scanning (`ctx-scan`),
-LLM summarization (`ctx-summarize`), check verification (`ctx-verify`),
-their shared library (`ctx-core`), the CI/lint scripts that back
-`ctx-verify`, the reference agent adapter, project docs, and the
-project-scaffold template.
+`.` is the CTX toolchain itself: an agentic-coding enforcement system built as a Rust workspace (`crates/`) plus supporting layers — an agent adapter (`agents/`), rationale/planning docs (`docs/`), CI/lint scripts (`scripts/`), and a project scaffold for consumers (`template/`). Depending on this root means picking one of the published binaries (`ctx-scan`, `ctx-summarize`, `ctx-context`, `ctx-verify`, `ctx-cage`, `ctx-brief`) or adopting the `template/` scaffold in a new project; there is no root-level code, only workspace wiring (`Cargo.lock`).
 
-The core coupling spans three subtrees, not one: `crates/` produces the
-binaries; `scripts/` is what `ctx-verify` (in `crates/`) actually
-invokes, sharing the `FAIL: path:line: message` convention documented in
-`scripts/rollup.ctx`; `template/` re-packages both — it wires
-`.claude/settings.json` to `ctx-context` and CI to `scripts/*.sh` — for
-downstream projects. A change to a script's failure-line format or a
-crate's `--contract` output must be checked against both `ctx-verify`'s
-parser and `gen_tool_contracts.sh`. `agents/` supplies the external
-`CTX_AGENT_CMD` implementation that `ctx-summarize` shells out to; its
-stdin/stdout JSON contract is independent of the crate/script coupling
-above but is exercised by the same pipeline. `docs/` and `Cargo.lock` are
-inert with respect to this coupling — reference material and dependency
-pins only.
+The load-bearing cross-cutting coupling is the `.ctx`/`rollup.ctx` file format: produced by `ctx-summarize`, tracked for staleness by `ctx-scan`, served read-only by `ctx-context`, and consumed by hooks in `template/.claude/settings.json` — a format or path change must be checked against all four. A second cross-cutting convention, independent of the first, is the `FAIL: path:line: message` stderr contract shared by everything under `scripts/` and mirrored by `template/scripts/`, both parsed by `ctx-verify`'s `split_loc`.
 
-Workspace-wide invariants enforced across `crates/`: no `unsafe`, no
-`#[allow]`, typed errors only, injected I/O boundaries (`Env`/`Fs`/`Agent`/
-`Runner`/clock) — `scripts/no_allow_check.sh` and `workspace_lints_check.sh`
-are the actual enforcement mechanism for the first two, making them
-load-bearing for the stated Layer 1 goal, not just CI hygiene.
+`docs/DECISIONS.md` is the append-only source of truth for *why* the architecture looks like this (e.g. the cage→hook-injected sandboxing pivot); `docs/STATUS.md` tracks current state against it and can go stale independently. `agents/` defines the external `CTX_AGENT_CMD` contract (stdin/stdout JSON, non-zero exit on failure) that `ctx-brief` and any future agent-backed crate must honor.
 
-Layer 3 (intent-audit) is stated as deferred in `intent.md`; no crate,
-script, or doc here currently performs intent-vs-structure divergence
-detection beyond this manually-authored rollup process itself — consistent
-with intent, not a divergence.
+Layer 1 (no-`unsafe`/no-`allow`/typed-errors) and Layer 2 (context-before-source, regenerated rollups) from intent.md are both live and enforced across `crates/`; Layer 3 (intent-divergence audit) is explicitly deferred, matching intent.md's own admission — no divergence to report.

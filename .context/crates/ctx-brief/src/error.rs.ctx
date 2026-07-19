@@ -1,0 +1,5 @@
+Defines `BriefError`, the single error enum returned across ctx-brief's runner and boundary functions — a thin `thiserror`-derived taxonomy, no logic.
+
+Five variants matter to callers: `AmbiguousItem(String)` (payload is a newline-joined list of competing task titles, for disambiguation prompts), `PromptMissing(String)` (missing/unreadable prompt file path), `Claude(String)` (covers a `claude` stage failing to run, exiting non-zero, *or* returning empty output for captured gather/headless passes — not just process failure), `BriefNotWritten(String)` (interactive plan session exited without producing a brief at the expected path), and `Io { path, detail }` (path plus stringified cause, not a wrapped `std::io::Error`).
+
+No `From` impls are defined here — callers must construct variants explicitly rather than relying on `?` conversion from `io::Error` or similar. Any new failure mode elsewhere in the crate should be added as a variant here rather than surfaced as a raw `anyhow`/`io` error, to keep this the single error surface.

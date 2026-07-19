@@ -1,0 +1,7 @@
+Parses `docs/STATUS.md`'s backlog table (`task | description | impact | difficulty`) and matches a free-text request against the task column, no I/O involved — pure string parsing consumed by the brief-generation flow elsewhere in the crate.
+
+`parse_rows(status: &str) -> Vec<Row>` walks lines, keeps only well-formed 4-cell pipe rows, and skips separator rows (all-`-`/`:` cells) and the literal header row (`task`/`description`, case-insensitive) — any other row shape is silently dropped, not an error.
+
+`resolve(status: &str, request: &str) -> Result<String, BriefError>` matches `request` as a case-insensitive substring of each row's `task`: zero matches falls back to returning the trimmed raw request text (not an error), exactly one match returns the row formatted via `format_item` (`TASK:`/`DESCRIPTION:`/`IMPACT:`/`DIFFICULTY:` lines), and multiple matches produce `BriefError::AmbiguousItem` listing the matched task titles as a bullet list. Callers relying on `resolve` must handle the no-match fallback carefully since it silently accepts unrelated free text rather than signaling "not found."
+
+Table format is tightly coupled to `docs/STATUS.md`'s actual column layout — changing the column count or order there breaks `split_row`'s `<[String; 4]>::try_from`.

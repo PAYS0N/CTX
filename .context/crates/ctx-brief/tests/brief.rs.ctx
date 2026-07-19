@@ -1,0 +1,9 @@
+Integration test suite for `ctx_brief::runner::run`, exercising the full gather → plan pipeline against the shared in-memory fakes in `tests/common` (not the source file itself, but a required sibling — `mod common` must expose `cfg`, `fake_claude`, `fake_fs`, `seeded`, and `FakeClaude` with `nth_print`/`nth_interactive`).
+
+Covers five scenarios: headless success (writes brief, threads gather's dossier into the plan prompt), interactive success (session itself writes the brief file), interactive failure when no brief is written (`BriefError::BriefNotWritten`), missing gather prompt file (`BriefError::PromptMissing`), and free-text item resolution when no status line is present (the raw request string becomes the gather user message verbatim).
+
+Key coupling: assertions hardcode exact wire details of the runner's prompt construction — the gather call must use system `"GATHER-PROMPT"`, model `"haiku"`, include tool `"Bash(target/debug/ctx-context *)"`, and cwd must equal the path passed to `run`; the headless plan call must have system `"HEADLESS-PROMPT"` and empty tools; interactive uses system `"PLAN-PROMPT"`. Changing prompt names/models/tool lists in `runner.rs` breaks these tests silently unless run.
+
+`assert_headless_calls` returns `Option<()>` (not a `Result`) so call-site `?`/`expect` patterns surface which of the two recorded calls is missing — a `None` means one of the two expected `print` calls wasn't recorded, not that the assertions inside failed.
+
+The output path `.context/.reports/briefs/item.md` is asserted as a literal in three tests; it depends on `seeded()`'s fixture state in `common` establishing "item" as the target's identifier.

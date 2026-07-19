@@ -13,6 +13,7 @@ members = [
     "crates/ctx-summarize",
     "crates/ctx-cage",
     "crates/ctx-scan",
+    "crates/ctx-brief",
 ]
 
 [workspace.lints.rust]

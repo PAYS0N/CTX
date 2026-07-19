@@ -1,0 +1,21 @@
+[package]
+name = "ctx-brief"
+version = "0.1.0"
+edition = "2021"
+description = "Turn a docs/STATUS.md backlog item into a self-contained executor brief via two subscription-billed claude stages."
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ctx-brief"
+path = "src/main.rs"
+
+[lib]
+name = "ctx_brief"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"

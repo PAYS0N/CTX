@@ -1,0 +1,5 @@
+`crates/ctx-brief/tests/common/` is the fake test harness for ctx-brief's integration tests: an in-memory filesystem and a scripted Claude stub, plus builders that seed a standard fixture world. Depending on it gets a test a `Shared` world plus `FakeFs`/`FakeClaude` implementations of the production `Fs`/`Claude` traits, so integration tests can drive `ctx_brief::runner` without touching disk or a real model.
+
+The whole module is currently a single file (mod.rs) — there is no cross-file coupling to track, but there is a load-bearing coupling to the production crate: `cfg()`'s `Config` shape and the prompt paths/model names baked into `seeded()` must track `ctx_brief::runner::Config` and whatever prompt paths the runner actually reads, since nothing enforces that link at compile time. Tests that queue `FakeClaude::print` outputs must queue at least as many as the code path under test will call, or they get an `Err` instead of a panic — a common source of confusing test failures if miscounted.
+
+No intent.md exists for this directory, so no divergence can be assessed.

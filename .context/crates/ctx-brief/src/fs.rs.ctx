@@ -1,0 +1,7 @@
+Defines the `Fs` trait — the filesystem boundary the ctx-brief runner is pure over — plus `StdFs`, its real `std::fs`-backed implementation. Tests substitute an in-memory fake against the same trait instead of touching disk.
+
+All paths passed to `read`/`write`/`exists` are relative and resolved by joining against `StdFs`'s stored absolute `base`; an absolute `rel` will replace the base entirely (`PathBuf::join` semantics), not error. `base` is meant to be the process cwd, with the target repo's `--target` prefix folded into individual `rel` strings by callers — this file doesn't know about `--target` itself.
+
+`read` does lossy UTF-8 conversion (`String::from_utf8_lossy`), so invalid UTF-8 in a file silently produces replacement characters rather than an error. `write` creates all parent directories via `create_dir_all` before writing — callers don't need to pre-create output dirs. All I/O failures map to `BriefError::Io { path, detail }` with `path` set to the original `rel` (not the resolved absolute path), and `detail` from the underlying `io::Error`'s `Display`.
+
+`Fs` is the seam: any new runner logic needing filesystem access must go through this trait to stay testable against the in-memory fake, not call `std::fs` directly.

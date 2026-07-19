@@ -1,0 +1,7 @@
+Defines the `ctx-brief` CLI surface: parses argv into `Cli` via `clap`, resolves it into a `runner::Config`, and dispatches into the pipeline in `runner.rs`.
+
+`Cli` fields map directly to flags (`--headless`, `--out`, `--gather-model`, `--plan-model`, `--target`, `--prompts`), plus a required trailing `request: Vec<String>` (multi-word free text, joined with spaces). `target()` exposes the raw (cwd-relative) `--target` string for the caller to resolve to an absolute path before calling `dispatch`.
+
+`to_config()` builds all path fields relative to `--target` via the private `under(target, rel)` helper — `.` or empty target means cwd, otherwise it's string-prefixed (not `Path::join`, so no normalization of `..` etc.). Output path defaults to `.context/.reports/briefs/<slug>.md` where `slug()` lowercases, collapses non-alphanumerics to single dashes, trims trailing dashes, and falls back to `"brief"` if the result is empty — this is the only place the output filename is derived, so changing it changes where briefs land silently.
+
+`dispatch<F: Fs, C: Claude, W: Write>(fs, claude, cli, target_abs, out) -> Result<(), BriefError>` builds the config, calls `runner::run`, and writes the resulting path to `out`; a write failure is wrapped as `BriefError::Io { path: "<stdout>", .. }`. Generic over `Fs`/`Claude`/`Write` purely for testability — no async, no real I/O here beyond the final writeln.

@@ -9,15 +9,41 @@ runs. Doctrine lives in `.context/intent.md`; rationale in
 ## Architecture
 
 <!-- BEGIN GENERATED architecture (scripts/gen_readme_architecture.sh --write) -->
-`.` is the CTX system's repository root: an agentic-coding toolchain that makes bad code uncompilable and forces context-reading before edits, plus the docs, prompts, scripts, and scaffolding that support it. Depending on the repo root gets you the whole toolchain — five Rust crates under `crates/`, prompt files consumed by `ctx-summarize`, verification scripts wired through `ctx-verify`, and a `template/` scaffold for stamping new projects — but no shared code lives at this top level; it's organizational only.
+`.` is the CTX project root: an agentic coding system whose crates,
+scripts, docs, and templates jointly enforce compiler-level defect
+prevention, context-before-code ordering, and (eventually) intent-audit
+divergence detection. Depending on the repo root gets you the full
+pipeline — sandboxed execution (`ctx-cage`), context-chain
+resolution/serving (`ctx-context`), staleness scanning (`ctx-scan`),
+LLM summarization (`ctx-summarize`), check verification (`ctx-verify`),
+their shared library (`ctx-core`), the CI/lint scripts that back
+`ctx-verify`, the reference agent adapter, project docs, and the
+project-scaffold template.
 
-The core lifecycle spans four subtrees and must be read as a chain, not independently: `crates/` implements the binaries; `prompts/` supplies the fixed system-prompt contracts those binaries' agents (`agents/`) feed to an LLM; `scripts/` implements the FAIL:-line checks that `ctx-verify` parses; `docs/` records why decisions were made and what's pending. A convention, not a compiler, holds these together — `ctx-summarize`, `ctx-scan`, and `ctx-context` all read/write the same `.context/` tree independently, and `agents/`'s stdin/stdout JSON contract is mirrored, not shared, between `prompts/`'s auditor.md and any runner.
+The core coupling spans three subtrees, not one: `crates/` produces the
+binaries; `scripts/` is what `ctx-verify` (in `crates/`) actually
+invokes, sharing the `FAIL: path:line: message` convention documented in
+`scripts/rollup.ctx`; `template/` re-packages both — it wires
+`.claude/settings.json` to `ctx-context` and CI to `scripts/*.sh` — for
+downstream projects. A change to a script's failure-line format or a
+crate's `--contract` output must be checked against both `ctx-verify`'s
+parser and `gen_tool_contracts.sh`. `agents/` supplies the external
+`CTX_AGENT_CMD` implementation that `ctx-summarize` shells out to; its
+stdin/stdout JSON contract is independent of the crate/script coupling
+above but is exercised by the same pipeline. `docs/` and `Cargo.lock` are
+inert with respect to this coupling — reference material and dependency
+pins only.
 
-`README.md`'s generated blocks (tool contracts, architecture) are regenerated from `crates/`'s `--contract` output and this rollup respectively — editing this rollup's shape can ripple into README regeneration. `sandbox/` and parts of `docs/retired/` are retired: functionality fully migrated into `crates/ctx-cage`, kept only as documentation/history. `template/`'s scaffold assumes a sibling tooling repo (`install-tools.sh`) supplies the binaries it wires up, an external dependency not visible elsewhere in this tree.
+Workspace-wide invariants enforced across `crates/`: no `unsafe`, no
+`#[allow]`, typed errors only, injected I/O boundaries (`Env`/`Fs`/`Agent`/
+`Runner`/clock) — `scripts/no_allow_check.sh` and `workspace_lints_check.sh`
+are the actual enforcement mechanism for the first two, making them
+load-bearing for the stated Layer 1 goal, not just CI hygiene.
 
-Layer 3 (architecture audit) is still deferred per intent.md — `prompts/auditor.md` and the `intent_divergence:` label exist, but no automated run of the audit against live rollups is wired into CI yet.
-
-intent_divergence: intent states Layer 3 (audit) hooks "exist" but only the prompt and label convention are present — no CI or script actually invokes the auditor against generated rollups.
+Layer 3 (intent-audit) is stated as deferred in `intent.md`; no crate,
+script, or doc here currently performs intent-vs-structure divergence
+detection beyond this manually-authored rollup process itself — consistent
+with intent, not a divergence.
 <!-- END GENERATED architecture -->
 
 ## Tools
@@ -29,6 +55,7 @@ An agent works through four binaries.
 - **ctx-verify** — ctx-verify [crate] is the agent checkpoint: it applies `cargo fmt`, then builds, lints (clippy + rustdoc, warnings denied), tests, and runs the repo's script battery in one call; an optional crate name scopes the cargo-based checks. The default terse render prints the single word `pass` when every check passed, otherwise one FAIL:/ERROR: block per failing check — the `{"status":"pass"}` JSON envelope is emitted only under `--json`. Serving fails open; this gate fails closed.
 - **ctx-scan** — ctx-scan <dir> maintains the `.context/` summary tree beside the source, using a content-hash tree (not git) to decide staleness. `--check` reports stale directories and leaves, expected summaries that are missing (never generated or hand-deleted), and orphaned artifacts (summaries/sidecars whose source was deleted or scoped out), without calling the model; `--prune` deletes the orphaned artifacts and sweeps emptied mirror directories, also model-free; `--update` prunes, regenerates only the stale leaves and rollups, then rewrites the hash sidecars (`intent.md` and `.context/.cache|.reports` are never pruned); `--dry-run` lists the files in scope; `--stop-hook` reports staleness as a Claude Code Stop `systemMessage` and always exits 0 (fail-open). Regeneration is a post-session concern — the hook never bills the model.
 - **ctx-cage** — ctx-cage <target> runs an agent subprocess in an offline sandbox over the target project — bwrap with a masked filesystem, fresh namespaces, and no egress except a proxied API relay — and guarantees teardown. Billed modes (`--task`/`--task-file`, or the interactive default) require `--allow-spend` or `CTX_CAGE_ALLOW_SPEND=1`; `--self-test stub` is the always-available no-spend, no-network containment probe.
+- **ctx-brief** — ctx-brief [--headless] <request> turns a `docs/STATUS.md` backlog item — matched as a case-insensitive substring of the task column, or the raw text when nothing matches — into a self-contained task brief for `ctx-cage --task-file`. It runs two subscription-billed `claude` stages inside the target repo so that repo's own context hooks ground every read: a cheap read-only gather pass (`--gather-model`, default haiku) produces a verified dossier (state, constraints, waypoints, unknowns), then a plan pass composes the brief — interviewing the human on open decisions by default, or (`--headless`) adjudicating tactical decisions itself and escalating doctrinal ones. The brief is written to `.context/.reports/briefs/<slug>.md` (never pruned by ctx-scan) unless `--out` overrides it, and its path is printed for the `ctx-cage` hand-off.
 <!-- END GENERATED tool-contracts -->
 
 Summaries are regenerated by `ctx-scan --update`, which drives the
