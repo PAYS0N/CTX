@@ -1176,3 +1176,33 @@ supposed to own (per `prompts/README.md`). Also rejected: a separate
 billing brief generation through the summarizer key — the summarizer key
 is masked in the cage and reserved for `.context/` generation; the brief
 is an interactive, network-billed authoring step outside that boundary.
+
+## ADR-055 — `ctx-verify`: `contracts`/`architecture` auto-regen on failure
+**Decision:** when the `contracts` or `architecture` check fails,
+`run_spec` now runs the generating script's `--write` mode once
+(`scripts/gen_tool_contracts.sh --write .` /
+`scripts/gen_readme_architecture.sh --write .`) and re-runs the original
+`--check` invocation once before building the `CheckReport` — no retry
+loop, one regen attempt, one recheck. The report always reflects the
+recheck's `CommandOutcome` (what's on disk after the regen attempt), on
+both the recheck-passes and recheck-still-fails branches; only when the
+regen command itself cannot be executed (e.g. `ToolMissing`) does the
+report fall back to the original pre-regen outcome, since there is
+nothing fresher to report. A passing first run never triggers a write —
+mirroring why `--check` mode exists on these scripts at all.
+**Rationale:** extends [[ADR-022]]'s precedent that `fmt` auto-applies
+because formatting is mechanical and authoritative, not agent judgement.
+`contracts`/`architecture` staleness is the same class of
+deterministic-from-source-of-truth operation — the generated block is a
+pure function of the tool `--contract` output / crate doc comments
+already on disk — so `ctx-verify` now applies the fix before reporting
+rather than making the agent remember to re-run `--write` by hand.
+**Rejected:** a retry loop re-running regen+check until stable — one
+attempt is sufficient for a deterministic generator and bounds the
+checkpoint's cost; if a single regen doesn't fix it, the underlying
+source (not the generation step) needs an agent's attention, which the
+still-failing report already surfaces. Also rejected: generalizing
+`regen_command` to a config table covering every check — `clippy`,
+`test`, and the other script checks require judgement to fix, not a
+mechanical rewrite, so scope stays a `match` over exactly these two
+names.

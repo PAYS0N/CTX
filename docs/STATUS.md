@@ -9,7 +9,6 @@ impact band.
 | task | description | impact | difficulty |
 |---|---|---|---|
 | switch to claude -p | where the claude code injected context isn't poison, use the subscription billing. `ctx-brief` (ADR-054) is the first consumer; the summarizer path (`ctx-scan`/`ctx-summarize`) still uses the masked key and is unaffected | high | easy |
-| automate readme generation | verify should autoregen the tool/context text on fail before reporting an error; no reason to involve manual work there | high | easy |
 | ctx-verify: skipped checks must be visible | `ToolMissing` → `Skipped` is ignored by overall status and the terse render prints a bare `pass` (`checks.rs:211`, `model.rs:157`, `cli.rs:90`); a missing python3/cargo-machete silently shrinks the gate. Doctrine says gates fail closed — at minimum render `pass (skipped: …)` | high | easy |
 | mechanical validation of generated summaries | nothing checks generator output before it is written and served: line budgets, banned/hedging phrases, truncation, or cheap factual sanity (root rollup says "five Rust crates"; six exist — persisted into README's generated block). Add a write-time lint in ctx-scan with retry-once | high | medium |
 | wire the Layer 3 auditor | `prompts/auditor.md` and the `intent_divergence:` label exist but nothing invokes the audit against regenerated rollups; the root rollup itself flags this divergence. Wire it into the regeneration flow | high | medium |

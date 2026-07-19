@@ -1,6 +1,9 @@
 //! Behavioral tests: pure parsers against canned tool output, and
 //! orchestration over a fake [`Runner`] (skipped tools, capping, overall
-//! status). Hermetic — no real process is ever spawned.
+//! status). Hermetic — no real process is ever spawned. The
+//! regen-then-recheck path for `contracts`/`architecture` is covered
+//! separately in `checks_regen.rs`, which needs a `FakeRunner` that can
+//! return different outcomes across successive calls to the same key.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -50,7 +53,10 @@ fn fmt_diff_lines_are_deduped_per_file() {
     assert_eq!(diags.first().expect("a").file, "/p/a.rs");
 }
 
-/// Canned responses keyed by the command's first argument.
+/// Canned responses keyed by the command's first argument. No test in
+/// this file needs finer-grained disambiguation than that — the
+/// `--check`/`--write` disambiguation for `contracts`/`architecture` only
+/// matters in `checks_regen.rs`.
 struct FakeRunner {
     /// `Some(outcome)` to return it; `None` to simulate a missing tool.
     by_first_arg: BTreeMap<String, Option<CommandOutcome>>,
