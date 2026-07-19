@@ -8,7 +8,6 @@ impact band.
 
 | task | description | impact | difficulty |
 |---|---|---|---|
-| wire the Stop-hook staleness report | `ctx-scan --stop-hook` (ADR-043's whole design) is implemented and tested but wired in neither `.claude/settings.json` nor `template/.claude/settings.json`; staleness is invisible unless someone manually runs `--check` | high | easy |
 | switch to claude -p | where the claude code injected context isn't poison, use the subscription billing. `ctx-brief` (ADR-054) is the first consumer; the summarizer path (`ctx-scan`/`ctx-summarize`) still uses the masked key and is unaffected | high | easy |
 | automate readme generation | verify should autoregen the tool/context text on fail before reporting an error; no reason to involve manual work there | high | easy |
 | ctx-verify: skipped checks must be visible | `ToolMissing` → `Skipped` is ignored by overall status and the terse render prints a bare `pass` (`checks.rs:211`, `model.rs:157`, `cli.rs:90`); a missing python3/cargo-machete silently shrinks the gate. Doctrine says gates fail closed — at minimum render `pass (skipped: …)` | high | easy |
@@ -16,7 +15,6 @@ impact band.
 | wire the Layer 3 auditor | `prompts/auditor.md` and the `intent_divergence:` label exist but nothing invokes the audit against regenerated rollups; the root rollup itself flags this divergence. Wire it into the regeneration flow | high | medium |
 | work on summarization prompts | do research research into how to modify the prompts to convey more important info | high | hard |
 | phase 5 e2e smoke fixture | throwaway workspace, buggy file + failing test, generated tree, `--stub` and billed modes; asserts hook injection, native Edit, `ctx-verify` pass, post-session rollup regen, no egress beyond proxy, no writes outside workspace; include degraded-tree cases (stale, absent, truncated) | high | hard |
-| surface api errors from cage | user reports occasional issues with the cage; add clearer errors as a first step | medium | easy |
 | clean rollup prompts | prevent text like 'No intent.md exists for this directory.', just omit it. | medium | easy |
 | move model choice into rust | model choice should be passed to the tool, not an env var. `ctx-brief` (ADR-054) already takes `--gather-model`/`--plan-model` flags; the summarizer path (`ctx-scan`/`ctx-summarize`) still reads the model from the environment and remains open | medium | easy |
 | summarizer adapter: handle truncation | `agents/summarizer-claude.py` never checks `stop_reason`, so a `max_tokens` cut is written to disk as truth; `CTX_AGENT_TEMPERATURE` is documented in the docstring but never read (dead option) | medium | easy |
