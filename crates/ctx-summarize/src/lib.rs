@@ -11,4 +11,5 @@ pub mod cli;
 pub mod cpath;
 pub mod error;
 pub mod fs;
+pub mod progress;
 pub mod runner;

@@ -13,6 +13,7 @@ use ctx_scan::walker::walk_dir;
 use ctx_summarize::agent::Agent;
 use ctx_summarize::error::SummError;
 use ctx_summarize::fs::{Fs, StdFs};
+use ctx_summarize::progress::NoProgress;
 use ctx_summarize::runner;
 
 /// Absolute path to the workspace prompt files, independent of the test
@@ -27,6 +28,13 @@ fn prompts_path() -> String {
 
 // ── in-memory fakes ──────────────────────────────────────────────────────────
 
+/// Seed `m` with the embedded leaf/rollup summarizer prompt contents.
+fn seed_prompts(m: &mut BTreeMap<String, String>) {
+    let rollup = "prompts/summarizer-rollup.md".to_owned();
+    m.insert("prompts/summarizer-leaf.md".to_owned(), "LEAF".to_owned());
+    m.insert(rollup, "ROLLUP".to_owned());
+}
+
 /// In-memory filesystem for hermetic tests.
 struct FakeFs {
     /// path → contents.
@@ -37,11 +45,7 @@ impl FakeFs {
     /// Seed with both embedded prompts and one source file at `src/lib.rs`.
     fn with_source() -> Self {
         let mut m = BTreeMap::new();
-        m.insert("prompts/summarizer-leaf.md".to_owned(), "LEAF".to_owned());
-        m.insert(
-            "prompts/summarizer-rollup.md".to_owned(),
-            "ROLLUP".to_owned(),
-        );
+        seed_prompts(&mut m);
         m.insert("src/lib.rs".to_owned(), "fn foo() {}".to_owned());
         Self {
             map: RefCell::new(m),
@@ -51,11 +55,7 @@ impl FakeFs {
     /// Seed with prompts only (no source files).
     fn prompts_only() -> Self {
         let mut m = BTreeMap::new();
-        m.insert("prompts/summarizer-leaf.md".to_owned(), "LEAF".to_owned());
-        m.insert(
-            "prompts/summarizer-rollup.md".to_owned(),
-            "ROLLUP".to_owned(),
-        );
+        seed_prompts(&mut m);
         Self {
             map: RefCell::new(m),
         }
@@ -148,8 +148,9 @@ fn summarize_writes_leaves_rollups_and_readme() {
     let fs = FakeFs::with_source();
     let agent = recording();
     let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
+    let target = "src/lib.rs".to_owned();
     let summary =
-        summarize(&fs, &agent, &prompts, &["src/lib.rs".to_owned()], false).expect("summarize");
+        summarize(&fs, &agent, &prompts, &[target], false, &NoProgress).expect("summarize");
     assert!(summary.readme_written);
     assert_eq!(summary.leaves_written, vec![".context/src/lib.rs.ctx"]);
     assert!(fs.map.borrow().contains_key(".context/README.md"));
@@ -163,7 +164,8 @@ fn scope_gate_blocks_unapproved_large_runs() {
     let targets: Vec<String> = (0..=runner::MAX_TARGETS)
         .map(|i| format!("{i}.rs"))
         .collect();
-    let err = summarize(&fs, &agent, &prompts, &targets, false).expect_err("should be refused");
+    let err = summarize(&fs, &agent, &prompts, &targets, false, &NoProgress)
+        .expect_err("should be refused");
     assert!(matches!(
         err,
         ScanError::Summarize(SummError::ScopeTooLarge { .. })
@@ -173,11 +175,7 @@ fn scope_gate_blocks_unapproved_large_runs() {
 #[test]
 fn scope_gate_allows_approved_large_runs() {
     let mut m = BTreeMap::new();
-    m.insert("prompts/summarizer-leaf.md".to_owned(), "LEAF".to_owned());
-    m.insert(
-        "prompts/summarizer-rollup.md".to_owned(),
-        "ROLLUP".to_owned(),
-    );
+    seed_prompts(&mut m);
     let targets: Vec<String> = (0..=runner::MAX_TARGETS)
         .map(|i| format!("{i}.rs"))
         .collect();
@@ -189,7 +187,7 @@ fn scope_gate_allows_approved_large_runs() {
     };
     let agent = recording();
     let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
-    assert!(summarize(&fs, &agent, &prompts, &targets, true).is_ok());
+    assert!(summarize(&fs, &agent, &prompts, &targets, true, &NoProgress).is_ok());
 }
 
 #[test]
@@ -331,9 +329,8 @@ fn check_cycle_stale_then_missing_artifacts_then_edit_propagates() {
     store_hashes(&base).expect("store");
     let second = check_run(&base).expect("recheck");
     assert!(second.stale_dirs.is_empty() && second.changed_files.is_empty());
-    assert!(second
-        .missing_artifacts
-        .contains(&".context/rollup.ctx".to_owned()));
+    let path = ".context/rollup.ctx".to_owned();
+    assert!(second.missing_artifacts.contains(&path));
 
     // Edit one file: exactly its leaf and ancestor dirs go stale.
     std::fs::write(base.join("src/main.rs"), "fn main() { e(); }").expect("edit");

@@ -38,7 +38,7 @@ echo "Running install-tools.sh..."
 # Most of template/ (Cargo.toml package/deps/members, CLAUDE.md project
 # prose) is project-owned and stays out of this list on purpose.
 TOP_LEVEL_FILES=(clippy.toml rustfmt.toml deny.toml)
-CHECK_SCRIPTS=(cycle_check.sh machete_check.sh no_allow_check.sh workspace_lints_check.sh rationale_check.py)
+CHECK_SCRIPTS=(cycle_check.sh machete_check.sh no_allow_check.sh workspace_lints_check.sh rationale_check.py gen_readme_architecture.sh gen_tool_contracts.sh retired_terms_check.sh)
 # Runtime prompt files: ctx-scan/ctx-summarize/ctx-brief load these from
 # ./prompts at runtime, resolved against cwd (the project root), not the
 # tooling repo — install-tools.sh only builds the binaries that consume

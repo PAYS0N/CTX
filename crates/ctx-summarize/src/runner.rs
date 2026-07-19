@@ -11,6 +11,7 @@ use crate::agent::Agent;
 use crate::cpath;
 use crate::error::SummError;
 use crate::fs::Fs;
+use crate::progress::Progress;
 
 /// Prompt-file contents, loaded once per run (never embedded in code).
 pub struct Prompts {
@@ -52,11 +53,12 @@ pub fn load_prompts<F: Fs>(fs: &F, prompts_dir: &str) -> Result<Prompts, SummErr
 ///
 /// [`SummError::PathEscape`] for an unsafe path, [`SummError::AccessDenied`]
 /// for a gated target; propagates filesystem and agent failures.
-pub fn summarize_leaf<F: Fs, A: Agent>(
+pub fn summarize_leaf<F: Fs, A: Agent, P: Progress>(
     fs: &F,
     agent: &A,
     prompts: &Prompts,
     src: &str,
+    progress: &P,
 ) -> Result<String, SummError> {
     cpath::validate_rel(src)?;
     if let Some(reason) = ctx_core::access::deny_reason(src, fs.is_ignored(src)?) {
@@ -67,6 +69,7 @@ pub fn summarize_leaf<F: Fs, A: Agent>(
     }
     let contents = fs.read(src)?;
     let user = format!("SOURCE_PATH: {src}\n\n{contents}");
+    progress.leaf(src);
     let output = agent.complete(&prompts.leaf, &user)?;
     let dest = cpath::leaf_ctx(src);
     fs.write(&dest, &output)?;
@@ -137,13 +140,15 @@ fn push_section(buf: &mut String, label: &str, body: &str) {
 /// # Errors
 ///
 /// Propagates filesystem and agent failures.
-pub fn summarize_rollup<F: Fs, A: Agent>(
+pub fn summarize_rollup<F: Fs, A: Agent, P: Progress>(
     fs: &F,
     agent: &A,
     prompts: &Prompts,
     dir: &str,
+    progress: &P,
 ) -> Result<String, SummError> {
     let user = assemble_rollup_input(fs, dir)?;
+    progress.rollup(dir_label(dir));
     let output = agent.complete(&prompts.rollup, &user)?;
     let dest = cpath::rollup_of(dir);
     fs.write(&dest, &output)?;
@@ -199,14 +204,15 @@ pub const fn scope_check(count: usize, approve: bool) -> Result<(), SummError> {
 /// # Errors
 ///
 /// Propagates prompt, filesystem, path, and agent failures.
-pub fn run<F: Fs, A: Agent>(
+pub fn run<F: Fs, A: Agent, P: Progress>(
     fs: &F,
     agent: &A,
     prompts_dir: &str,
     targets: &[String],
+    progress: &P,
 ) -> Result<Summary, SummError> {
     let prompts = load_prompts(fs, prompts_dir)?;
-    run_with_prompts(fs, agent, &prompts, targets)
+    run_with_prompts(fs, agent, &prompts, targets, progress)
 }
 
 /// Run the full leaf-up summarization over `targets` with already-loaded
@@ -219,19 +225,20 @@ pub fn run<F: Fs, A: Agent>(
 /// # Errors
 ///
 /// Propagates filesystem, path, and agent failures.
-pub fn run_with_prompts<F: Fs, A: Agent>(
+pub fn run_with_prompts<F: Fs, A: Agent, P: Progress>(
     fs: &F,
     agent: &A,
     prompts: &Prompts,
     targets: &[String],
+    progress: &P,
 ) -> Result<Summary, SummError> {
     let mut leaves_written = Vec::new();
     for src in targets {
-        leaves_written.push(summarize_leaf(fs, agent, prompts, src)?);
+        leaves_written.push(summarize_leaf(fs, agent, prompts, src, progress)?);
     }
     let mut rollups_written = Vec::new();
     for dir in affected_dirs(targets) {
-        rollups_written.push(summarize_rollup(fs, agent, prompts, &dir)?);
+        rollups_written.push(summarize_rollup(fs, agent, prompts, &dir, progress)?);
     }
     Ok(Summary {
         leaves_written,

@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use ctx_summarize::agent::{Agent, SubprocessAgent};
 use ctx_summarize::error::SummError;
 use ctx_summarize::fs::Fs;
+use ctx_summarize::progress::NoProgress;
 use ctx_summarize::runner;
 
 /// In-memory filesystem.
@@ -106,8 +107,14 @@ fn leaf_then_rollups_leaf_up_and_intent_never_written() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let summary =
-        runner::run(&fs, &agent, "prompts", &["crates/foo/bar.rs".to_owned()]).expect("run");
+    let summary = runner::run(
+        &fs,
+        &agent,
+        "prompts",
+        &["crates/foo/bar.rs".to_owned()],
+        &NoProgress,
+    )
+    .expect("run");
 
     assert_eq!(
         summary.leaves_written,
@@ -156,7 +163,7 @@ fn missing_prompt_is_an_error() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let err = runner::run(&fs, &agent, "prompts", &["a.rs".to_owned()]).unwrap_err();
+    let err = runner::run(&fs, &agent, "prompts", &["a.rs".to_owned()], &NoProgress).unwrap_err();
     assert!(matches!(err, SummError::MissingPrompt(_)));
 }
 
@@ -166,7 +173,14 @@ fn path_escape_is_rejected() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let err = runner::run(&fs, &agent, "prompts", &["../escape".to_owned()]).unwrap_err();
+    let err = runner::run(
+        &fs,
+        &agent,
+        "prompts",
+        &["../escape".to_owned()],
+        &NoProgress,
+    )
+    .unwrap_err();
     assert!(matches!(err, SummError::PathEscape(_)));
 }
 
@@ -198,7 +212,14 @@ fn gate_refuses_a_secret_target() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let err = runner::run(&fs, &agent, "prompts", &["config/.env".to_owned()]).unwrap_err();
+    let err = runner::run(
+        &fs,
+        &agent,
+        "prompts",
+        &["config/.env".to_owned()],
+        &NoProgress,
+    )
+    .unwrap_err();
     assert!(matches!(err, SummError::AccessDenied { .. }));
 }
 

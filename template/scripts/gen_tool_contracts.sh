@@ -29,14 +29,15 @@ cd "$ROOT"
 BEGIN='<!-- BEGIN GENERATED tool-contracts (scripts/gen_tool_contracts.sh --write) -->'
 END='<!-- END GENERATED tool-contracts -->'
 
-# Docs carrying the block. Root + template CLAUDE.md mirror each other
-# (per the repo'"'"'s mirror doctrine); README.md is the first-read file.
-# NOTE: template/scripts/gen_tool_contracts.sh (the copy synced into
-# scaffolded projects) deliberately hardcodes DOCS=(CLAUDE.md) instead —
-# a cloned project has no template/ dir, and its own README.md documents
-# the project, not this tooling. Don't collapse the two back into an
-# identical mirror.
-DOCS=(CLAUDE.md template/CLAUDE.md README.md)
+# Docs carrying the block. This is the template/scaffolded-project copy
+# of this script, which intentionally diverges from the CTX repo's own
+# scripts/gen_tool_contracts.sh here: a cloned project has a single
+# CLAUDE.md and no template/ dir, and its README.md documents the
+# project itself, not the CTX tooling — it should never carry this
+# block. Keep this DOCS line as the one deliberate difference between
+# the two copies; update-template.sh still overwrites everything else
+# in this file unconditionally on every sync.
+DOCS=(CLAUDE.md)
 
 BIN_DIR="target/debug"
 FAIL=0

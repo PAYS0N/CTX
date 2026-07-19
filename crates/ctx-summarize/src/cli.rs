@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use crate::agent::Agent;
 use crate::error::SummError;
 use crate::fs::Fs;
+use crate::progress::NoProgress;
 use crate::runner;
 
 /// Leaf-up context-tree summarization runner.
@@ -52,7 +53,7 @@ pub fn dispatch<F: Fs, A: Agent, W: Write>(
     let Command::Paths { paths } = &cli.command;
     let targets = paths.clone();
     runner::scope_check(targets.len(), cli.approve)?;
-    let summary = runner::run(fs, agent, &cli.prompts, &targets)?;
+    let summary = runner::run(fs, agent, &cli.prompts, &targets, &NoProgress)?;
     serde_json::to_writer_pretty(&mut *out, &summary).map_err(|e| SummError::Io {
         path: "<stdout>".to_owned(),
         detail: e.to_string(),

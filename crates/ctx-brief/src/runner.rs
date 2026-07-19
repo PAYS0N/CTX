@@ -7,7 +7,9 @@
 //! stdout). Both run with their working directory set to the target repo
 //! so its context hooks ground every read.
 
+use std::io::Write as _;
 use std::path::Path;
+use std::time::Instant;
 
 use crate::claude::Claude;
 use crate::error::BriefError;
@@ -17,6 +19,24 @@ use crate::status_item;
 /// Read-only tools the gather pass may use: source inspection plus the
 /// target repo's own context-chain probe. No edit or write tools.
 const GATHER_TOOLS: [&str; 4] = ["Read", "Grep", "Glob", "Bash(target/debug/ctx-context *)"];
+
+/// Append a `<stage>: starting` progress line to stderr, ignoring a
+/// broken write channel. Not threaded through a seam: nothing in the
+/// test suite inspects stderr, and this stays independent of the
+/// `Fs`/`Claude` fakes.
+fn stage_start(stage: &str) {
+    let result: Result<(), std::io::Error> = writeln!(std::io::stderr(), "{stage}: starting");
+    if result.is_err() {}
+}
+
+/// Append a `<stage>: done (N.Ns)` progress line to stderr, timed since
+/// `started`, ignoring a broken write channel.
+fn stage_done(stage: &str, started: Instant) {
+    let secs = started.elapsed().as_secs_f64();
+    let result: Result<(), std::io::Error> =
+        writeln!(std::io::stderr(), "{stage}: done ({secs:.1}s)");
+    if result.is_err() {}
+}
 
 /// A fully resolved brief request, assembled by the CLI layer.
 pub struct Config {
@@ -67,7 +87,11 @@ fn gather<F: Fs, C: Claude>(
 ) -> Result<String, BriefError> {
     let prompt = load_prompt(fs, cfg, "briefer-gather.md")?;
     let tools: Vec<String> = GATHER_TOOLS.iter().map(|t| (*t).to_owned()).collect();
-    claude.print(&prompt, item, Some(&cfg.gather_model), &tools, target)
+    stage_start("gather");
+    let started = Instant::now();
+    let dossier = claude.print(&prompt, item, Some(&cfg.gather_model), &tools, target);
+    stage_done("gather", started);
+    dossier
 }
 
 /// Headless plan: adjudicate and capture the brief on stdout, then write it.
@@ -82,8 +106,11 @@ fn headless_plan<F: Fs, C: Claude>(
     let prompt = load_prompt(fs, cfg, "briefer-plan-headless.md")?;
     let user = plan_user(item, dossier, None);
     let no_tools: [String; 0] = [];
-    let brief = claude.print(&prompt, &user, cfg.plan_model.as_deref(), &no_tools, target)?;
-    fs.write(&cfg.out_fs, &brief)
+    stage_start("plan");
+    let started = Instant::now();
+    let brief = claude.print(&prompt, &user, cfg.plan_model.as_deref(), &no_tools, target);
+    stage_done("plan", started);
+    fs.write(&cfg.out_fs, &brief?)
 }
 
 /// Interactive plan: interview the human; the session writes the brief.
@@ -97,6 +124,7 @@ fn interactive_plan<F: Fs, C: Claude>(
 ) -> Result<(), BriefError> {
     let prompt = load_prompt(fs, cfg, "briefer-plan.md")?;
     let user = plan_user(item, dossier, Some(&cfg.out_rel));
+    stage_start("plan");
     claude.interactive(&prompt, &user, cfg.plan_model.as_deref(), target)?;
     if fs.exists(&cfg.out_fs) {
         Ok(())
