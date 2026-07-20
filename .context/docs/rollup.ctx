@@ -1,23 +1,5 @@
-`docs/` is the project's non-code memory: architectural rationale, a
-task-priority queue, and a spec for lint rules not yet built. Nothing
-here is executed or imported by the codebase — it's read by contributors
-and by other `.ctx`/`intent.md` files that point back here instead of
-restating history.
+`docs/` is the project's non-code memory: rejected/accepted design history, a pending-work backlog, and specs for lint rules not yet built. Nothing here is executable or authoritative about current behavior — for that, a reader must run `ctx-context .` or read the actual source `.ctx` files; this directory only explains *why* things are the way they are and *what's not done yet*.
 
-The three files serve distinct, non-overlapping purposes and shouldn't be
-merged or cross-copied: DECISIONS.md is the append-only ADR log (why
-things are the way they are, including reversed designs — check for
-superseding ADRs before treating any entry as current), STATUS.md is the
-mutable priority-ranked task table (claims about code that can drift
-out of sync, unverified against source), and DYLINT_RULES.md is a spec
-for nine not-yet-implemented lint rules, two of which have partial
-mechanical equivalents already live in `scripts/` (rationale line-count
-check, circular-dependency check via cargo-modules) that must stay in
-sync until the real dylint rules supersede them.
+The three files serve distinct, non-overlapping roles but share one convention: they reference each other and the codebase by identifier (ADR-NNN numbers, function/line references, retired names) rather than by restating content. DECISIONS.md is the append-only ADR log — later entries supersede earlier ones by explicit cross-reference, so any editor citing an ADR must check for amendments before treating it as current. STATUS.md is a live backlog table that cites DECISIONS.md by ADR number for rationale and cites source code by line/function for bug entries — those code references are not validated and can go stale silently. DYLINT_RULES.md specifies nine not-yet-implemented lint rules, several of which are meant to eventually supersede existing mechanical checks in `scripts/` (rationale-comment line counts, circular-dependency detection) — implementing any of those rules is a signal to remove the corresponding script logic, not duplicate it.
 
-Editors should treat DECISIONS.md as the authoritative source of "why,"
-never restate rationale elsewhere in docs/, and should verify STATUS.md
-row claims against actual source before acting on them rather than
-trusting line numbers as current.
-
-No intent.md exists for this directory to check against.
+Invariant across the subtree: none of these documents are validated against the code or each other automatically — staleness (superseded ADRs, fixed bugs still listed in STATUS.md, unimplemented rules) is expected and must be checked by cross-reference, not assumed absent.

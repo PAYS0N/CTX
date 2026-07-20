@@ -1,0 +1,7 @@
+Injects the repo root's generated rollup (`.context/rollup.ctx`, raw bytes) into README.md's architecture block, replacing content between the `BEGIN GENERATED architecture` / `END GENERATED architecture` HTML-comment markers. Operates only on README.md — this is repo-specific landing prose, not part of the template scaffolding shipped to generated projects.
+
+Mirrors `gen_tool_contracts.sh`'s `--write`/`--check` marker-replacement shape but reads `.context/rollup.ctx` directly off disk rather than invoking a `--contract` binary, since the rollup is already the generated artifact. `--check` mode diffs the committed block (extracted via awk between markers, inclusive) against the freshly built block and emits `FAIL: <path>:1: ...` (ctx-verify format) without modifying the file, returning nonzero via `$FAIL`. `--write` mode (default) rewrites the block in place using a temp-file swap via `mv`.
+
+`fail_or_die` branches behavior by mode: in `--check` it prints `FAIL:` and sets `FAIL=1` but continues; in `--write` it prints a plain error and calls `exit 1` immediately — callers must not assume `fail_or_die` always returns. Both `README.md` missing and `.context/rollup.ctx` missing, and missing markers in README.md, are hard failures in write mode but soft (FAIL-emitting) in check mode.
+
+Argument parsing: first arg matching `--write`/`--check` sets mode, anything else sets `ROOT` (defaults to `.`); `cd "$ROOT"` happens before any file access, so all paths are relative to that root.

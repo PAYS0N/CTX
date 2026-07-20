@@ -1,7 +1,5 @@
-Crate root for `ctx-summarize`, the tool that walks a context tree bottom-up and regenerates `.ctx` leaf/aggregate summaries via an LLM agent. This file is just module declarations plus a design note; no logic lives here.
+Crate root for `ctx-summarize`, the tool that walks a context tree bottom-up and regenerates `.ctx` leaf/aggregate summaries. This file is pure module wiring — no logic — and declares the layering contract other files in the crate must respect.
 
-Architecture is layered and must stay that way: `cli` (argv/io) sits over `runner` (pure orchestration) which depends only on the `fs` and `agent` seams — new orchestration logic belongs in `runner`, not `cli`. Prompts are loaded from `prompts/` at runtime, not embedded as string constants in code; adding a new prompt means adding a file, not a `const`. Dynamic data must go only in the agent's user message, not baked into prompt files.
+Layering (enforced by convention, not by the compiler): `cli` handles argv/IO only, calls into `runner`, which is pure orchestration logic sitting over two seams, `fs` and `agent`. Edits that add filesystem or LLM-calling code directly into `runner` violate this — such calls belong behind the `fs`/`agent` seams so `runner` stays testable without touching disk or a real agent.
 
-`intent.md` is explicitly never written by this tool — if a caller expects intent files to appear alongside `.ctx` files, that's handled elsewhere or not at all.
-
-Modules: `cpath` (context-path helpers), `error` (crate error type), `agent`/`fs` (external seams, likely trait-based for testability), `runner`, `cli`. Check each module's own file for behavior details — this file carries no logic itself.
+Key invariant stated in the doc comment and binding on every module here: prompt text lives only in `prompts/` files loaded at runtime, never inlined as Rust string literals, and `intent.md` (used elsewhere in the ctx-tooling family) is deliberately never written by this tool. `cpath` presumably handles context-tree path logic and `progress` user-facing progress reporting, but neither is elaborated in this file — check their own leaf docs for specifics.

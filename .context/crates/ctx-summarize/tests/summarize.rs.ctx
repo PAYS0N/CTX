@@ -1,14 +1,9 @@
-file: crates/ctx-summarize/tests/summarize.rs
-behavior: Integration tests for ctx-summarize's runner, Fs trait, and Agent trait, covering leaf-then-rollup summarization order, prompt/path/scope error gating, and real-subprocess Agent behavior via `sh`/`cat`.
-edit_notes:
-  - Defines FakeFs (in-memory BTreeMap-backed Fs impl) and RecordingAgent (records (system, user) call pairs, returns "SUMMARY[{system}]") used as test doubles; keep in sync with the real Fs and Agent trait signatures in ctx_summarize::fs / ctx_summarize::agent.
-  - Asserts runner::run never writes intent.md, only .ctx files; asserts rollup write order is leaf-up (deepest dir first, root last).
-  - Subprocess tests spawn literal shell commands ("cat", "exit 3", "true") via SubprocessAgent::new, relying on `sh` being present and requiring no network.
-functions:
-invariants:
-  - runner::run writes leaves before rollups, and rollups in leaf-to-root order (child dirs before parents, root last).
-  - runner::run never writes/modifies intent.md files.
-  - runner::scope_check(n, approved) errs with SummError::ScopeTooLarge when n > MAX_TARGETS and approved is false; ok otherwise.
-  - Paths containing ".." are rejected with SummError::PathEscape; missing prompt files yield SummError::MissingPrompt; secret-like targets (e.g. config/.env) yield SummError::AccessDenied.
-external_deps:
-  - ctx_summarize::agent::SubprocessAgent: spawns a real child shell process (via "sh") to test the production Agent implementation without network I/O.
+Integration test suite for `ctx-summarize`, exercising `runner::run` end-to-end against a fake in-memory `Fs` and both a recording and real-subprocess `Agent`; doubles as executable documentation of the runner's contract with its `Fs`/`Agent` traits.
+
+`FakeFs` stores files in a `BTreeMap<String,String>` keyed by relative path and implements `Fs` (`read`/`write`/`exists`/`list_dir`/`is_ignored`/`remove`); `is_ignored` always returns `Ok(false)`. `FakeFs::seeded()` establishes the fixture layout other tests depend on: `prompts/summarizer-leaf.md`, `prompts/summarizer-rollup.md`, `crates/foo/bar.rs`, and a pre-existing `.context/crates/foo/intent.md` that the runner must never overwrite. `RecordingAgent` implements `Agent::complete` by recording `(system, user)` pairs and returning `"SUMMARY[{system}]"`, letting tests assert both file outputs and the exact prompt/user text sent per stage.
+
+Key invariant asserted: `runner::run` writes leaf `.ctx` files bottom-up before rollups, and rollups propagate outward in order `crates/foo/rollup.ctx` → `crates/rollup.ctx` → `rollup.ctx`; the crate-level rollup call's user text must contain both the directory's `intent.md` content and the previously-written leaf summary — proving rollup runs read prior stage output, not source files directly. `intent.md` is confirmed untouched (read-only input, never a runner output).
+
+Other tests pin error variants for missing prompts (`SummError::MissingPrompt`), `..`-relative escape targets (`SummError::PathEscape`), and a secrets-gate rejection for `config/.env` (`SummError::AccessDenied`). `scope_check(count, approved)` is tested directly against `runner::MAX_TARGETS` as a boundary constant, independent of `run`.
+
+`SubprocessAgent` tests spawn real shell commands (`cat`, `exit 3`, `true`) — no network, but genuine process spawn/stdin/stdout — verifying: stdin JSON round-trips through stdout when echoed, nonzero exit maps to `SummError::Agent`, and empty stdout also maps to `SummError::Agent`. These will fail on a system without `sh`/`cat`/`true` on PATH.

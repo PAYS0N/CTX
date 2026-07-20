@@ -1,12 +1,13 @@
-Integration tests for `ctx-scan`'s public pipeline — `summarize`, `check_run`, `update_run`, `walk_dir`, `hash` — exercised both hermetically (via in-memory `FakeFs`/`RecordingAgent`) and against real tmpdirs via `StdFs`. This is the primary spec for cross-crate scan/summarize behavior; changing runner or walker semantics without updating these tests risks silent divergence.
+Integration test suite for `ctx-scan`, exercising `summarize`, `check_run`, and `update_run` against both an in-memory fake filesystem and a real tmpdir-backed `StdFs`. Together with `ctx-summarize`'s trait definitions this pins the observable contracts of the scan/hash/update pipeline; changing return shapes of `check_run`/`update_run`/`summarize` or the `.ctxignore`/`.gitignore` seeding behavior will break these tests.
 
-Key fixtures: `FakeFs` seeds `prompts/summarizer-{leaf,rollup}.md` plus optional `src/lib.rs`; `RecordingAgent` records `(system, user)` call pairs and returns `SUMMARY[{system}]`, letting tests assert exact agent-call counts (e.g. "one leaf + src rollup + root rollup" = 3 calls). `test_dir(label)` gives per-test tmpdirs under the OS temp dir; each real-fs test manually `remove_dir_all`s before and after.
+Two in-memory fakes drive the hermetic half: `FakeFs` (a `BTreeMap<String,String>`-backed `Fs` impl with `with_source()` and `prompts_only()` constructors) and `RecordingAgent` (an `Agent` that returns `SUMMARY[{system}]` and records every `(system, user)` call pair for call-count assertions). `seed_prompts` pre-populates the two embedded prompt paths (`prompts/summarizer-leaf.md`, `prompts/summarizer-rollup.md`) that `runner::load_prompts` expects.
 
-Notable invariants asserted, not just described:
-- `summarize` gates on `runner::MAX_TARGETS`: exceeding it without `approved=true` returns `ScanError::Summarize(SummError::ScopeTooLarge)`.
-- `walk_dir` excludes `.context/`, binary extensions (e.g. `.png`), and honors `.ctxignore`; `target/` is excluded by a hardcoded built-in default even with no ignore file.
-- `.gitignore` is consulted only once to seed `.ctxignore` on first walk of a directory lacking one — subsequent `.gitignore` edits are inert (`walk_seeds_ctxignore_from_gitignore_once_then_decouples`), a load-bearing one-shot handoff.
-- `check_run` distinguishes "stale" (hash mismatch) from "missing artifacts" (hashes clean but `.context/*.ctx` files absent) — these are different failure modes checked separately.
-- `update_run` is incremental: editing one file regenerates exactly its leaf plus ancestor-directory rollups, not the whole tree; deleting a source file causes its orphaned `.ctx` leaf to be removed and reported via `report.orphan_leaves`.
+Key non-obvious behaviors asserted here, load-bearing for anyone touching the runner/walker:
+- `.ctxignore` seeding from `.gitignore` happens **once**, on first contact; subsequent `.gitignore` edits are inert (`walk_seeds_ctxignore_from_gitignore_once_then_decouples`).
+- `target/` is excluded by a built-in default even with no ignore file present.
+- Hash freshness and artifact-existence are checked independently: hashes can be clean while `.ctx` artifacts are missing (`check_cycle_stale_then_missing_artifacts_then_edit_propagates`, referencing "finding #11").
+- Editing one leaf file triggers exactly leaf + immediate-dir-rollup + root-rollup agent calls (3), not a full re-summarize.
+- `update_run` removes orphaned `.ctx` leaves when their source file is deleted, reporting them via `report.orphan_leaves`.
+- The scope gate (`runner::MAX_TARGETS`) refuses large unapproved runs with `SummError::ScopeTooLarge`, bypassable via an explicit approval flag.
 
-Depends on `ctx_summarize`'s `Fs`/`Agent` traits and `runner::load_prompts`/`MAX_TARGETS` — if those signatures change, most tests here need updating in lockstep.
+`prompts_path()` resolves prompts via `CARGO_MANIFEST_DIR` rather than cwd, since production code loads them relative to cwd but tests need a cwd-independent path.

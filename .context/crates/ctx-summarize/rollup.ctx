@@ -1,7 +1,22 @@
-`crates/ctx-summarize` is the `ctx-summarize` binary crate as a whole: a repo-scoped summarizer that generates leaf `.ctx` files via an LLM agent and rolls them up bottom-up into `rollup.ctx`, plus its integration test suite.
+`crates/ctx-summarize` is a Cargo crate root: `src/` implements the
+bottom-up `.ctx` summarizer (CLI + orchestration over `Fs`/`Agent`
+traits), and `tests/` is the integration suite pinning that runner's
+external contract (ordering, error variants, scope boundaries) against
+fakes and real subprocesses. A caller building or modifying this crate
+should treat the two subtrees as tightly coupled: any change to
+`runner::run`'s ordering, `SummError` variants, or `MAX_TARGETS`/access
+gating in `src/` must be matched by an updated assertion in
+`tests/summarize.rs`, and vice versa — the test file is effectively the
+executable spec for `src/runner.rs`.
 
-`src/` holds all logic: strict layering (main.rs → cli.rs → runner.rs), the `Fs`/`Agent` trait seams, `cpath.rs` path handling, and the shared `SummError` type. The two load-bearing cross-cutting contracts are the `--- label ---` rollup input format and the `.context` mirror-path duplication with `ctx-context` — both must be checked wherever they're touched. Prompts live in files, never as code constants; `intent.md` is read-only to this crate. Rollup ordering (leaf-to-root, strictly-decreasing depth) is guaranteed by `runner::affected_dirs`.
+The crate has no top-level `intent.md`; behavior is documented only
+through the two subtree rollups. `src/`'s prompt-file and `.context`
+mirror conventions (`cpath.rs`, `summarizer-*.md`) are exercised, not
+redefined, by the tests — fixture prompts and paths in `tests/` must stay
+consistent with what `runner::load_prompts`/`cpath` actually expect.
+`SubprocessAgent` integration tests additionally require `sh`, `cat`,
+`true`, `exit` on PATH, an environment dependency outside the crate's own
+control.
 
-`tests/` is a single integration file (`summarize.rs`) exercising this ordering guarantee, gating errors (path traversal, missing prompts, oversized scope, secret-like paths), and the Fs/Agent contracts via fakes and real subprocess calls. Its `FakeFs`/`RecordingAgent` doubles must track any trait signature change in `src/fs.rs` / `src/agent.rs` — this is the one coupling that spans the two subdirectories: a trait change in `src/` breaks compilation in `tests/` until the doubles are updated.
-
-No divergence from stated intent at this level (no `intent.md` present here).
+intent_divergence: no intent.md exists at this directory or either
+subtree, so no stated intent can be checked against this description.

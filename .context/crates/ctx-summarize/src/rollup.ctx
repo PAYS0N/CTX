@@ -1,7 +1,34 @@
-crates/ctx-summarize/src is the `ctx-summarize` binary: it walks a set of repo-relative source paths, generates leaf `.ctx` summaries via an LLM agent, then rolls those up bottom-up into `rollup.ctx` files, emitting the resulting summary JSON on stdout.
+`crates/ctx-summarize/src` is the whole `ctx-summarize` crate: it walks a
+context tree bottom-up and (re)writes `.ctx` leaf/rollup summary files by
+calling an LLM-backed agent, gated by access control and scope limits. A
+caller depending on this crate gets one entry point of real consequence —
+`cli::dispatch` / `runner::run` — plus a stable `.context` mirror layout
+(`cpath`) and a `SummError` enum every fallible path returns through.
 
-Layering is strict and load-bearing: `main.rs` wires real dependencies (StdFs, SubprocessAgent) and calls `cli::dispatch`, which does argv parsing plus a scope-size gate (`scope_check`) before calling `runner::run` — all actual orchestration logic lives in `runner.rs`; `cli.rs` and `main.rs` must stay thin. `runner.rs` depends only on the `Fs` (fs.rs) and `Agent` (agent.rs) trait seams, both of which have testable in-memory/alternate implementations, and on `cpath.rs` for all `.context` mirror-path computation and `error.rs` for the shared `SummError` enum used across every fallible operation.
+The crate enforces a strict seam layering: `cli` only parses argv and
+writes output; `runner` is pure orchestration and must never touch
+`std::fs` or spawn a process directly — all such effects go through the
+`Fs` and `Agent` traits (`fs.rs`, `agent.rs`), which is also what makes
+`runner` unit-testable with fakes. `progress.rs` is a third, optional seam
+in the same style, invoked by `runner` just before each `Agent::complete`
+call. Prompt text is never a Rust string literal — `runner::load_prompts`
+reads `summarizer-leaf.md`/`summarizer-rollup.md` from the prompts dir at
+runtime, and `intent.md` is read but never written anywhere in this crate.
 
-Two cross-cutting contracts editors must preserve: (1) the `--- label ---` section format `runner::assemble_rollup_input`/`push_section` produces is exactly what the rollup prompt sees for every child — changing it changes rollup quality tree-wide; (2) `cpath.rs`'s path-safety and `.context` mirror logic is deliberately duplicated in `ctx-context` (tracked in `docs/UNIMPLEMENTED.md`), so path-rule changes here need checking there too. Prompts are always loaded from files (`prompts/summarizer-leaf.md`, `summarizer-rollup.md`), never embedded as code constants — adding a prompt means adding a file. `intent.md` is read by rollups but never written by this crate anywhere in the pipeline.
+Two format contracts span files here and must be changed together:
+`assemble_rollup_input` in `runner.rs` builds the section-labeled
+prompt input consumed by `summarizer-rollup.md`; and `agent.rs`'s
+stdin/stdout JSON wire format is the boundary any `CTX_AGENT_CMD` script
+must match. `cpath.rs` defines the `.context` mirror mapping used by both
+`runner` (to compute leaf/rollup paths) and `cli`/`main` indirectly; it
+intentionally duplicates equivalent logic in `ctx-context`, tracked as a
+known drift risk in `docs/UNIMPLEMENTED.md`. `fs.rs`'s `scope_matcher`
+(`.ctxignore`-based) is the single scope definition shared with
+`ctx-scan`'s walker — keep both in sync on change.
 
-Rollup ordering is a subtree-spanning invariant: `runner::affected_dirs` guarantees a directory's rollup only runs after all affected descendants' rollups (via strictly-decreasing depth), though sibling order at equal depth is unspecified. `fs::scope_matcher` (gitignore-syntax, `.ctxignore`-based, always ignoring `target/`) is the single scope definition shared with `ctx-scan`'s walker — keep them in sync. `agent.rs`'s subprocess wire contract (`{"system","user"}` JSON in, raw text out) is the only model-agnostic boundary; any `CTX_AGENT_CMD` script must match it.
+Invariants holding across the whole subtree: every fallible path returns
+`SummError` (no `#[from]` conversions — callers construct variants
+explicitly); `--approve`/`MAX_TARGETS` gating and `AccessDenied` checks
+happen before any file is read or agent is called; and `main.rs` /
+`cli.rs` never write ad-hoc output — only through injected writer handles,
+keeping stdout reserved for the final JSON result.

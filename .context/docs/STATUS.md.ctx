@@ -1,7 +1,11 @@
-This file is the project's living priority queue — a markdown table of open engineering tasks ranked by impact then difficulty, read by contributors deciding what to work on next.
+Here's the context document for `docs/STATUS.md`:
 
-It's a flat data file, not code: one Markdown table with columns `task | description | impact | difficulty`, sorted high-impact/easy-difficulty first within each impact band. The header points to `ctx-context .` as the source of truth for derived architecture and `docs/DECISIONS.md` for rationale — this file itself carries no rationale, only action items.
+Living project-management artifact — a prioritized backlog table, not source code. Tracks pending work items across the ctx-* toolchain (context generation, verification, summarization, hook integration) with columns for task, description, impact, and difficulty, sorted by impact then difficulty.
 
-Non-obvious behavior: several rows reference specific line numbers and behaviors in other files as of when they were written (e.g. "checks.rs:103,113", "`is_secret` compares the basename case-sensitively") — these can drift out of sync with the actual code since nothing re-validates the table against source. Treat row contents as claims to verify, not guaranteed-current facts.
+Points to `docs/DECISIONS.md` for architectural rationale (ADR-style decision log referenced by number, e.g. ADR-054, ADR-039, ADR-020, ADR-049) and instructs readers to run `ctx-context .` to derive current architecture rather than trusting any static description here.
 
-Editing this file means adding/removing/reprioritizing rows — no schema enforcement, so keep column order and sort convention (impact desc, then difficulty asc within impact) consistent when inserting new tasks.
+Non-obvious behavior: entries reference specific line numbers and function names in the actual codebase (e.g. `checks.rs:103,113`, `has_rationale_before`, `is_secret`) that will drift out of sync as fixes land — this file is not auto-validated against the code it describes, so stale entries can persist after being fixed. Several entries describe known bugs/inversions already present elsewhere in the repo (`.ctxignore` include/exclude swap, hook matcher missing `Edit|Write`, `--dry-run`/`--check` divergence in ctx-scan) — treat this file as a bug tracker as much as a roadmap.
+
+Coupling: this file is itself the subject of one of its own entries ("integrate status more closely into the agent flow"), proposing it be surfaced in prompt injection or replaced by a dedicated tool — so its own format/existence may change based on backlog items it lists.
+
+No code, no functions, no invariants to verify — pure prose/table content. Edits here are additions/removals/reprioritizations of table rows, not logic changes.

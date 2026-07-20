@@ -1,0 +1,7 @@
+Regenerates the "tool contracts" doc block in this scaffolded project's `CLAUDE.md` from each built binary's `--contract` output, or (`--check`) reports staleness in ctx-verify's `FAIL:` line format.
+
+Template-copy divergence from the CTX repo's own `scripts/gen_tool_contracts.sh`: the `DOCS` array here is `(CLAUDE.md)` only — a scaffolded project has no `README.md` doc block for CTX tooling and no `template/` dir. This is the one deliberate line meant to differ between the two copies; `update-template.sh` overwrites everything else in this file unconditionally on sync, so any other divergence is a bug, not intent.
+
+Requires `ctx-context`, `ctx-verify`, `ctx-scan`, `ctx-cage`, `ctx-brief` already built/present executable at `target/debug/`; never invokes cargo itself (install-tools.sh is the sole build step) — missing binaries produce a `fail_or_die` (die in `--write`, `FAIL:` line in `--check`).
+
+Block boundaries are the literal marker strings `<!-- BEGIN GENERATED tool-contracts (scripts/gen_tool_contracts.sh --write) -->` / `<!-- END GENERATED tool-contracts -->`; `committed_block()` (awk) extracts the current marked region for comparison, and `--write`'s replacement awk pass is marker-driven too — both must stay literally in sync with `$BEGIN`/`$END` if either is edited. Never hand-edit content between the markers; regenerate instead. `--check` accumulates failures across all docs before exiting (doesn't stop at first), matching ctx-verify's aggregate-report convention.

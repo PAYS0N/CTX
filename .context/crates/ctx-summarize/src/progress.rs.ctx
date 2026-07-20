@@ -1,0 +1,5 @@
+Defines the `Progress` trait, the runner's notification seam for incremental status output, mirroring the `Agent` trait-seam pattern in `crate::agent`. The runner calls `leaf(src)` or `rollup(dir)` immediately before handing that item to `Agent::complete`.
+
+Two implementations: `NoProgress` (no-op, preserves prior silent behavior) and `WriteProgress<W: Write>`, which appends plain lines `leaf: <path>` / `rollup: <dir>` to an injected writer via `RefCell<W>` for interior mutability under `&self`. Write failures are silently swallowed (`if result.is_err() {}`), matching the workspace's best-effort output convention — no error propagation, no panics, no retry.
+
+`WriteProgress::new(out: W) -> Self` is `const fn`. No line buffering/redraw logic — each call is a single `writeln!`, no carriage-return overwrite.

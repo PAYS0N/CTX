@@ -14,6 +14,7 @@ impact band.
 | work on summarization prompts | do research research into how to modify the prompts to convey more important info | high | hard |
 | phase 5 e2e smoke fixture | throwaway workspace, buggy file + failing test, generated tree, `--stub` and billed modes; asserts hook injection, native Edit, `ctx-verify` pass, post-session rollup regen, no egress beyond proxy, no writes outside workspace; include degraded-tree cases (stale, absent, truncated) | high | hard |
 | clean rollup prompts | prevent text like 'No intent.md exists for this directory.', just omit it. | medium | easy |
+| split brief into two modes | brief should require a flag if using a custom task, and otherwise treat a not found status task as a hard error. | medium | easy |
 | remove ctx-brief from claude.md | only tools relevant to an agent should be included | medium | easy |
 | move model choice into rust | model choice should be passed to the tool, not an env var. `ctx-brief` (ADR-054) already takes `--gather-model`/`--plan-model` flags; the summarizer path (`ctx-scan`/`ctx-summarize`) still reads the model from the environment and remains open | medium | easy |
 | summarizer adapter: handle truncation | `agents/summarizer-claude.py` never checks `stop_reason`, so a `max_tokens` cut is written to disk as truth; `CTX_AGENT_TEMPERATURE` is documented in the docstring but never read (dead option) | medium | easy |
@@ -22,7 +23,6 @@ impact band.
 | template/root sync check in the battery | doctrine says the lint configs mirror, but no script compares them (comments in the Cargo.toml lint tables already differ); every "must stay in sync" claim should name its checking script | medium | easy |
 | fix .ctxignore scope inversion | `Cargo.lock` (584 lines) is summarized — re-billed on every dep bump — while `*.toml` excludes `Cargo.toml`/`clippy.toml`, the load-bearing lint regime; swap them | medium | easy |
 | ctx-core test gaps | `hashtree.rs` (shared writer/reader schema; "silently breaks" on mismatch) has zero in-crate tests; `access.rs` has two. Concrete case: `is_secret` compares the basename case-sensitively, so `.ENV` evades the secret gate | medium | easy |
-| add visual feedback during context generation and while waiting on ctx-brief| medium | easy |
 | fix ctx-scan flags | --dry-run and --check return different vals. Should --dry-run be retired? What is the difference? | medium | medium |
 | inject verify and context output to start of run | print `ctx-verify` and `ctx-context` results at session start to ground the agent in actual tree state and recent check results | medium | medium |
 | make sure interrupting context regen doesn't break anything | verify that stopping mid-scan (SIGINT/timeout) leaves `.context/` in a consistent state; no partial hashes, no orphaned sidecars | medium | medium |

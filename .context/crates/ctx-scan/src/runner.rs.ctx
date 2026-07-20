@@ -1,30 +1,13 @@
-Orchestrates the four CTX CLI-level operations (`scan_run`, `check_run`,
-`prune_run`, `update_run`) over `ctx-summarize`'s generic walk/summarize
-machinery, wiring in the real filesystem (`StdFs`) and hash-tree logic
-from `crate::hash`. This is the layer where "what runs when" is decided;
-the actual leaf/rollup summarization mechanics live in `ctx-summarize`.
+## `crates/ctx-scan/src/runner.rs`
 
-Key asymmetry: prompts are loaded from `prompts_dir` resolved against the
-process cwd via `load_prompts`, independent of `base` (the scan target) —
-a scan target need not carry CTX's own prompt files. `summarize` (the
-generic, testable core) takes pre-loaded `Prompts` and calls
-`summ::scope_check` before doing any work, so approval gating happens
-before summarization, not after.
+Top-level orchestration for CTX's scan pipeline: walking a target tree, summarizing files/dirs via an `Agent`, tracking staleness via content hashes, pruning orphaned `.context/` mirror artifacts, and writing the README. Exposes four entry points corresponding to CLI commands (`scan`, `check`, `update`, `prune`), plus `summarize` as the generic inner step for testing with in-memory `Fs`/`Agent` fakes.
 
-`update_run` is the most delicate: it computes staleness once, prunes
-orphans unconditionally (pure filesystem, no model call), then only
-loads prompts/calls the model if `stale.needs_regeneration()` is true.
-A tree stale purely from orphan artifacts prunes and returns without
-touching prompts or the agent. `regenerate` assumes `stale.stale_dirs` is
-already deepest-first ordered by `hash::diff` — it doesn't re-sort.
+Key behavioral details:
+- `load_prompts` resolves `prompts_dir` against the **process cwd**, not the scan target `base` — the target being scanned need not contain CTX's own prompt files.
+- `scan_run` order matters: prune orphans *before* summarizing, so rollups never inhale orphaned mirror content; hash sidecars are written only after summarization succeeds.
+- `check_run` and `update_run` both compute `orphan_artifacts` as `scan.artifacts_excluding(&stale.orphan_leaves)` — avoids double-reporting leaves that are both stale and orphaned.
+- `update_run` short-circuits via `stale.is_fresh()` before touching prompts/model; pruning happens unconditionally (pure filesystem, no model), but `regenerate`/`hash::store`/`write_readme` only run if `stale.needs_regeneration()`. A tree stale only in orphan artifacts thus prunes without any model call.
+- `regenerate` processes in a fixed order: changed leaves first, then orphan-leaf removal, then stale dirs (rollups) — dirs are assumed already deepest-first from `Staleness`.
+- All four pipeline runners construct a fresh `StdFs::new(base.to_path_buf())`; `summarize` itself is filesystem-agnostic (`Fs` generic) and reusable in tests without `StdFs`.
 
-`check_run` and the staleness computation in `update_run` both call
-`reconcile::find_orphan_artifacts` and then narrow via
-`scan.artifacts_excluding(&stale.orphan_leaves)` to avoid double-counting
-leaves that are both hash-stale and structurally orphaned — this
-narrowing logic is duplicated between the two functions and must be kept
-in sync if `Staleness`'s orphan fields change shape.
-
-All four public entry points construct their own `StdFs::new(base...)`
-and call `walker::walk_dir(base)` independently — no shared walk cache
-across calls in one process.
+Depends on sibling modules `hash` (staleness/diff computation, sidecar store/load), `reconcile` (orphan detection/pruning), `readme::write_readme`, `walker::walk_dir`, and `ctx_summarize::runner` for the actual leaf/rollup summarization logic and `scope_check` (approval gating based on file count).

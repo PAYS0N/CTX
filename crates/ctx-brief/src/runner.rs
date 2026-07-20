@@ -7,7 +7,7 @@
 //! stdout). Both run with their working directory set to the target repo
 //! so its context hooks ground every read.
 
-use std::io::Write as _;
+use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
@@ -35,6 +35,29 @@ fn stage_done(stage: &str, started: Instant) {
     let secs = started.elapsed().as_secs_f64();
     let result: Result<(), std::io::Error> =
         writeln!(std::io::stderr(), "{stage}: done ({secs:.1}s)");
+    if result.is_err() {}
+}
+
+/// Confirm on `w` that `request` didn't match a STATUS.md row and is being
+/// treated as a custom (free-text) item. Generic over the writer purely for
+/// unit-testability — the same pattern `cli::dispatch` uses for its own
+/// output — and ignores a broken write channel like `stage_start`/`stage_done`.
+fn log_custom_item<W: Write>(mut w: W, request: &str) {
+    let result: Result<(), std::io::Error> = writeln!(
+        w,
+        "resolve: no match for '{request}'; treating as custom item"
+    );
+    if result.is_err() {}
+}
+
+/// Confirm on `w` that `status_path` doesn't exist and the request is being
+/// treated as free text with no backlog to match against. Same generic-writer
+/// pattern as [`log_custom_item`], for the same reason.
+fn log_status_not_found<W: Write>(mut w: W, status_path: &str) {
+    let result: Result<(), std::io::Error> = writeln!(
+        w,
+        "resolve: STATUS.md not found at '{status_path}'; treating request as free text"
+    );
     if result.is_err() {}
 }
 
@@ -146,8 +169,14 @@ pub fn run<F: Fs, C: Claude>(
     cfg: &Config,
     target: &Path,
 ) -> Result<String, BriefError> {
+    if !fs.exists(&cfg.status_path) {
+        log_status_not_found(std::io::stderr(), &cfg.status_path);
+    }
     let status = fs.read(&cfg.status_path).unwrap_or_default();
     let item = status_item::resolve(&status, &cfg.request)?;
+    if !status_item::matched(&status, &cfg.request) {
+        log_custom_item(std::io::stderr(), &cfg.request);
+    }
     let dossier = gather(fs, claude, cfg, &item, target)?;
     if cfg.headless {
         headless_plan(fs, claude, cfg, &item, &dossier, target)?;
@@ -155,4 +184,29 @@ pub fn run<F: Fs, C: Claude>(
         interactive_plan(fs, claude, cfg, &item, &dossier, target)?;
     }
     Ok(cfg.out_fs.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{log_custom_item, log_status_not_found};
+
+    #[test]
+    fn log_custom_item_confirms_the_fallback_with_the_request_text() {
+        let mut buf: Vec<u8> = Vec::new();
+        log_custom_item(&mut buf, "invent a teleporter");
+        assert_eq!(
+            String::from_utf8(buf).expect("stderr line is valid utf-8"),
+            "resolve: no match for 'invent a teleporter'; treating as custom item\n"
+        );
+    }
+
+    #[test]
+    fn log_status_not_found_confirms_the_missing_path() {
+        let mut buf: Vec<u8> = Vec::new();
+        log_status_not_found(&mut buf, "docs/STATUS.md");
+        assert_eq!(
+            String::from_utf8(buf).expect("stderr line is valid utf-8"),
+            "resolve: STATUS.md not found at 'docs/STATUS.md'; treating request as free text\n"
+        );
+    }
 }

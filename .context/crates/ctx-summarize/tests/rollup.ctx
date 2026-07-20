@@ -1,10 +1,7 @@
-directory: crates/ctx-summarize/tests
-domain: Integration test suite for the ctx-summarize crate's runner, verifying end-to-end summarization ordering, safety gating (path/scope/prompt/secret checks), and the Fs/Agent trait contracts against both fake and real (subprocess) implementations.
-edit_notes:
-  - Single file (summarize.rs); when ctx_summarize::fs::Fs or ctx_summarize::agent::Agent trait signatures change, FakeFs and RecordingAgent test doubles here must be updated in lockstep.
-  - Subprocess-based tests require `sh` on PATH; no network access needed or used.
-children:
-  - summarize.rs: Full integration test suite — runner ordering, error gating, Fs/Agent contract checks.
-invariants:
-  - runner::run never writes or modifies intent.md, only .ctx files, and always writes leaves before rollups in leaf-to-root order.
-  - Path traversal (".."), missing prompts, oversized unapproved scope, and secret-like target paths are all rejected with distinct SummError variants.
+`tests/` is the sole integration-level check on `ctx-summarize`'s runner contract — it validates end-to-end behavior against fakes and real subprocesses rather than unit-testing internals, so it's the place to look for how `runner::run`, `Fs`, and `Agent` are actually expected to interact.
+
+The single file, `summarize.rs`, owns the fixture (`FakeFs::seeded()`) that other tests reuse, and pins the ordering contract (leaves before rollups, rollups propagating outward crates/foo → crates → root) along with the rule that rollup prompts must read prior stage output (intent.md + prior `.ctx`), never raw source. It also fixes error-variant behavior (`MissingPrompt`, `PathEscape`, `AccessDenied`, `Agent`) and the `MAX_TARGETS` scope-check boundary as externally-visible contract, not incidental detail — a change to any of these in the runner should be expected to break a specific assertion here.
+
+`SubprocessAgent` tests require `sh`/`cat`/`true`/`exit` on PATH; this is an environment dependency, not a fake, and will fail silently-differently (not skip) on systems lacking them.
+
+No intent.md exists for this directory.

@@ -1,12 +1,15 @@
 {
-  "hash": "04409dc93d3b8a60df333aebb5978dd0e8bfbb9fb683459254e04d63b0e2f022",
+  "hash": "b631404854c6bc0d6d528577ae7d92f58b7d330559d636b62bf0c2b3db989262",
   "children": {
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
-    "install-tools.sh": "f:c8930172d6f2970165c7cc3bbe923115347474fd3e5a3b3b412868485352e7fe",
+    "gen_readme_architecture.sh": "f:767add4806fb1862cb6d4d2981a37236a7baf398e8c1ac5095e5ba26b4c0fc6c",
+    "gen_tool_contracts.sh": "f:ce425d5d0c7dad98945c94af8f9af60b958bc4849b1a5284158d6cdc28e5ebb9",
+    "install-tools.sh": "f:01805a2eb29a3e8940b71d7ebe0d2a27b791dfbe9b911caed9ace75dfc1e75f8",
     "machete_check.sh": "f:28bdcd70df8fd6cbcc17480e40a9f1647aac557758ed537cece9e86b61def759",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",
-    "update-template.sh": "f:ed094019a06c75299cf791367969234d8c480706737e2d60f23e4aa354644a53",
+    "retired_terms_check.sh": "f:c9222a6d6f8894770bbf7b0fcd1f602d0f0e8f2449c3da9195e0065423dc2e94",
+    "update-template.sh": "f:e19b308fff8c673aafb022aae462ac72797b609d06b07c1dc65fb19885a5de83",
     "workspace_lints_check.sh": "f:ecfd025caf75a20dbeab3cec14524c5599f62d286787d3faa031d88e3dec43c8"
   }
 }

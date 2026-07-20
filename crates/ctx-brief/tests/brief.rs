@@ -110,3 +110,19 @@ fn free_text_request_is_the_item_when_status_is_absent() {
     let gather = claude.nth_print(0).expect("gather call recorded");
     assert_eq!(gather.user, "invent a widget");
 }
+
+#[test]
+fn no_match_against_a_populated_status_falls_back_to_raw_request() {
+    let world = seeded(true);
+    let fs = fake_fs(&world);
+    let claude = fake_claude(&world, &["DOSSIER", "BRIEF"], None);
+    runner::run(
+        &fs,
+        &claude,
+        &cfg(true, "invent a teleporter"),
+        Path::new("/repo"),
+    )
+    .expect("run should succeed even when no backlog row matches");
+    let gather = claude.nth_print(0).expect("gather call recorded");
+    assert_eq!(gather.user, "invent a teleporter");
+}
