@@ -3,7 +3,7 @@ Doctrine: `.context/intent.md`. Rationale:
 
 Call `target/debug/ctx-context .`. Do not skip this. 
 
-- Source: native Read/Edit/Grep — never `cat` or `grep` for file reads. The context
+- Source: native Read/Edit/Grep — never `cat` or `sed` for file reads. The context
   chain is hook-injected on read; request it on demand with
   `target/debug/ctx-context <path>` (dir or `.`), and read a directory's
   chain before changing its contents. Go only as deep as needed. Never
@@ -25,7 +25,10 @@ Call `target/debug/ctx-context .`. Do not skip this.
   single-line `// rationale:` directly above (fn) or after `//!`
   (file) is the last resort, and multi-line is not recognized.
 - `.env` holds the summarizer key: never feed it to a model, never
-  commit it.
+  commit it. `.cagevars` (also gitignored) is separate: non-secret
+  `ctx-cage` sandbox-inclusion config (`CTX_CAGE_EXTRA_PATH` today),
+  loaded automatically from CWD at cage startup — never put secrets in
+  it, and never move `.env`'s contents into it.
 - `template/` and root workspace lint configs mirror each other;
   change both.
 - Retiring a tool/identifier: add it to `scripts/retired_terms_check.sh`'s

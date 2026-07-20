@@ -170,6 +170,7 @@ fn maybe_refresh_summaries(dir: &Path, scan_bin: &Path, env: &HashMap<String, St
 /// Inner entry point: run the caged session (subscription auth),
 /// refresh summaries on success.
 fn run() -> Result<i32, CageError> {
+    ctx_cage::lifecycle::load_cagevars_from_cwd();
     let cli = Cli::parse();
     let env = load_env_file()?;
     let mode = pick_mode(&cli)?;

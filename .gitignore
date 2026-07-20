@@ -6,6 +6,11 @@ Cargo.lock.bak
 # commit it. `.env.example` is the committed, keyless template.
 .env
 
+# Non-secret local sandbox config for ctx-cage (CTX_CAGE_EXTRA_PATH
+# etc.), loaded automatically from CWD; kept separate from `.env`
+# since it holds no secrets. `.cagevars.example` is the committed template.
+.cagevars
+
 # Per-task cache and reports. Generated context files (rollup.ctx, *.ctx,
 # intent.md) ARE committed.
 .context/.cache/

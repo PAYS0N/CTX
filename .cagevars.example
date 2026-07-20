@@ -1,0 +1,14 @@
+# Copy to `.cagevars` (gitignored, like `.env`). Non-secret, local
+# `ctx-cage` sandbox-inclusion config — distinct from `.env`, which is
+# reserved for the summarizer's ANTHROPIC_API_KEY (ADR-013) and must
+# never hold this kind of value or vice versa. Loaded automatically
+# from the invocation CWD before every `ctx-cage`/`ctx-run` session; a
+# value already set in the process environment always wins over this
+# file.
+
+# Colon-separated extra host directories to RO-bind into the cage and
+# add to PATH (e.g. a tool installed outside /usr, /bin, or the Rust
+# toolchain homes already bound automatically). Each entry must be a
+# directory (not the binary itself) — an entry that isn't a directory
+# fails the run with an error rather than being silently dropped.
+# CTX_CAGE_EXTRA_PATH=

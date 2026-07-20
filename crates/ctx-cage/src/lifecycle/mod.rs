@@ -13,7 +13,12 @@
 //! module, split out purely to stay under the file-length tier.
 //!
 //! Phase 3 — `teardown`: best-effort cleanup of the run dir.
+//!
+//! `cagevars` is a fourth, standalone concern: loading the local
+//! `.cagevars` file into the process environment. It runs at bin
+//! startup, before argv parsing, and predates all three phases above.
 
+mod cagevars;
 mod env;
 mod prepare;
 mod run;
@@ -23,6 +28,8 @@ use std::path::PathBuf;
 
 use crate::cli::Mode;
 use crate::error::CageError;
+
+pub use cagevars::{load_cagevars, load_cagevars_from_cwd};
 
 /// Inputs the lifecycle needs to execute one run. Built by the host
 /// binaries from the parsed CLI plus path resolution of the tools

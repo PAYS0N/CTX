@@ -102,6 +102,7 @@ fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError> {
 /// stderr as a trailer, after the cage's own inherited-stdio output has
 /// already completed.
 fn run() -> Result<i32, HostError> {
+    ctx_cage::lifecycle::load_cagevars_from_cwd();
     let cli = Cli::parse();
     let allow_spend = cli.spend_flags.allow_spend || env_allow_spend();
     let mode = resolve_mode(&cli, allow_spend)?;

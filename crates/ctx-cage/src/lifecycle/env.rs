@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::bwrap::{CAGE_BIN, CAGE_CLAUDE_CONFIG, CAGE_CLAUDE_CRED, CAGE_LOCAL_CLAUDE};
 use crate::cli::{mode_is_billed, Mode};
+use crate::error::CageError;
 use crate::runtime::CAGE_BASE_URL;
 
 use super::prepare::Prep;
@@ -46,27 +47,38 @@ fn toolchain_dirs() -> Vec<PathBuf> {
 /// to PATH — project-specific tools living outside the base isolation
 /// dirs (`/usr`, `/bin`, `/lib`, `/lib64`, `/etc/alternatives`), e.g. a
 /// neovim install under `/opt`. `:`-separated in `CTX_CAGE_EXTRA_PATH`;
-/// non-directory entries are dropped.
-fn extra_path_dirs() -> Vec<PathBuf> {
-    std::env::var("CTX_CAGE_EXTRA_PATH")
-        .map(|v| {
-            v.split(':')
-                .map(PathBuf::from)
-                .filter(|d| d.is_dir())
-                .collect()
+/// a non-empty entry that isn't a directory is a hard error — silently
+/// dropping it would surface only as a missing-tool failure deep
+/// inside the cage (e.g. pointing at a binary instead of the directory
+/// containing it).
+fn extra_path_dirs() -> Result<Vec<PathBuf>, CageError> {
+    let Ok(raw) = std::env::var("CTX_CAGE_EXTRA_PATH") else {
+        return Ok(Vec::new());
+    };
+    raw.split(':')
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            let dir = PathBuf::from(entry);
+            if dir.is_dir() {
+                Ok(dir)
+            } else {
+                Err(CageError::Protocol(format!(
+                    "CTX_CAGE_EXTRA_PATH entry is not a directory: {entry}"
+                )))
+            }
         })
-        .unwrap_or_default()
+        .collect()
 }
 
 /// All directories to RO-bind at their identical host paths: the Rust
 /// toolchain homes plus any `CTX_CAGE_EXTRA_PATH` entries. Feeds both
 /// the bwrap bind list (`toolchain` field) and, via `base_env`, `PATH`
 /// — keep both call sites in sync if the resolution logic changes.
-pub(super) fn bound_tool_dirs() -> Vec<PathBuf> {
-    toolchain_dirs()
+pub(super) fn bound_tool_dirs() -> Result<Vec<PathBuf>, CageError> {
+    Ok(toolchain_dirs()
         .into_iter()
-        .chain(extra_path_dirs())
-        .collect()
+        .chain(extra_path_dirs()?)
+        .collect())
 }
 
 /// Host binaries bound under `/cage/bin`; billed modes add `claude`
@@ -97,20 +109,20 @@ pub(super) fn claude_rw_binds(prep: &Prep) -> Vec<(PathBuf, String)> {
 /// No `ANTHROPIC_API_KEY` is ever set: auth is the bound subscription
 /// credential, and a key in the env would trigger claude's "use the
 /// detected API key?" prompt.
-pub(super) fn cage_env(r: &Resolved) -> Vec<(String, String)> {
-    let mut env = base_env(r);
+pub(super) fn cage_env(r: &Resolved) -> Result<Vec<(String, String)>, CageError> {
+    let mut env = base_env(r)?;
     if let Mode::Task(brief) = &r.mode {
         env.push(("CTX_TASK_BRIEF".to_owned(), brief.clone()));
     }
     if mode_is_billed(&r.mode) {
         env.push(("ANTHROPIC_BASE_URL".to_owned(), CAGE_BASE_URL.to_owned()));
     }
-    env
+    Ok(env)
 }
 
 /// Mode-independent environment: PATH (cage tools + cargo + extra +
 /// system), identity, locale, and the offline toolchain homes.
-fn base_env(r: &Resolved) -> Vec<(String, String)> {
+fn base_env(r: &Resolved) -> Result<Vec<(String, String)>, CageError> {
     let mut path = format!("{CAGE_BIN}:");
     let mut env = Vec::new();
     if let Some(cargo) = toolchain_home("CARGO_HOME", ".cargo") {
@@ -125,7 +137,7 @@ fn base_env(r: &Resolved) -> Vec<(String, String)> {
             rustup.to_string_lossy().into_owned(),
         ));
     }
-    for dir in extra_path_dirs() {
+    for dir in extra_path_dirs()? {
         path.push_str(&dir.to_string_lossy());
         path.push(':');
     }
@@ -137,7 +149,7 @@ fn base_env(r: &Resolved) -> Vec<(String, String)> {
     env.push(("TERM".to_owned(), host_term()));
     env.push(("TASK".to_owned(), r.task_id.clone()));
     env.push(("CARGO_NET_OFFLINE".to_owned(), "true".to_owned()));
-    env
+    Ok(env)
 }
 
 /// Inherit the host's `TERM` so Claude Code's TUI picks the right
