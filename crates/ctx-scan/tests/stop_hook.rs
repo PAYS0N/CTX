@@ -9,6 +9,13 @@ use ctx_scan::cli::stop_hook;
 use ctx_scan::runner::{check_run, update_run};
 use ctx_summarize::agent::Agent;
 use ctx_summarize::error::SummError;
+use ctx_summarize::runner::Models;
+
+/// Leaf/rollup model bundle every test call site shares.
+const MODELS: Models<'static> = Models {
+    leaf: "claude-sonnet-5",
+    rollup: "claude-sonnet-5",
+};
 
 /// Minimal always-succeeding agent, used only to seed a fresh tree.
 struct StubAgent {
@@ -17,7 +24,7 @@ struct StubAgent {
 }
 
 impl Agent for StubAgent {
-    fn complete(&self, _system: &str, _user: &str) -> Result<String, SummError> {
+    fn complete(&self, _system: &str, _user: &str, _model: &str) -> Result<String, SummError> {
         *self.calls.borrow_mut() += 1;
         Ok("SUMMARY".to_owned())
     }
@@ -65,7 +72,7 @@ fn fresh_tree_emits_nothing() {
     let agent = StubAgent {
         calls: RefCell::new(0),
     };
-    update_run(&base, &prompts_path(), &agent, false).expect("seed");
+    update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("seed");
     let mut out = Vec::new();
     stop_hook(&base, &mut out).expect("hook");
     assert!(out.is_empty(), "fresh tree must stay silent");

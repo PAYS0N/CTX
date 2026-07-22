@@ -1,13 +1,7 @@
-Integration test suite for `ctx-scan`, exercising `summarize`, `check_run`, and `update_run` against both an in-memory fake filesystem and a real tmpdir-backed `StdFs`. Together with `ctx-summarize`'s trait definitions this pins the observable contracts of the scan/hash/update pipeline; changing return shapes of `check_run`/`update_run`/`summarize` or the `.ctxignore`/`.gitignore` seeding behavior will break these tests.
+Integration tests for ctx-scan's summarize/hash/check/update pipeline, exercising the complete workflow in isolation with fake and real filesystems. Tests verify stale-detection, artifact generation, hash integrity, and orphan cleanup.
 
-Two in-memory fakes drive the hermetic half: `FakeFs` (a `BTreeMap<String,String>`-backed `Fs` impl with `with_source()` and `prompts_only()` constructors) and `RecordingAgent` (an `Agent` that returns `SUMMARY[{system}]` and records every `(system, user)` call pair for call-count assertions). `seed_prompts` pre-populates the two embedded prompt paths (`prompts/summarizer-leaf.md`, `prompts/summarizer-rollup.md`) that `runner::load_prompts` expects.
+The file uses `FakeFs` (a `BTreeMap`-backed `Fs` impl from common) for hermetic tests and `StdFs` for tests that need real tempdir isolation. All tests share a constant `MODELS` bundle (`claude-sonnet-5` for both leaf and rollup); the actual LLM responses are mocked by `recording()`, which tracks call counts without making network requests.
 
-Key non-obvious behaviors asserted here, load-bearing for anyone touching the runner/walker:
-- `.ctxignore` seeding from `.gitignore` happens **once**, on first contact; subsequent `.gitignore` edits are inert (`walk_seeds_ctxignore_from_gitignore_once_then_decouples`).
-- `target/` is excluded by a built-in default even with no ignore file present.
-- Hash freshness and artifact-existence are checked independently: hashes can be clean while `.ctx` artifacts are missing (`check_cycle_stale_then_missing_artifacts_then_edit_propagates`, referencing "finding #11").
-- Editing one leaf file triggers exactly leaf + immediate-dir-rollup + root-rollup agent calls (3), not a full re-summarize.
-- `update_run` removes orphaned `.ctx` leaves when their source file is deleted, reporting them via `report.orphan_leaves`.
-- The scope gate (`runner::MAX_TARGETS`) refuses large unapproved runs with `SummError::ScopeTooLarge`, bypassable via an explicit approval flag.
+Key invariants: `summarize()` writes leaf contexts to `.context/<path>.ctx`, a rollup, and a README in one go, respecting the scope gate (`MAX_TARGETS`) unless `approved=true` is passed. `check_run()` reports stale dirs, changed files, and missing artifacts as three separate collections—a file edit marks only its leaf and ancestor dirs stale, never siblings. `update_run()` regenerates only stale summaries (verified by comparing agent call counts across cycles) and deletes orphan leaves when source files are removed. `hash::store()` and `hash::compute()` persist and load `.context/hashes.json` to track freshness; hashes alone can be clean while summaries are missing (the "finding #11" bug this test documents).
 
-`prompts_path()` resolves prompts via `CARGO_MANIFEST_DIR` rather than cwd, since production code loads them relative to cwd but tests need a cwd-independent path.
+`is_ignored()` respects `.ctxignore` patterns and builtin defaults (`target/`, `gen/`) without requiring a git repo. Fixtures are cleaned up with `drop(std::fs::remove_dir_all())` after each test to avoid pollution in `/tmp`.

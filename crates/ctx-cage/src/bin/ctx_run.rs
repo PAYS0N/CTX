@@ -7,10 +7,15 @@
 //! are passed into the `ctx-scan --update` child, never the shell and
 //! never the cage. Typing `ctx-run` *is* the explicit spend
 //! authorization, so no separate `--allow-spend` is required here.
+//!
+//! The summary refresh pins its own model choice — `ctx-scan`'s
+//! `--leaf-model`/`--rollup-model` stay required with no default, but
+//! this is the one automated, unattended caller that always wants
+//! haiku for leaves and sonnet for rollups, so `refresh_summaries`
+//! hardcodes both rather than exposing them as `ctx-run` flags.
 
 use std::collections::HashMap;
 use std::io::{IsTerminal, Write};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -19,6 +24,11 @@ use clap::Parser;
 use ctx_cage::cli::Mode;
 use ctx_cage::error::CageError;
 use ctx_cage::lifecycle::{execute, Resolved};
+
+use env_file::load_env_file;
+
+#[path = "ctx_run/env_file.rs"]
+mod env_file;
 
 /// One-command billed cage session over a target project.
 #[derive(Debug, Parser)]
@@ -49,48 +59,6 @@ struct Cli {
 fn emit<W: Write>(mut w: W, msg: &str) {
     let result: Result<(), std::io::Error> = writeln!(w, "{msg}");
     if result.is_err() {}
-}
-
-/// `$HOME/.config/ctx/env`.
-fn env_file_path() -> Result<PathBuf, CageError> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| CageError::Protocol("HOME unset (need ~/.config/ctx/env)".to_owned()))?;
-    Ok(PathBuf::from(home).join(".config/ctx/env"))
-}
-
-/// Load the operator env file into a map. The file is optional (it
-/// only feeds the summary refresh); when present it must have no
-/// group/other permissions — it holds the summarizer API key.
-fn load_env_file() -> Result<HashMap<String, String>, CageError> {
-    let path = env_file_path()?;
-    let Ok(meta) = std::fs::metadata(&path) else {
-        return Ok(HashMap::new());
-    };
-    if meta.mode() & 0o077 != 0 {
-        return Err(CageError::Protocol(format!(
-            "{} must be 0600 (it holds the API key)",
-            path.display()
-        )));
-    }
-    let text = std::fs::read_to_string(&path)?;
-    Ok(parse_env(&text))
-}
-
-/// Parse `KEY=VALUE` lines (`#` comments and blanks skipped; optional
-/// surrounding quotes stripped).
-fn parse_env(text: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if let Some((key, val)) = trimmed.split_once('=') {
-            let clean = val.trim().trim_matches('"').trim_matches('\'');
-            map.insert(key.trim().to_owned(), clean.to_owned());
-        }
-    }
-    map
 }
 
 /// The launcher's mode: headless task (with brief) or interactive.
@@ -125,16 +93,42 @@ fn confirm_summarize() -> bool {
     matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
+/// Model `ctx-run`'s autosummarization pins for leaf summaries — cheap,
+/// run far more often, one file of narrow context at a time.
+const AUTO_LEAF_MODEL: &str = "claude-haiku-4-5-20251001";
+
+/// Model `ctx-run`'s autosummarization pins for rollup summaries — run
+/// less often, synthesizes multiple children, warrants a stronger model.
+const AUTO_ROLLUP_MODEL: &str = "claude-sonnet-5";
+
+/// The manual-recovery command printed when the refresh doesn't run,
+/// pinning the same models as `refresh_summaries` so it actually
+/// succeeds if copy-pasted.
+fn manual_refresh_hint(dir: &Path) -> String {
+    format!(
+        "ctx-scan {} --update --approve --leaf-model {AUTO_LEAF_MODEL} --rollup-model {AUTO_ROLLUP_MODEL}",
+        dir.display()
+    )
+}
+
 /// Post-session summary refresh — the ONE place regeneration happens
 /// (the Stop hook only reports): `ctx-scan <dir> --update`. Agent
 /// config from `~/.config/ctx/env` is passed only into the child's
 /// environment; when absent, ctx-scan falls back to the target's own
-/// `.env`. Never fails the run: the session's deliverable already
-/// landed; a refresh problem is maintenance, reported with the manual
-/// command.
+/// `.env`. Pins `--leaf-model`/`--rollup-model` to haiku/sonnet
+/// (`AUTO_LEAF_MODEL`/`AUTO_ROLLUP_MODEL`) — the flags themselves stay
+/// required with no default, this is just the one automated caller's
+/// policy choice. Never fails the run: the session's deliverable
+/// already landed; a refresh problem is maintenance, reported with the
+/// manual command.
 fn refresh_summaries(scan_bin: &Path, dir: &Path, env: &HashMap<String, String>) {
     let mut cmd = Command::new(scan_bin);
-    cmd.arg(dir).arg("--update");
+    cmd.arg(dir)
+        .arg("--update")
+        .arg("--leaf-model")
+        .arg(AUTO_LEAF_MODEL)
+        .arg("--rollup-model")
+        .arg(AUTO_ROLLUP_MODEL);
     for key in ["CTX_AGENT_CMD", "ANTHROPIC_API_KEY"] {
         if let Some(val) = env.get(key) {
             cmd.env(key, val);
@@ -144,8 +138,8 @@ fn refresh_summaries(scan_bin: &Path, dir: &Path, env: &HashMap<String, String>)
         emit(
             std::io::stderr().lock(),
             &format!(
-                "ctx-run: summary refresh incomplete (see ctx-scan output above); run `ctx-scan {} --update --approve` to refresh manually",
-                dir.display()
+                "ctx-run: summary refresh incomplete (see ctx-scan output above); run `{}` to refresh manually",
+                manual_refresh_hint(dir)
             ),
         );
     }
@@ -160,8 +154,8 @@ fn maybe_refresh_summaries(dir: &Path, scan_bin: &Path, env: &HashMap<String, St
         emit(
             std::io::stderr().lock(),
             &format!(
-                "ctx-run: summary refresh skipped; run `ctx-scan {} --update --approve` to refresh manually",
-                dir.display()
+                "ctx-run: summary refresh skipped; run `{}` to refresh manually",
+                manual_refresh_hint(dir)
             ),
         );
     }

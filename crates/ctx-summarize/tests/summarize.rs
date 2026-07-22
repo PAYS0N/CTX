@@ -92,12 +92,29 @@ struct RecordingAgent {
 }
 
 impl Agent for RecordingAgent {
-    fn complete(&self, system: &str, user: &str) -> Result<String, SummError> {
+    fn complete(&self, system: &str, user: &str, _model: &str) -> Result<String, SummError> {
         self.calls
             .borrow_mut()
             .push((system.to_owned(), user.to_owned()));
         Ok(format!("SUMMARY[{system}]"))
     }
+}
+
+/// Model passed to every test call site; content is irrelevant here.
+const MODEL: &str = "claude-sonnet-5";
+
+/// `runner::run` with the fixed prompt dir/model/progress every hermetic
+/// test call site shares.
+fn run(
+    fs: &FakeFs,
+    agent: &RecordingAgent,
+    targets: &[String],
+) -> Result<runner::Summary, SummError> {
+    let models = runner::Models {
+        leaf: MODEL,
+        rollup: MODEL,
+    };
+    runner::run(fs, agent, "prompts", targets, &models, &NoProgress)
 }
 
 // rationale: one linear scenario (run -> assert leaves -> rollup order -> file contents -> agent call inputs); splitting would fragment the single behavior under test.
@@ -107,14 +124,7 @@ fn leaf_then_rollups_leaf_up_and_intent_never_written() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let summary = runner::run(
-        &fs,
-        &agent,
-        "prompts",
-        &["crates/foo/bar.rs".to_owned()],
-        &NoProgress,
-    )
-    .expect("run");
+    let summary = run(&fs, &agent, &["crates/foo/bar.rs".to_owned()]).expect("run");
 
     assert_eq!(
         summary.leaves_written,
@@ -163,7 +173,7 @@ fn missing_prompt_is_an_error() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let err = runner::run(&fs, &agent, "prompts", &["a.rs".to_owned()], &NoProgress).unwrap_err();
+    let err = run(&fs, &agent, &["a.rs".to_owned()]).unwrap_err();
     assert!(matches!(err, SummError::MissingPrompt(_)));
 }
 
@@ -173,14 +183,7 @@ fn path_escape_is_rejected() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let err = runner::run(
-        &fs,
-        &agent,
-        "prompts",
-        &["../escape".to_owned()],
-        &NoProgress,
-    )
-    .unwrap_err();
+    let err = run(&fs, &agent, &["../escape".to_owned()]).unwrap_err();
     assert!(matches!(err, SummError::PathEscape(_)));
 }
 
@@ -189,7 +192,9 @@ fn subprocess_agent_round_trips_stdin_to_stdout() {
     // `cat` echoes the JSON request to stdout: proves the real spawn +
     // stdin write + stdout capture path, with no network.
     let agent = SubprocessAgent::new("cat".to_owned());
-    let out = agent.complete("SYS", "USERDATA").expect("cat completion");
+    let out = agent
+        .complete("SYS", "USERDATA", MODEL)
+        .expect("cat completion");
     assert!(out.contains("USERDATA"));
     assert!(out.contains("SYS"));
 }
@@ -197,13 +202,19 @@ fn subprocess_agent_round_trips_stdin_to_stdout() {
 #[test]
 fn subprocess_agent_nonzero_exit_is_error() {
     let agent = SubprocessAgent::new("exit 3".to_owned());
-    assert!(matches!(agent.complete("s", "u"), Err(SummError::Agent(_))));
+    assert!(matches!(
+        agent.complete("s", "u", "m"),
+        Err(SummError::Agent(_))
+    ));
 }
 
 #[test]
 fn subprocess_agent_empty_output_is_error() {
     let agent = SubprocessAgent::new("true".to_owned());
-    assert!(matches!(agent.complete("s", "u"), Err(SummError::Agent(_))));
+    assert!(matches!(
+        agent.complete("s", "u", "m"),
+        Err(SummError::Agent(_))
+    ));
 }
 
 #[test]
@@ -212,14 +223,7 @@ fn gate_refuses_a_secret_target() {
     let agent = RecordingAgent {
         calls: RefCell::new(Vec::new()),
     };
-    let err = runner::run(
-        &fs,
-        &agent,
-        "prompts",
-        &["config/.env".to_owned()],
-        &NoProgress,
-    )
-    .unwrap_err();
+    let err = run(&fs, &agent, &["config/.env".to_owned()]).unwrap_err();
     assert!(matches!(err, SummError::AccessDenied { .. }));
 }
 

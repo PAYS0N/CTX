@@ -1,30 +1,5 @@
-file: crates/ctx-summarize/src/agent.rs
-behavior: Defines the Agent trait (one completion request/response) and SubprocessAgent, which shells a deployment-configured command, writing `{"system","user"}` JSON to its stdin and reading its stdout as the completion; resolves command and API key from CTX_AGENT_CMD / ANTHROPIC_API_KEY with process env taking precedence over a target's `.env` file.
-edit_notes:
-  - Wire contract (JSON keys "system"/"user" on stdin, raw text on stdout) is the model-agnostic boundary; any adapter script invoked via CTX_AGENT_CMD must match it.
-  - ANTHROPIC_API_KEY read from `.env` is injected only into the child process's env (via `envs`), never into this process's environment.
-  - complete() enforces MIN_REQUEST_SPACING (1s) via a blocking sleep after every call, including failures... actually only after success path (check: sleep is after building text, before Ok) — applies only on successful non-empty completions.
-functions:
-  - name: complete
-    signature: fn complete(&self, system: &str, user: &str) -> Result<String, SummError>
-    purpose: Serializes the payload, spawns the configured shell command, feeds stdin, and returns trimmed stdout as the completion.
-    notes: Errors on spawn failure, non-zero exit (includes stderr), or empty trimmed stdout; sleeps MIN_REQUEST_SPACING before returning success.
-  - name: new
-    signature: pub const fn new(command: String) -> Self
-    purpose: Builds a SubprocessAgent from an explicit command string with no extra child env.
-  - name: from_env
-    signature: pub fn from_env() -> Result<Self, SummError>
-    purpose: Builds a SubprocessAgent from CTX_AGENT_CMD only, erroring if unset/empty.
-  - name: from_env_or_dotenv
-    signature: pub fn from_env_or_dotenv(base: &Path) -> Result<Self, SummError>
-    purpose: Builds a SubprocessAgent using process env first, then `<base>/.env` for CTX_AGENT_CMD and ANTHROPIC_API_KEY.
-  - name: resolve_config
-    signature: fn resolve_config(env_cmd: Option<String>, env_key_set: bool, dotenv_text: &str) -> Result<(String, Vec<(String, String)>), SummError>
-    purpose: Pure merge logic deciding the effective command and child-env additions from process/.env inputs.
-    notes: Exposed to tests via `super::resolve_config`; not part of the public API.
-invariants:
-  - Returns SummError::NoAgentCommand if neither process env nor `.env` supplies a non-empty CTX_AGENT_CMD.
-  - ANTHROPIC_API_KEY from `.env` is only added to envs when the process environment does not already have it set (env_key_set == false).
-  - complete() never returns Ok("") — empty/whitespace-only stdout is an error.
-external_deps:
-  - serde: derives Serialize for Payload to produce the exact stdin JSON contract.
+Shells a deployment-configured LLM adapter command and mediates the JSON request/response contract: `{"system": <prompt>, "user": <dynamic input>, "model": <model name>}` in via stdin, completion text out via stdout. The agent never executes inline—all LLM calls go through this boundary.
+
+`Agent` is a trait; `SubprocessAgent` is the production impl. The command itself comes from `CTX_AGENT_CMD` (env var first, then `.env` fallback), never hardcoded. An `ANTHROPIC_API_KEY` found in `.env` is injected into the child's environment only—never into this process—so secrets stay out of the shell. The `.env` parser strips comments, blanks, and optional quotes (`KEY="value"` or `KEY='value'`), and ignores unknown keys.
+
+`SubprocessAgent::complete(system, user, model)` spawns `sh -c <command>`, sends JSON-serialized `Payload` to its stdin, collects stdout, validates non-empty and exit code 0, then sleeps 1 second (`MIN_REQUEST_SPACING`) before returning. Empty output or nonzero exit becomes `SummError::Agent`. Stderr is captured for error messages but not returned on success. The request/response is not factored—it's one synchronous I/O transaction to keep the contract atomic.

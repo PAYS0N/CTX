@@ -1,0 +1,1 @@
+Tests `ctx_cage::lifecycle::load_cagevars` precedence: process environment variables override `.cagevars` file entries, and file values populate unset variables. Uses a single temp directory across both assertions in one test, removing it at the end; the static `SEQ` counter ensures unique names across repeated test runs within the same process.

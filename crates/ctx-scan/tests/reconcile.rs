@@ -14,6 +14,13 @@ use ctx_scan::runner::{check_run, prune_run, update_run};
 use ctx_summarize::agent::Agent;
 use ctx_summarize::error::SummError;
 use ctx_summarize::fs::Fs;
+use ctx_summarize::runner::Models;
+
+/// Leaf/rollup model bundle every test call site shares.
+const MODELS: Models<'static> = Models {
+    leaf: "claude-sonnet-5",
+    rollup: "claude-sonnet-5",
+};
 
 // ── in-memory fake ───────────────────────────────────────────────────────────
 
@@ -92,7 +99,7 @@ struct StubAgent {
 }
 
 impl Agent for StubAgent {
-    fn complete(&self, _system: &str, _user: &str) -> Result<String, SummError> {
+    fn complete(&self, _system: &str, _user: &str, _model: &str) -> Result<String, SummError> {
         *self.calls.borrow_mut() += 1;
         Ok("SUMMARY".to_owned())
     }
@@ -193,7 +200,7 @@ fn seeded_fixture(label: &str) -> Result<(PathBuf, StubAgent), Box<dyn std::erro
     let agent = StubAgent {
         calls: RefCell::new(0),
     };
-    update_run(&base, &prompts_path(), &agent, false)?;
+    update_run(&base, &prompts_path(), &agent, &MODELS, false)?;
     Ok((base, agent))
 }
 
@@ -257,7 +264,7 @@ fn update_prunes_planted_orphan_without_model_when_otherwise_fresh() {
     // hash-fresh, so pruning must happen without any model call.
     std::fs::write(base.join(".context/bogus.rs.ctx"), "stale").expect("plant");
 
-    let report = update_run(&base, &prompts_path(), &agent, false).expect("update");
+    let report = update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("update");
     assert_eq!(report.orphan_artifacts, vec![".context/bogus.rs.ctx"]);
     assert!(!report.needs_regeneration());
     assert_eq!(*agent.calls.borrow(), seed_calls, "pruning must not bill");

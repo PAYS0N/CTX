@@ -1,6 +1,6 @@
 {
-  "hash": "5551178bbfeacf088844401f740eb8543e76c962fdde417ced955f75dfeffbf0",
+  "hash": "49c607f4d91a8a14e33790f239533dd47fda057ab36ba8fb5ae827449d3a397c",
   "children": {
-    "summarize.rs": "f:26723c0ff58dca345045f87889c062b22484d6e5b10957faaf2f0146202ab6f3"
+    "summarize.rs": "f:ce0c49431d7c752ab8f36726c7c247656a8df661dd1637becace24df9b92bf5d"
   }
 }

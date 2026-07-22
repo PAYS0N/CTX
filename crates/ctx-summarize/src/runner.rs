@@ -1,7 +1,6 @@
 //! Pure summarization orchestration over [`Fs`] + [`Agent`].
 //!
-//! Leaf summaries first, then rollups walked leaf-up (deepest directory
-//! first, repo root last). `intent.md` is never written.
+//! Leaf summaries first, then rollups walked leaf-up (deepest dir first, root last). `intent.md` is never written.
 
 use std::collections::BTreeSet;
 
@@ -12,6 +11,7 @@ use crate::cpath;
 use crate::error::SummError;
 use crate::fs::Fs;
 use crate::progress::Progress;
+use crate::rollup_input::{assemble_rollup_input, dir_label};
 
 /// Prompt-file contents, loaded once per run (never embedded in code).
 pub struct Prompts {
@@ -19,6 +19,16 @@ pub struct Prompts {
     leaf: String,
     /// `summarizer-rollup.md` contents.
     rollup: String,
+}
+
+/// Leaf and rollup model choice for one summarization run. Bundled so
+/// callers threading both through several layers pass one argument
+/// instead of two (see ADR-057).
+pub struct Models<'a> {
+    /// Model for leaf summaries.
+    pub leaf: &'a str,
+    /// Model for rollup summaries.
+    pub rollup: &'a str,
 }
 
 /// What a run produced.
@@ -58,6 +68,7 @@ pub fn summarize_leaf<F: Fs, A: Agent, P: Progress>(
     agent: &A,
     prompts: &Prompts,
     src: &str,
+    model: &str,
     progress: &P,
 ) -> Result<String, SummError> {
     cpath::validate_rel(src)?;
@@ -70,69 +81,10 @@ pub fn summarize_leaf<F: Fs, A: Agent, P: Progress>(
     let contents = fs.read(src)?;
     let user = format!("SOURCE_PATH: {src}\n\n{contents}");
     progress.leaf(src);
-    let output = agent.complete(&prompts.leaf, &user)?;
+    let output = agent.complete(&prompts.leaf, &user, model)?;
     let dest = cpath::leaf_ctx(src);
     fs.write(&dest, &output)?;
     Ok(dest)
-}
-
-/// Display form of a directory (`""` -> `.`).
-const fn dir_label(dir: &str) -> &str {
-    if dir.is_empty() {
-        "."
-    } else {
-        dir
-    }
-}
-
-/// Whether `name` has a (case-insensitive) `.ctx` extension.
-fn has_ctx_ext(name: &str) -> bool {
-    std::path::Path::new(name)
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("ctx"))
-}
-
-/// Assemble the rollup prompt's user input for `dir` from current
-/// children summaries and the directory's `intent.md`.
-fn assemble_rollup_input<F: Fs>(fs: &F, dir: &str) -> Result<String, SummError> {
-    let mut buf = format!("DIR_PATH: {}\n", dir_label(dir));
-    let intent_path = cpath::intent_of(dir);
-    let intent = if fs.exists(&intent_path) {
-        fs.read(&intent_path)?
-    } else {
-        String::new()
-    };
-    buf.push_str("\n--- intent.md ---\n");
-    buf.push_str(if intent.is_empty() {
-        "(none)\n"
-    } else {
-        &intent
-    });
-    let cdir = cpath::context_dir_of(dir);
-    for name in fs.list_dir(&cdir)? {
-        if name == "rollup.ctx" || name == "intent.md" {
-            continue;
-        }
-        let child_rel = format!("{cdir}/{name}");
-        if has_ctx_ext(&name) {
-            push_section(&mut buf, &name, &fs.read(&child_rel)?);
-        } else if fs.exists(&format!("{child_rel}/rollup.ctx")) {
-            let sub = fs.read(&format!("{child_rel}/rollup.ctx"))?;
-            push_section(&mut buf, &format!("{name}/rollup.ctx"), &sub);
-        }
-    }
-    Ok(buf)
-}
-
-/// Append a labeled section to the rollup input buffer.
-fn push_section(buf: &mut String, label: &str, body: &str) {
-    buf.push_str("\n--- ");
-    buf.push_str(label);
-    buf.push_str(" ---\n");
-    buf.push_str(body);
-    if !body.ends_with('\n') {
-        buf.push('\n');
-    }
 }
 
 /// Summarize one directory into its `rollup.ctx`; returns the path.
@@ -145,11 +97,12 @@ pub fn summarize_rollup<F: Fs, A: Agent, P: Progress>(
     agent: &A,
     prompts: &Prompts,
     dir: &str,
+    model: &str,
     progress: &P,
 ) -> Result<String, SummError> {
     let user = assemble_rollup_input(fs, dir)?;
     progress.rollup(dir_label(dir));
-    let output = agent.complete(&prompts.rollup, &user)?;
+    let output = agent.complete(&prompts.rollup, &user, model)?;
     let dest = cpath::rollup_of(dir);
     fs.write(&dest, &output)?;
     Ok(dest)
@@ -209,18 +162,18 @@ pub fn run<F: Fs, A: Agent, P: Progress>(
     agent: &A,
     prompts_dir: &str,
     targets: &[String],
+    models: &Models,
     progress: &P,
 ) -> Result<Summary, SummError> {
     let prompts = load_prompts(fs, prompts_dir)?;
-    run_with_prompts(fs, agent, &prompts, targets, progress)
+    run_with_prompts(fs, agent, &prompts, targets, models, progress)
 }
 
 /// Run the full leaf-up summarization over `targets` with already-loaded
 /// `prompts`.
 ///
-/// `fs` is the scan/write filesystem; `prompts` may have been loaded from
-/// a different root (e.g. the process cwd) so the prompt source stays
-/// decoupled from the tree being summarized.
+/// `fs` is the scan/write filesystem; `prompts` may come from a different
+/// root (e.g. the process cwd), decoupling prompt source from the tree.
 ///
 /// # Errors
 ///
@@ -230,18 +183,54 @@ pub fn run_with_prompts<F: Fs, A: Agent, P: Progress>(
     agent: &A,
     prompts: &Prompts,
     targets: &[String],
+    models: &Models,
     progress: &P,
 ) -> Result<Summary, SummError> {
-    let mut leaves_written = Vec::new();
-    for src in targets {
-        leaves_written.push(summarize_leaf(fs, agent, prompts, src, progress)?);
-    }
-    let mut rollups_written = Vec::new();
-    for dir in affected_dirs(targets) {
-        rollups_written.push(summarize_rollup(fs, agent, prompts, &dir, progress)?);
-    }
+    let leaves_written = write_leaves(fs, agent, prompts, targets, models.leaf, progress)?;
+    let rollups_written = write_rollups(fs, agent, prompts, targets, models.rollup, progress)?;
     Ok(Summary {
         leaves_written,
         rollups_written,
     })
+}
+
+/// Write leaf `.ctx` files for every target, in order.
+///
+/// # Errors
+///
+/// Propagates filesystem, path, and agent failures.
+fn write_leaves<F: Fs, A: Agent, P: Progress>(
+    fs: &F,
+    agent: &A,
+    prompts: &Prompts,
+    targets: &[String],
+    model: &str,
+    progress: &P,
+) -> Result<Vec<String>, SummError> {
+    let mut leaves_written = Vec::new();
+    for src in targets {
+        leaves_written.push(summarize_leaf(fs, agent, prompts, src, model, progress)?);
+    }
+    Ok(leaves_written)
+}
+
+/// Write `rollup.ctx` files for every directory affected by `targets`,
+/// leaf-up.
+///
+/// # Errors
+///
+/// Propagates filesystem, path, and agent failures.
+fn write_rollups<F: Fs, A: Agent, P: Progress>(
+    fs: &F,
+    agent: &A,
+    prompts: &Prompts,
+    targets: &[String],
+    model: &str,
+    progress: &P,
+) -> Result<Vec<String>, SummError> {
+    let mut rollups_written = Vec::new();
+    for dir in affected_dirs(targets) {
+        rollups_written.push(summarize_rollup(fs, agent, prompts, &dir, model, progress)?);
+    }
+    Ok(rollups_written)
 }

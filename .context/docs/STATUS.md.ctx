@@ -1,11 +1,11 @@
-Here's the context document for `docs/STATUS.md`:
+# STATUS.md Context
 
-Living project-management artifact — a prioritized backlog table, not source code. Tracks pending work items across the ctx-* toolchain (context generation, verification, summarization, hook integration) with columns for task, description, impact, and difficulty, sorted by impact then difficulty.
+This file tracks the work queue for the ctx system — a code-context-generation tool for LLM sessions. It lists outstanding tasks sorted by impact (high to low) then difficulty (easy to hard), each with a brief description of what breaks or improves if addressed.
 
-Points to `docs/DECISIONS.md` for architectural rationale (ADR-style decision log referenced by number, e.g. ADR-054, ADR-039, ADR-020, ADR-049) and instructs readers to run `ctx-context .` to derive current architecture rather than trusting any static description here.
+**Key coupling:** The tasks reference actual files and systems throughout the codebase — `ctx-scan`, `ctx-brief`, `ctx-verify`, `ctx-context`, the hook system in `.claude/settings.json`, summarizer agents in `prompts/`, and the `.context/` mirror directory. This is the work board; changes to those systems should update corresponding rows, and vice versa.
 
-Non-obvious behavior: entries reference specific line numbers and function names in the actual codebase (e.g. `checks.rs:103,113`, `has_rationale_before`, `is_secret`) that will drift out of sync as fixes land — this file is not auto-validated against the code it describes, so stale entries can persist after being fixed. Several entries describe known bugs/inversions already present elsewhere in the repo (`.ctxignore` include/exclude swap, hook matcher missing `Edit|Write`, `--dry-run`/`--check` divergence in ctx-scan) — treat this file as a bug tracker as much as a roadmap.
+**High-impact cluster:** Five tasks block correctness or trust: generated summaries lack validation before being written (no lint on line budgets, banned phrases, truncation, factual drift); template sync is unenforced; the auditor wired into `prompts/auditor.md` is never invoked on rollups; the summarizer prompt needs research to convey more signal; and a phase-5 e2e smoke test doesn't exist yet. The "investigate tool error" task points at a specific stderr duplication symptom that suggests a bug in ctx-cage's lifecycle/run.rs.
 
-Coupling: this file is itself the subject of one of its own entries ("integrate status more closely into the agent flow"), proposing it be surfaced in prompt injection or replaced by a dedicated tool — so its own format/existence may change based on backlog items it lists.
+**Medium cluster:** Mostly fixable in one sitting — prompt cleanup, agent caging, scoping bugs in `ctx-verify`, `.ctxignore` inversion (Cargo.lock is bloated and summarized every dep bump while Cargo.toml is excluded), case-sensitivity trap in `access.rs`, and the unresolved cpath/RepoPath duplication from ADR-020. Two items concern freshness: prompt rewrites don't invalidate old summaries, and debug binaries served from target/ silently drift.
 
-No code, no functions, no invariants to verify — pure prose/table content. Edits here are additions/removals/reprioritizations of table rows, not logic changes.
+**Metadata:** The file itself is generated output (derived from `ctx-context .`) and rationale is in `docs/DECISIONS.md`.

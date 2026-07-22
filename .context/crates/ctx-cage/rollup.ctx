@@ -1,28 +1,9 @@
-`crates/ctx-cage` is a self-contained crate that builds and runs an offline,
-bind-mounted `bwrap` sandbox around an agent process, brokers the sandbox's
-only network egress through a host-side proxy, and drives a single run's
-prepare→run→teardown lifecycle behind one `execute()` entry point. External
-callers get `lifecycle::execute`, the bwrap-arg builder, and proxy
-request-rewrite logic; nothing else in the workspace should construct bwrap
-flags or touch the API key directly.
+`crates/ctx-cage/` is the sandboxing crate for autonomous `claude` agent runs: it constrains filesystem, namespace, and network access while routing all outbound API traffic through a host-side proxy the caged process cannot bypass. Depending on this crate means a CLI (`ctx_cage`/`ctx_run`) that resolves flags into a validated `Mode`, executes a guaranteed prepare→run→teardown lifecycle via bwrap, and never exposes a real API key or agent-cmd config to the sandboxed process directly.
 
-The three subtrees are tightly interlocked around ADR-046/ADR-049: `assets/`
-supplies the two files (`cage-nsswitch.conf`, `cage-resolv.conf`) that make the
-sandboxed resolver fail slow instead of busy-looping, embedded into the binary
-via `lib.rs`'s `include_str!` and bind-mounted by `src/`'s lifecycle/env code;
-`tests/` is the only place that verifies both halves of that contract actually
-hold (`bwrap_build.rs` checks the mount happens, `cage_assets.rs` checks the
-asset's content isn't loopback-only). Changing the resolv.conf asset, the
-`CAGE_RESOLV_PATH` bind constant, or the mount call in `lifecycle/env.rs`
-requires updating all three subtrees together, since only their combination
-proves the invariant.
+The crate has three top-level parts: `src/` (the implementation, its own rollup covers ADR-046 canonical-path and credential-isolation invariants), `assets/` (static files bind-mounted at cage setup — offline DNS stub and nsswitch config that must stay mutually consistent, plus an unrelated agent-doctrine prompt), and `tests/` (black-box validation of the public contracts, with no shared test infrastructure).
 
-Secrets never cross into the sandbox — `runtime.rs` and `lifecycle/env.rs`
-independently enforce this, and only `proxy.rs` (host side) ever touches the
-real API key, reached via a UNIX socket bind-mounted at `/run/ctx/api.sock`.
-`cage-rules.md` (assets) is embedded and mounted at `/opt/cage/rules.md`
-(src), the one path constant that both an asset file and crate code must
-agree on by name.
+The DNS-hang failure mode (ADR-049) is the one invariant that spans directories: `assets/cage-resolv.conf`'s TEST-NET-1 nameserver, `src/lib.rs`'s compiled-in `CAGE_RESOLV_CONF` constant, and `tests/cage_assets.rs` + `tests/bwrap_build.rs` all must agree that DNS resolution fails fast rather than hanging — a change to any one requires checking the other three. Similarly, `assets/cage-rules.md` is compiled into `src/lib.rs` as `CAGE_RULES_MD`, so wording changes there change agent behavior without a src/ code change.
 
-No `intent.md` exists anywhere in this subtree, so there is no intent to
-diverge from.
+No `intent.md` exists for this directory or most of its subtree.
+
+intent_divergence: no intent.md exists for this directory, so no divergence check is possible.

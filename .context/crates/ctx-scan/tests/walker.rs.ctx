@@ -1,0 +1,5 @@
+Integration tests for `ctx_scan::walker::walk_dir`, verifying file collection, ignore-pattern seeding, and scope enforcement.
+
+`walk_dir` collects source files from a directory tree, excluding binaries (by extension), `.context/`, and directories listed in `.ctxignore`. On first invocation in a tree, it seeds a new `.ctxignore` from `.gitignore` if one doesn't exist, then decouples: subsequent changes to `.gitignore` are ignored, and only `.ctxignore` controls exclusions. The `target/` directory is always excluded as a built-in default.
+
+Three test cases: `walk_collects_files_and_excludes_context_and_binaries` verifies inclusion of `.rs` files and exclusion of `.png` and `.context/`; `walk_seeds_ctxignore_from_gitignore_once_then_decouples` confirms one-time seeding from `.gitignore` and that later changes to `.gitignore` have no effect; `walk_scope_honors_ctxignore_and_builtin_target_default` checks that both `.ctxignore` rules and the built-in `target/` exclusion apply together. Each test creates a temp directory under `test_dir()`, manipulates files, calls `walk_dir()`, and asserts on the returned file list; cleanup is via `remove_dir_all`.

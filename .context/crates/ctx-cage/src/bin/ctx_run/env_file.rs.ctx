@@ -1,0 +1,3 @@
+Loads `~/.config/ctx/env`, an optional file containing only `CTX_AGENT_CMD` and `ANTHROPIC_API_KEY` for the post-run summary refresh; never passed to the shell or cage itself. The file is skipped silently if absent but must have mode 0600 when present, since it holds the summarizer API key.
+
+`load_env_file() -> Result<HashMap<String, String>, CageError>` reads the file (returning an empty map if it doesn't exist) and enforces the permission check via `meta.mode() & 0o077 != 0`, rejecting any group/other readable bits. `parse_env(text) -> HashMap<String, String>` strips `#` comments, blank lines, and optional `"` or `'` quotes around values, then splits on `=`; KEY and VALUE are trimmed independently.

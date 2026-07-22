@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use ctx_summarize::agent::Agent;
+use ctx_summarize::runner::Models;
 
 use crate::error::ScanError;
 use crate::render::{render, render_pruned, render_staleness, staleness_message, stdout_err};
@@ -34,6 +35,15 @@ pub struct Cli {
     /// cwd (not the scanned directory).
     #[arg(long, default_value = "prompts")]
     prompts: String,
+
+    /// Model the agent should call for leaf summaries. Required; no default.
+    #[arg(long)]
+    leaf_model: String,
+
+    /// Model the agent should call for rollup summaries. Required; no
+    /// default.
+    #[arg(long)]
+    rollup_model: String,
 
     /// Claude Code Stop-hook mode: check staleness and emit a
     /// report-only `systemMessage`. Never calls the agent —
@@ -115,6 +125,18 @@ impl Cli {
     #[must_use]
     pub fn prompts(&self) -> &str {
         &self.prompts
+    }
+
+    /// The model the agent should call for leaf summaries.
+    #[must_use]
+    pub fn leaf_model(&self) -> &str {
+        &self.leaf_model
+    }
+
+    /// The model the agent should call for rollup summaries.
+    #[must_use]
+    pub fn rollup_model(&self) -> &str {
+        &self.rollup_model
     }
 }
 
@@ -201,10 +223,14 @@ pub fn stop_hook<W: Write>(dir: &std::path::Path, out: &mut W) -> Result<(), Sca
 /// propagates walk, summarization, hash, and README write failures.
 pub fn dispatch<A: Agent, W: Write>(agent: &A, cli: &Cli, out: &mut W) -> Result<(), ScanError> {
     let base = validate_dir(&cli.dir)?;
+    let models = Models {
+        leaf: cli.leaf_model(),
+        rollup: cli.rollup_model(),
+    };
     if cli.update() {
-        let staleness = update_run(&base, cli.prompts(), agent, cli.approve)?;
+        let staleness = update_run(&base, cli.prompts(), agent, &models, cli.approve)?;
         return render_staleness(out, &staleness);
     }
-    let summary = scan_run(&base, cli.prompts(), agent, cli.approve)?;
+    let summary = scan_run(&base, cli.prompts(), agent, &models, cli.approve)?;
     render(out, &summary)
 }

@@ -8,14 +8,16 @@ regime** — the same posture as `prompts/`. The Rust core
 ## The contract (every adapter must implement exactly this)
 
 ```
-stdin  : one JSON object {"system": <string>, "user": <string>}
+stdin  : one JSON object {"system": <string>, "user": <string>, "model": <string>}
 stdout : the model's completion text, verbatim — nothing else
 exit   : 0 on success; non-zero with a message on stderr otherwise
 ```
 
 - `system` is the verbatim prompt file (`prompts/summarizer-leaf.md` or
   `prompts/summarizer-rollup.md`). `user` is the runner-assembled dynamic
-  data (source path + contents, or directory children + intent).
+  data (source path + contents, or directory children + intent). `model`
+  is the model to call, set by the Rust CLI's required `--model` flag —
+  there is no adapter-side default or fallback.
 - An adapter is a **thin transport**: it MUST NOT add instructions,
   reformat, or wrap the prompt/data (honors `prompts/README.md`). The
   prompt files alone govern behavior so they stay portable across models.
@@ -49,9 +51,9 @@ the `.env` sourcing is purely in the wrapper.
 ## Reference adapter
 
 `summarizer-claude.py` — Anthropic Messages API, python3 stdlib only (no
-pip/curl/jq). Env: `ANTHROPIC_API_KEY` (required), `CTX_AGENT_MODEL`
-(default `claude-sonnet-5`), `CTX_AGENT_MAX_TOKENS` (2048),
-`CTX_AGENT_TEMPERATURE` (0), `ANTHROPIC_BASE_URL`. Sends the per-task
+pip/curl/jq). Env: `ANTHROPIC_API_KEY` (required), `CTX_AGENT_MAX_TOKENS`
+(2048), `CTX_AGENT_TEMPERATURE` (0), `ANTHROPIC_BASE_URL`. The model
+called is the stdin JSON's `model` field, not an env var. Sends the per-task
 system prompt as a cached block (it is identical across every leaf/rollup
 call in a task), which materially cuts summarizer cost and latency.
 Reasoning is fixed at its minimum (`thinking: disabled`, `output_config.

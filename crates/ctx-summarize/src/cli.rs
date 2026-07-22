@@ -27,6 +27,17 @@ pub struct Cli {
     /// guard; without this an over-large set is refused).
     #[arg(long, global = true)]
     approve: bool,
+    /// Model the agent should call for leaf summaries. Required; no default.
+    ///
+    /// Not `global`: clap forbids a required global (ambiguous when no
+    /// subcommand has matched yet), so this must precede the subcommand,
+    /// e.g. `ctx-summarize --leaf-model X --rollup-model Y paths a.rs`.
+    #[arg(long)]
+    leaf_model: String,
+    /// Model the agent should call for rollup summaries. Required; no
+    /// default. Same not-`global` caveat as `--leaf-model`.
+    #[arg(long)]
+    rollup_model: String,
 }
 
 /// Target-selection mode.
@@ -53,7 +64,11 @@ pub fn dispatch<F: Fs, A: Agent, W: Write>(
     let Command::Paths { paths } = &cli.command;
     let targets = paths.clone();
     runner::scope_check(targets.len(), cli.approve)?;
-    let summary = runner::run(fs, agent, &cli.prompts, &targets, &NoProgress)?;
+    let models = runner::Models {
+        leaf: &cli.leaf_model,
+        rollup: &cli.rollup_model,
+    };
+    let summary = runner::run(fs, agent, &cli.prompts, &targets, &models, &NoProgress)?;
     serde_json::to_writer_pretty(&mut *out, &summary).map_err(|e| SummError::Io {
         path: "<stdout>".to_owned(),
         detail: e.to_string(),

@@ -1,7 +1,7 @@
-`agents/` is a single-file directory: one reference adapter (`summarizer-claude.py`) implementing the external agent contract that the Rust pipeline invokes via `CTX_AGENT_CMD`. Its job in the system is to be the default, working implementation of that contract and the template for anyone writing an alternative backend (e.g. a different model provider or a mock for testing).
+`agents/` is the model-invocation boundary for the summarization pipeline — it turns a runner-assembled prompt into a completion string, isolating the CLI from any specifics of which model API is called.
 
-There's no cross-file coupling to describe since there's only one child — the invariants worth restating at this level are the ones that define the *contract surface* any future sibling adapter must also satisfy: stdin is `{"system": str, "user": str}` JSON, stdout is raw completion text and nothing else, non-zero exit with stderr message on any failure, and no exit path that swallows an error silently. Anything implementing `CTX_AGENT_CMD` differently than this breaks the runner.
+Currently a single adapter, summarizer-claude.py, implements the stdin/stdout contract: read `{"system", "user", "model"}` as JSON from stdin, call one external API once, write the raw completion to stdout, errors/exit codes to stderr. Any future sibling adapter (e.g. for a different provider) must honor this same contract exactly — the Rust CLI selects an adapter and expects this I/O shape regardless of which one runs. Prompt content and structure are owned upstream in `prompts/`; adapters must not add instructions of their own, only transport.
 
-A typical change here is either swapping model/provider specifics (env vars, endpoint, payload shape) or adding a new adapter file alongside this one — in the latter case, the stdin/stdout contract above is the one thing that must not drift between them.
+Because the summarizer prompt is reused verbatim across every leaf/rollup call in a task, adapters should exploit provider-side prompt caching where available rather than resending the same tokens per call — this is a cost invariant that would carry over to any new adapter, not just the Claude one.
 
-No intent.md exists to check against.
+intent_divergence: no intent.md exists for this directory to check against.

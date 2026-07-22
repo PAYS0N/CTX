@@ -1,0 +1,5 @@
+Assembles the user input for a rollup prompt by combining a directory's `intent.md` and its children's context files (`.ctx` files or `rollup.ctx` for subdirectories).
+
+`assemble_rollup_input(fs, dir)` builds a single string with the format: directory path label, the intent file (or "(none)" if absent), then sections for each child — either individual `.ctx` files by name or subdirectories' `rollup.ctx` files labeled as "name/rollup.ctx". It skips the current directory's own `rollup.ctx` and `intent.md` to avoid recursion. Sections are delimited by `\n--- label ---\n` with a trailing newline always present. The directory path in the header uses "." for empty string (root).
+
+`has_ctx_ext(name)` identifies context files via case-insensitive `.ctx` extension check. `push_section(buf, label, body)` is the internal formatter that enforces section structure and trailing newlines.

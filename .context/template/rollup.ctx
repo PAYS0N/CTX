@@ -1,7 +1,7 @@
-`template/` is the scaffold this tooling stamps into every new project: a `.gitattributes` policy for `.ctx`/`rollup.ctx` files plus the `scripts/` subtree of CI checks and sync machinery that ships with it.
+`template/` is a project scaffold: it ships the git-level config (`.gitattributes`) that governs how generated `.ctx`/`rollup.ctx` files under `.context/` merge, plus a `scripts/` subtree that becomes the CI/lint gate and CTX-tooling sync mechanism in any project scaffolded from this template.
 
-The only cross-cutting link is that `.gitattributes` names a `ctx-regenerate` merge driver for the exact `.context/` `.ctx`/`rollup.ctx` paths that `scripts/` tooling generates and syncs — if the `.context/` layout or naming convention changes, both the attributes patterns and the scripts that produce those files must move together. The driver itself is unimplemented; until it exists, conflicts on those paths require manual `ctx-resummarize` runs rather than git merge.
+The only cross-cutting coupling at this level is indirect: `.gitattributes` declares the `ctx-regenerate` merge driver for `.context/**/*.ctx` and `rollup.ctx`, but that driver isn't implemented anywhere in this tree yet (no `merge.ctx-regenerate.driver` entry exists) — conflicts must currently be resolved by hand via `ctx-resummarize`. Anyone changing the `.context/` tree layout or `.ctx` naming convention (which lives in the tooling scripts, not here) must keep the `.gitattributes` patterns in sync or the merge driver silently stops matching.
 
-`.gitattributes` is a thin, static declaration with no logic. `scripts/` carries the actual behavior: enforcement scripts consumed by `ctx-verify`, and the sync pipeline (`install-tools.sh` → `update-template.sh` → `gen_tool_contracts.sh`/`gen_readme_architecture.sh`) that keeps this template's binaries, checks, and docs current against the upstream CTX repo.
+`scripts/` is the only real content subtree and is self-contained; its check-script output contract and sync-pipeline marker conventions are documented there and don't otherwise touch `.gitattributes`.
 
-No intent.md exists to check against.
+intent_divergence: no intent.md exists for this directory, so no claim can be checked.

@@ -1,0 +1,5 @@
+`crates/ctx-scan/tests/common/` is shared test infrastructure for ctx-scan's integration tests — it gives test files hermetic, in-memory stand-ins for the filesystem and LLM agent so tests can assert behavior without disk or network I/O.
+
+Everything here is exposed through `mod.rs`; there's a single file, so no cross-file coupling to track. Tests depend on the contract that `FakeFs` and `RecordingAgent` faithfully implement the real `Fs`/`Agent` traits used by production code — any drift there would let tests pass while the real implementations diverge. `seed_prompts` and `prompts_path` exist because some tests want the real prompt templates rather than fakes; callers must choose consistently per test rather than mixing fake and real prompt sources.
+
+No intent.md exists for this directory, so no divergence can be assessed.

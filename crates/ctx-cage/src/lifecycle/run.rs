@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
-use crate::bwrap::{build_bwrap_args, BwrapConfig, API_SOCK_NAME, CAGE_RULES_PATH};
+use crate::bwrap::{build_bwrap_args, BwrapConfig, API_SOCK_NAME};
 use crate::cli::{mode_is_billed, Mode};
 use crate::error::CageError;
 use crate::proxy::{self, ProxyConfig, SocatUpstream};
@@ -204,37 +204,25 @@ echo SELF-TEST-STUB-OK\n";
 }
 
 /// Billed command: start the in-cage relay (`127.0.0.1:8080` → the
-/// bind-mounted proxy socket), then exec claude. The cage IS the
-/// sandbox `--dangerously-skip-permissions` asks for.
+/// bind-mounted proxy socket), run the verify/context preflight, then
+/// exec claude. The cage IS the sandbox `--dangerously-skip-permissions`
+/// asks for.
 fn claude_cmd(headless: bool) -> Vec<OsString> {
     let wait = wait_for_relay_snippet(RELAY_PORT);
     let relay = format!(
         "socat -t 86400 TCP-LISTEN:{RELAY_PORT},bind=127.0.0.1,reuseaddr,fork \
          UNIX-CONNECT:/run/ctx/{API_SOCK_NAME} &\n{wait}"
     );
-    let claude = if headless {
-        format!(
-            "exec claude -p --dangerously-skip-permissions \
-             --append-system-prompt-file {CAGE_RULES_PATH} \"$CTX_TASK_BRIEF\""
-        )
-    } else {
-        // `setsid --ctty` gives claude a new session whose controlling
-        // terminal is its stdin — the private PTY slave (see `pty.rs`).
-        // Without it the caged process has no controlling TTY in its own
-        // PID namespace and Node's readline busy-spins at 100% CPU.
-        // `--wait` propagates claude's exit status back through setsid.
-        format!(
-            "exec setsid --ctty --wait claude --dangerously-skip-permissions \
-             --append-system-prompt-file {CAGE_RULES_PATH}"
-        )
-    };
+    let preflight = preflight::snippet();
+    let claude = preflight::claude_invocation(headless);
     vec![
         "sh".into(),
         "-c".into(),
-        format!("{relay}\n{claude}").into(),
+        format!("{relay}\n{preflight}\n{claude}").into(),
     ]
 }
 
+mod preflight;
 mod pty;
 
 #[cfg(test)]

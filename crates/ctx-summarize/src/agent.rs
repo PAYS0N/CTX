@@ -28,13 +28,14 @@ const MIN_REQUEST_SPACING: Duration = Duration::from_secs(1);
 /// One completion request/response.
 pub trait Agent {
     /// Run one completion. `system` is the prompt file verbatim; `user`
-    /// is the assembled dynamic input. Returns the model's text output.
+    /// is the assembled dynamic input; `model` selects which model the
+    /// adapter should call. Returns the model's text output.
     ///
     /// # Errors
     ///
     /// [`SummError::Agent`] if the agent cannot be run, exits non-zero,
     /// or produces empty output.
-    fn complete(&self, system: &str, user: &str) -> Result<String, SummError>;
+    fn complete(&self, system: &str, user: &str, model: &str) -> Result<String, SummError>;
 }
 
 /// The JSON payload written to the agent command's stdin.
@@ -44,6 +45,8 @@ struct Payload<'a> {
     system: &'a str,
     /// Assembled dynamic input data.
     user: &'a str,
+    /// Model the adapter should call.
+    model: &'a str,
 }
 
 /// Agent backed by a deployment-configured shell command.
@@ -152,9 +155,13 @@ impl SubprocessAgent {
 
 impl Agent for SubprocessAgent {
     // rationale: one linear request/response sequence (encode -> spawn -> feed stdin -> collect -> validate); splitting it would scatter the single I/O transaction.
-    fn complete(&self, system: &str, user: &str) -> Result<String, SummError> {
-        let payload = serde_json::to_vec(&Payload { system, user })
-            .map_err(|e| SummError::Agent(e.to_string()))?;
+    fn complete(&self, system: &str, user: &str, model: &str) -> Result<String, SummError> {
+        let payload = serde_json::to_vec(&Payload {
+            system,
+            user,
+            model,
+        })
+        .map_err(|e| SummError::Agent(e.to_string()))?;
         let mut child = Command::new("sh")
             .arg("-c")
             .arg(&self.command)

@@ -26,7 +26,7 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # Retired vocabulary. Append here whenever an ADR retires an identifier.
-BANNED=(ctx-access init-task end-task served_nodes SPEC.md)
+BANNED=(ctx-access init-task end-task served_nodes SPEC.md CTX_AGENT_MODEL)
 
 # Paths permitted to mention retired terms: the rationale ledger, retired
 # designs kept as history, the audit docs, and this script itself.

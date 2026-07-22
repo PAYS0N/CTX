@@ -9,17 +9,17 @@ default target for `CTX_AGENT_CMD`:
 
 Contract (identical for any provider's adapter; see agents/README.md):
 
-  stdin  : one JSON object {"system": <str>, "user": <str>}
+  stdin  : one JSON object {"system": <str>, "user": <str>, "model": <str>}
   stdout : the model's completion text, verbatim, nothing else
   exit   : 0 on success; non-zero with a message on stderr otherwise
 
 `system` is the verbatim prompt file; `user` is the runner-assembled
-dynamic data. This adapter adds NO instructions of its own (it honors the
-prompts/README.md decoupling rule): it is a thin transport only.
+dynamic data; `model` is the model to call, chosen by the Rust CLI's
+required `--model` flag. This adapter adds NO instructions of its own (it
+honors the prompts/README.md decoupling rule): it is a thin transport only.
 
 Environment:
   ANTHROPIC_API_KEY     required
-  CTX_AGENT_MODEL       default: claude-sonnet-5
   CTX_AGENT_MAX_TOKENS  default: 2048 (summaries are small)
   CTX_AGENT_TEMPERATURE default: 0 (stable, strict-format output)
   ANTHROPIC_BASE_URL    default: https://api.anthropic.com
@@ -28,7 +28,9 @@ The verbatim prompt is sent as a cached system block: the summarizer
 reuses one identical system prompt across every leaf/rollup call in a
 task, so prompt caching cuts cost/latency materially. Reasoning is
 fixed at its minimum (thinking disabled, output_config effort "low")
-since summarization is a short, strict-format task.
+since summarization is a short, strict-format task — except on haiku
+models, which reject the `effort` param outright (HTTP 400) and so get
+neither.
 """
 
 from __future__ import annotations
@@ -39,7 +41,6 @@ import sys
 import urllib.error
 import urllib.request
 
-DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_MAX_TOKENS = 2048
 API_VERSION = "2023-06-01"
 
@@ -50,8 +51,8 @@ def die(message: str) -> "None":
     raise SystemExit(1)
 
 
-def read_request() -> "tuple[str, str]":
-    """Parse the {"system","user"} JSON object from stdin."""
+def read_request() -> "tuple[str, str, str]":
+    """Parse the {"system","user","model"} JSON object from stdin."""
     raw = sys.stdin.read()
     try:
         obj = json.loads(raw)
@@ -61,22 +62,23 @@ def read_request() -> "tuple[str, str]":
         die("stdin JSON must be an object")
     system = obj.get("system")
     user = obj.get("user")
+    model = obj.get("model")
     if not isinstance(system, str) or not isinstance(user, str):
         die("JSON must have string 'system' and 'user' fields")
-    return system, user
+    if not isinstance(model, str):
+        die("JSON must have a string 'model' field")
+    return system, user, model
 
 
-def build_body(system: str, user: str) -> "dict":
+def build_body(system: str, user: str, model: str) -> "dict":
     """Assemble the Messages API request body (verbatim; no extra text)."""
     max_tokens = int(os.environ.get("CTX_AGENT_MAX_TOKENS", DEFAULT_MAX_TOKENS))
-    model = os.environ.get("CTX_AGENT_MODEL", DEFAULT_MODEL)
-    return {
+    body = {
         "model": model,
         "max_tokens": max_tokens,
         # Summaries are short, strict-format, low-intelligence tasks: keep
         # reasoning at its minimum (thinking off, lowest effort).
         "thinking": {"type": "disabled"},
-        "output_config": {"effort": "low"},
         # List form with cache_control so the identical per-task system
         # prompt is cached across many leaf/rollup calls.
         "system": [
@@ -88,6 +90,11 @@ def build_body(system: str, user: str) -> "dict":
         ],
         "messages": [{"role": "user", "content": user}],
     }
+    # Haiku models reject the effort param outright (HTTP 400); only
+    # non-haiku models get the lowest-effort hint.
+    if "haiku" not in model:
+        body["output_config"] = {"effort": "low"}
+    return body
 
 
 def call_api(body: "dict") -> "dict":
@@ -131,8 +138,8 @@ def extract_text(response: "dict") -> str:
 
 def main() -> "None":
     """Stdin JSON -> one Messages call -> completion text on stdout."""
-    system, user = read_request()
-    response = call_api(build_body(system, user))
+    system, user, model = read_request()
+    response = call_api(build_body(system, user, model))
     sys.stdout.write(extract_text(response))
 
 

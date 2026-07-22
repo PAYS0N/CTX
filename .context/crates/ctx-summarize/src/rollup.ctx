@@ -1,34 +1,7 @@
-`crates/ctx-summarize/src` is the whole `ctx-summarize` crate: it walks a
-context tree bottom-up and (re)writes `.ctx` leaf/rollup summary files by
-calling an LLM-backed agent, gated by access control and scope limits. A
-caller depending on this crate gets one entry point of real consequence —
-`cli::dispatch` / `runner::run` — plus a stable `.context` mirror layout
-(`cpath`) and a `SummError` enum every fallible path returns through.
+`crates/ctx-summarize/src` is the leaf-up context-summarization pipeline: given source paths, it produces `.ctx` files per file and `rollup.ctx` per directory by driving an external LLM agent through prompt templates loaded at runtime. Depending on this crate as a library means calling `runner::run`/`run_with_prompts`; as a binary it's `ctx-summarize <paths>` with required `--leaf-model`/`--rollup-model`.
 
-The crate enforces a strict seam layering: `cli` only parses argv and
-writes output; `runner` is pure orchestration and must never touch
-`std::fs` or spawn a process directly — all such effects go through the
-`Fs` and `Agent` traits (`fs.rs`, `agent.rs`), which is also what makes
-`runner` unit-testable with fakes. `progress.rs` is a third, optional seam
-in the same style, invoked by `runner` just before each `Agent::complete`
-call. Prompt text is never a Rust string literal — `runner::load_prompts`
-reads `summarizer-leaf.md`/`summarizer-rollup.md` from the prompts dir at
-runtime, and `intent.md` is read but never written anywhere in this crate.
+Layering is strict and one-directional: `cli` parses argv and calls `runner`; `runner` is pure orchestration that depends only on the `Fs` and `Agent` trait seams (`fs.rs`, `agent.rs`) plus `progress.rs` for status callbacks; `cpath` and `rollup_input` are internal helpers `runner` uses to compute `.context` mirror paths and assemble rollup prompts from children's `.ctx`/`rollup.ctx` files. `error.rs` defines the single `SummError` enum every fallible path returns — variant names/shapes are load-bearing for CLI exit-code mapping in `main.rs`.
 
-Two format contracts span files here and must be changed together:
-`assemble_rollup_input` in `runner.rs` builds the section-labeled
-prompt input consumed by `summarizer-rollup.md`; and `agent.rs`'s
-stdin/stdout JSON wire format is the boundary any `CTX_AGENT_CMD` script
-must match. `cpath.rs` defines the `.context` mirror mapping used by both
-`runner` (to compute leaf/rollup paths) and `cli`/`main` indirectly; it
-intentionally duplicates equivalent logic in `ctx-context`, tracked as a
-known drift risk in `docs/UNIMPLEMENTED.md`. `fs.rs`'s `scope_matcher`
-(`.ctxignore`-based) is the single scope definition shared with
-`ctx-scan`'s walker — keep both in sync on change.
+Two safety gates span the subtree and must stay aligned: `fs::scope_matcher` (gitignore-syntax, `.ctxignore` + built-in `target/`) defines what's summarizable, checked via `Fs::is_ignored` and enforced in `runner::summarize_leaf` alongside `ctx_core::access`; and `runner::scope_check`/`cli::dispatch` enforce the `MAX_TARGETS` cost guard requiring `--approve`. Changing either gate's threshold or ignore rules needs checking against `ctx-scan`'s walker, which shares the same scope_matcher logic.
 
-Invariants holding across the whole subtree: every fallible path returns
-`SummError` (no `#[from]` conversions — callers construct variants
-explicitly); `--approve`/`MAX_TARGETS` gating and `AccessDenied` checks
-happen before any file is read or agent is called; and `main.rs` /
-`cli.rs` never write ad-hoc output — only through injected writer handles,
-keeping stdout reserved for the final JSON result.
+The `.ctx`/`rollup.ctx` mirror-path convention lives once in `cpath.rs` (deliberately duplicated from `ctx-context`, tracked for later consolidation) and is used by both `runner` and `rollup_input` — any change to that layout must update both consumers. Agent calls are always synchronous request/response JSON over stdio (`agent.rs`), never inline, and `progress.rs` notifies just before each call. Prompts are always loaded from disk (`prompts/summarizer-leaf.md`, `summarizer-rollup.md`), never embedded in the binary.

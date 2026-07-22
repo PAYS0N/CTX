@@ -1,45 +1,21 @@
-//! Hermetic and filesystem-backed integration tests for ctx-scan.
+//! Hermetic and filesystem-backed integration tests for ctx-scan's
+//! summarize/hash/check/update pipeline. Walker-only tests live in
+//! `walker.rs`; shared fixtures live in `common/`.
 
-// rationale: integration scenario file; many small hermetic tests naturally accrete past the 250-line soft tier.
+mod common;
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use common::{prompts_path, recording, seed_prompts, FakeFs};
 use ctx_scan::error::ScanError;
 use ctx_scan::hash;
 use ctx_scan::runner::{check_run, summarize, update_run};
 use ctx_scan::walker::walk_dir;
-use ctx_summarize::agent::Agent;
 use ctx_summarize::error::SummError;
 use ctx_summarize::fs::{Fs, StdFs};
 use ctx_summarize::progress::NoProgress;
-use ctx_summarize::runner;
-
-/// Absolute path to the workspace prompt files, independent of the test
-/// process cwd (prompts are loaded from cwd in production, but tests pass
-/// an absolute path so `StdFs` resolves it regardless of where cargo runs).
-fn prompts_path() -> String {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../prompts")
-        .to_string_lossy()
-        .into_owned()
-}
-
-// ── in-memory fakes ──────────────────────────────────────────────────────────
-
-/// Seed `m` with the embedded leaf/rollup summarizer prompt contents.
-fn seed_prompts(m: &mut BTreeMap<String, String>) {
-    let rollup = "prompts/summarizer-rollup.md".to_owned();
-    m.insert("prompts/summarizer-leaf.md".to_owned(), "LEAF".to_owned());
-    m.insert(rollup, "ROLLUP".to_owned());
-}
-
-/// In-memory filesystem for hermetic tests.
-struct FakeFs {
-    /// path → contents.
-    map: RefCell<BTreeMap<String, String>>,
-}
+use ctx_summarize::runner::{self, Models};
 
 impl FakeFs {
     /// Seed with both embedded prompts and one source file at `src/lib.rs`.
@@ -48,7 +24,7 @@ impl FakeFs {
         seed_prompts(&mut m);
         m.insert("src/lib.rs".to_owned(), "fn foo() {}".to_owned());
         Self {
-            map: RefCell::new(m),
+            map: std::cell::RefCell::new(m),
         }
     }
 
@@ -57,82 +33,8 @@ impl FakeFs {
         let mut m = BTreeMap::new();
         seed_prompts(&mut m);
         Self {
-            map: RefCell::new(m),
+            map: std::cell::RefCell::new(m),
         }
-    }
-}
-
-impl Fs for FakeFs {
-    fn read(&self, rel: &str) -> Result<String, SummError> {
-        self.map
-            .borrow()
-            .get(rel)
-            .cloned()
-            .ok_or_else(|| SummError::Io {
-                path: rel.to_owned(),
-                detail: "missing".to_owned(),
-            })
-    }
-
-    fn write(&self, rel: &str, contents: &str) -> Result<(), SummError> {
-        self.map
-            .borrow_mut()
-            .insert(rel.to_owned(), contents.to_owned());
-        Ok(())
-    }
-
-    fn exists(&self, rel: &str) -> bool {
-        self.map.borrow().contains_key(rel)
-    }
-
-    fn list_dir(&self, rel: &str) -> Result<Vec<String>, SummError> {
-        let prefix = format!("{rel}/");
-        let mut names: Vec<String> = Vec::new();
-        for key in self.map.borrow().keys() {
-            if let Some(rest) = key.strip_prefix(&prefix) {
-                if let Some(first) = rest.split('/').next() {
-                    let name = first.to_owned();
-                    if !name.is_empty() && !names.contains(&name) {
-                        names.push(name);
-                    }
-                }
-            }
-        }
-        names.sort();
-        Ok(names)
-    }
-
-    fn is_ignored(&self, _rel: &str) -> Result<bool, SummError> {
-        Ok(false)
-    }
-
-    fn remove(&self, rel: &str) -> Result<(), SummError> {
-        self.map.borrow_mut().remove(rel);
-        Ok(())
-    }
-}
-
-/// Records every `(system, user)` completion call; always succeeds.
-struct RecordingAgent {
-    /// Recorded `(system, user)` pairs in call order.
-    calls: RefCell<Vec<(String, String)>>,
-}
-
-impl Agent for RecordingAgent {
-    fn complete(&self, system: &str, user: &str) -> Result<String, SummError> {
-        self.calls
-            .borrow_mut()
-            .push((system.to_owned(), user.to_owned()));
-        Ok(format!("SUMMARY[{system}]"))
-    }
-}
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-/// Build a fresh `RecordingAgent`.
-const fn recording() -> RecordingAgent {
-    RecordingAgent {
-        calls: RefCell::new(Vec::new()),
     }
 }
 
@@ -140,6 +42,15 @@ const fn recording() -> RecordingAgent {
 fn test_dir(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("ctx-scan-test-{label}"))
 }
+
+/// Model passed to every test call site; content is irrelevant here.
+const MODEL: &str = "claude-sonnet-5";
+
+/// Leaf/rollup model bundle every test call site shares.
+const MODELS: Models<'static> = Models {
+    leaf: MODEL,
+    rollup: MODEL,
+};
 
 // ── hermetic tests ────────────────────────────────────────────────────────────
 
@@ -149,8 +60,16 @@ fn summarize_writes_leaves_rollups_and_readme() {
     let agent = recording();
     let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
     let target = "src/lib.rs".to_owned();
-    let summary =
-        summarize(&fs, &agent, &prompts, &[target], false, &NoProgress).expect("summarize");
+    let summary = summarize(
+        &fs,
+        &agent,
+        &prompts,
+        &[target],
+        &MODELS,
+        false,
+        &NoProgress,
+    )
+    .expect("summarize");
     assert!(summary.readme_written);
     assert_eq!(summary.leaves_written, vec![".context/src/lib.rs.ctx"]);
     assert!(fs.map.borrow().contains_key(".context/README.md"));
@@ -164,7 +83,7 @@ fn scope_gate_blocks_unapproved_large_runs() {
     let targets: Vec<String> = (0..=runner::MAX_TARGETS)
         .map(|i| format!("{i}.rs"))
         .collect();
-    let err = summarize(&fs, &agent, &prompts, &targets, false, &NoProgress)
+    let err = summarize(&fs, &agent, &prompts, &targets, &MODELS, false, &NoProgress)
         .expect_err("should be refused");
     assert!(matches!(
         err,
@@ -183,11 +102,11 @@ fn scope_gate_allows_approved_large_runs() {
         m.insert(t.clone(), "content".to_owned());
     }
     let fs = FakeFs {
-        map: RefCell::new(m),
+        map: std::cell::RefCell::new(m),
     };
     let agent = recording();
     let prompts = runner::load_prompts(&fs, "prompts").expect("prompts");
-    assert!(summarize(&fs, &agent, &prompts, &targets, true, &NoProgress).is_ok());
+    assert!(summarize(&fs, &agent, &prompts, &targets, &MODELS, true, &NoProgress).is_ok());
 }
 
 #[test]
@@ -200,98 +119,6 @@ fn is_ignored_follows_ctxignore_and_needs_no_git() {
     assert!(!fs.is_ignored("any.rs").expect("in scope"));
     assert!(fs.is_ignored("gen/out.rs").expect("scoped out"));
     assert!(fs.is_ignored("target/debug/x.rs").expect("builtin default"));
-    drop(std::fs::remove_dir_all(&base));
-}
-
-// ── walker integration test ───────────────────────────────────────────────────
-
-/// Create the walk-test fixture directory tree under `base`.
-fn create_walk_fixture(base: &std::path::Path) -> Result<(), std::io::Error> {
-    std::fs::create_dir_all(base.join("src"))?;
-    std::fs::create_dir_all(base.join(".context"))?;
-    std::fs::write(base.join("src/main.rs"), "fn main() {}")?;
-    std::fs::write(base.join("logo.png"), b"\x89PNG")?;
-    std::fs::write(base.join(".context/rollup.ctx"), "old")?;
-    Ok(())
-}
-
-#[test]
-fn walk_collects_files_and_excludes_context_and_binaries() {
-    let base = test_dir("walk");
-    drop(std::fs::remove_dir_all(&base));
-    create_walk_fixture(&base).expect("fixture setup");
-
-    let files = walk_dir(&base).expect("walk");
-
-    assert!(
-        files.contains(&"src/main.rs".to_owned()),
-        "rs file included"
-    );
-    assert!(
-        !files.iter().any(|f| {
-            std::path::Path::new(f)
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("png"))
-        }),
-        "png excluded"
-    );
-    assert!(
-        !files.iter().any(|f| f.starts_with(".context")),
-        ".context excluded"
-    );
-    drop(std::fs::remove_dir_all(&base));
-}
-
-#[test]
-fn walk_seeds_ctxignore_from_gitignore_once_then_decouples() {
-    let base = test_dir("seed");
-    drop(std::fs::remove_dir_all(&base));
-    std::fs::create_dir_all(base.join("gen")).expect("mkdir gen");
-    std::fs::create_dir_all(base.join("src")).expect("mkdir src");
-    std::fs::write(base.join("src/main.rs"), "fn main() {}").expect("write src");
-    std::fs::write(base.join("gen/out.rs"), "generated").expect("write gen");
-    std::fs::write(base.join(".gitignore"), "gen/\n").expect("write gitignore");
-
-    let first = walk_dir(&base).expect("first walk");
-    assert!(base.join(".ctxignore").is_file(), "seeded on first contact");
-    assert!(
-        !first.iter().any(|f| f.starts_with("gen/")),
-        "seed inherited gen/"
-    );
-
-    // .gitignore is dead after the hand-off: new entries there change nothing.
-    std::fs::write(base.join(".gitignore"), "gen/\nsrc/\n").expect("grow gitignore");
-    let second = walk_dir(&base).expect("second walk");
-    assert!(
-        second.contains(&"src/main.rs".to_owned()),
-        ".gitignore must not be consulted after seeding"
-    );
-    drop(std::fs::remove_dir_all(&base));
-}
-
-#[test]
-fn walk_scope_honors_ctxignore_and_builtin_target_default() {
-    let base = test_dir("scope");
-    drop(std::fs::remove_dir_all(&base));
-    std::fs::create_dir_all(base.join("src")).expect("mkdir src");
-    std::fs::create_dir_all(base.join("target/debug")).expect("mkdir target");
-    std::fs::create_dir_all(base.join("gen")).expect("mkdir gen");
-    std::fs::write(base.join("src/main.rs"), "fn main() {}").expect("write src");
-    std::fs::write(base.join("target/debug/junk.rs"), "junk").expect("write target");
-    std::fs::write(base.join("gen/out.rs"), "generated").expect("write gen");
-    std::fs::write(base.join(".ctxignore"), "gen/\n").expect("write ctxignore");
-
-    let files = walk_dir(&base).expect("walk");
-
-    assert!(files.contains(&"src/main.rs".to_owned()), "src included");
-    assert!(
-        !files.iter().any(|f| f.starts_with("target/")),
-        "target/ excluded by built-in default"
-    );
-    assert!(
-        !files.iter().any(|f| f.starts_with("gen/")),
-        "gen/ excluded by .ctxignore"
-    );
     drop(std::fs::remove_dir_all(&base));
 }
 
@@ -355,19 +182,19 @@ fn update_regenerates_only_stale_summaries_and_refreshes_hashes() {
     let agent = recording();
 
     // First update: everything is stale, all leaves + rollups produced.
-    let first = update_run(&base, &prompts_path(), &agent, false).expect("first update");
+    let first = update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("first update");
     assert!(!first.is_fresh());
     assert_seeded(&base);
     let calls_after_first = agent.calls.borrow().len();
 
     // Second update with no source change: fresh, zero agent calls.
-    let second = update_run(&base, &prompts_path(), &agent, false).expect("second update");
+    let second = update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("second update");
     assert!(second.is_fresh());
     assert_eq!(agent.calls.borrow().len(), calls_after_first);
 
     // Edit one file: exactly one leaf + two rollups regenerate.
     std::fs::write(base.join("src/main.rs"), "fn main() { edited(); }").expect("edit");
-    let third = update_run(&base, &prompts_path(), &agent, false).expect("third update");
+    let third = update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("third update");
     assert_eq!(third.changed_files, vec!["src/main.rs".to_owned()]);
     assert_eq!(
         agent.calls.borrow().len(),
@@ -384,11 +211,11 @@ fn update_removes_orphan_leaf_when_source_is_deleted() {
     drop(std::fs::remove_dir_all(&base));
     create_hash_fixture(&base).expect("fixture");
     let agent = recording();
-    update_run(&base, &prompts_path(), &agent, false).expect("seed update");
+    update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("seed update");
     assert!(base.join(".context/top.rs.ctx").is_file());
 
     std::fs::remove_file(base.join("top.rs")).expect("delete source");
-    let report = update_run(&base, &prompts_path(), &agent, false).expect("update after delete");
+    let report = update_run(&base, &prompts_path(), &agent, &MODELS, false).expect("after delete");
     assert_eq!(report.orphan_leaves, vec![".context/top.rs.ctx".to_owned()]);
     assert!(!base.join(".context/top.rs.ctx").exists());
     assert!(check_run(&base).expect("final check").is_fresh());

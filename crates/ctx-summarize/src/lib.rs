@@ -12,4 +12,5 @@ pub mod cpath;
 pub mod error;
 pub mod fs;
 pub mod progress;
+mod rollup_input;
 pub mod runner;

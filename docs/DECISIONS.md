@@ -1227,3 +1227,70 @@ only making it *visible* (e.g. `pass (skipped: …)`) — visibility without
 a non-zero exit code doesn't stop CI/an agent from treating a
 tool-starved run as a real pass, which is the actual failure mode
 reported.
+
+## ADR-057 — model choice moves into Rust as required `--leaf-model`/`--rollup-model` flags
+**Decision:** `ctx-scan` and `ctx-summarize` both gain two required
+flags, `--leaf-model <MODEL>` and `--rollup-model <MODEL>` (plain
+`String` each, no default, no `Option`) — omitting either is a `clap`
+parse error, the process never starts.
+`ctx_summarize::agent::Agent::complete` gains a required `model: &str`
+parameter (`fn complete(&self, system: &str, user: &str, model: &str)`),
+and `SubprocessAgent`'s stdin `Payload` gains a required `"model"` string
+field alongside `"system"`/`"user"` — this trait/payload boundary is
+unchanged by the two-flag split, since `summarize_leaf`/
+`summarize_rollup` already called `complete` independently per stage;
+only the CLI/runner layer threads `leaf_model`/`rollup_model` through
+as two values instead of one. `agents/summarizer-claude.py` reads
+`model` from the parsed stdin JSON with the same validation as
+`system`/`user` (dies via `die()` if absent or non-string) and passes it
+straight into the Messages API request body; the `CTX_AGENT_MODEL`
+environment read and the `DEFAULT_MODEL` constant are deleted outright,
+with no fallback path left reachable. Neither flag carries a `clap`
+default: a human invoking `ctx-scan`/`ctx-summarize` directly must
+still name both models explicitly. **Context:** this closes the third
+of the three converging STATUS.md items named in [[ADR-054]] —
+`ctx-brief`'s `--gather-model`/`--plan-model` flags already established
+the Rust-flag pattern (`Option<&str>` there only because those flags
+are optional); this ADR completes the same move for the summarizer
+pipeline, whose model choice previously lived entirely inside the
+non-Rust adapter, read from `CTX_AGENT_MODEL` with a `claude-sonnet-5`
+default. The two-flag split (rather than one `--model` for the whole
+run) was added once `ctx-cage`'s `ctx-run` binary — the one caller that
+runs `ctx-scan --update` automatically on cage-session close, with no
+human present to pass flags — needed to encode a real policy: leaf
+summaries run far more often over one file of narrow context at a time
+and can use a cheaper model, while rollup summaries run less often and
+synthesize multiple children, warranting a stronger one.
+`ctx_cage::bin::ctx_run::refresh_summaries` is the one place that pins
+concrete values — `AUTO_LEAF_MODEL = "claude-haiku-4-5-20251001"`,
+`AUTO_ROLLUP_MODEL = "claude-sonnet-5"` — passed as explicit `--leaf-model`/
+`--rollup-model` args to the child process; its two manual-recovery hint
+strings print the same pinned flags so a copy-pasted fallback command
+still succeeds. **Rationale:** the adapter is deliberately a thin,
+model-agnostic transport (`agents/README.md`); deciding *which* model to
+call is a run-configuration concern the typed, required-flag-checked
+Rust CLI should own, not an env var an adapter can silently default when
+unset. Retiring the env var outright (rather than keeping it as a
+fallback) matches this project's ban on backwards-compatibility shims —
+a fallback path here would leave the exact "looks configured but
+silently isn't" failure mode [[ADR-056]] just eliminated elsewhere in
+this same gate. Splitting into two required flags (instead of adding a
+`default_value` to a single `--model`) keeps that same no-silent-default
+guarantee for every *other* caller — a human running `ctx-scan --update`
+by hand still must pick both models explicitly; only `ctx-run`'s own
+autosummarization pins a policy, and it does so in its own source, not
+via a `clap` default that would apply to all callers. **Rejected:**
+transporting the model via a child-process environment variable instead
+of the JSON payload — the one-shot stdin contract already exists for
+`system`/`user`, and a child-env var would still be "env-var based"
+under the hood, just moved one process down. Also rejected: an optional
+flag with an adapter-side default fallback — confirmed explicitly as a
+deliberate breaking change to every existing invocation that doesn't
+pass model flags, since a silent default is exactly the fallback path
+this ADR removes. Also rejected: giving `--leaf-model` a `clap`
+`default_value` of `"haiku"` (mirroring `ctx-brief`'s `--gather-model`)
+— this would reintroduce a silent default for every caller other than
+`ctx-run`, which is exactly the failure mode this ADR is otherwise
+eliminating; pinning the model choice inside `ctx_run.rs` instead scopes
+the default to the one automated, unattended path that actually wants
+one.

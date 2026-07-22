@@ -1,7 +1,7 @@
-`tests/` is the sole integration-level check on `ctx-summarize`'s runner contract — it validates end-to-end behavior against fakes and real subprocesses rather than unit-testing internals, so it's the place to look for how `runner::run`, `Fs`, and `Agent` are actually expected to interact.
+intent_divergence: no intent.md exists for this directory to check against.
 
-The single file, `summarize.rs`, owns the fixture (`FakeFs::seeded()`) that other tests reuse, and pins the ordering contract (leaves before rollups, rollups propagating outward crates/foo → crates → root) along with the rule that rollup prompts must read prior stage output (intent.md + prior `.ctx`), never raw source. It also fixes error-variant behavior (`MissingPrompt`, `PathEscape`, `AccessDenied`, `Agent`) and the `MAX_TARGETS` scope-check boundary as externally-visible contract, not incidental detail — a change to any of these in the runner should be expected to break a specific assertion here.
+`crates/ctx-summarize/tests` provides integration coverage for the summarizer pipeline exercised entirely through hermetic fakes, giving downstream readers confidence that the runner's file I/O, prompt construction, and intent-preservation contracts hold without needing network or real LLM access.
 
-`SubprocessAgent` tests require `sh`/`cat`/`true`/`exit` on PATH; this is an environment dependency, not a fake, and will fail silently-differently (not skip) on systems lacking them.
+The single file here (`summarize.rs`) owns both the fakes (`FakeFs`, `RecordingAgent`) and the test cases; there's no cross-file coupling to track since this is the only source file in the directory. Its `FakeFs`/`RecordingAgent` pair is the reusable scaffold — any new test in this directory should reuse them rather than re-mocking `Fs`/`Agent`, to keep assertions about prompt content and write ordering consistent.
 
-No intent.md exists for this directory.
+The load-bearing invariant validated here — leaf-before-rollup write ordering, intent files read-only, and secrets/path-escape rejection — is the pipeline's external contract; any change to the runner that would break these should fail a test in this file first.

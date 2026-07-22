@@ -1,0 +1,5 @@
+Loads `.cagevars`, a gitignored file of sandbox-inclusion config read from the invoking process's CWD before argv parsing, allowing variables like `CTX_CAGE_EXTRA_PATH` to persist locally without polluting `.env` or shell profiles. Mirrors `ctx-summarize`'s dotenv parser: fixed key allowlist (unknown keys silently ignored), `#`/blank-line skipping, quote stripping, process-env-wins merge. A missing file is not an error.
+
+`load_cagevars_from_cwd() -> ()` is the shared entry point both `ctx-cage` and `ctx-run` call before argv parsing; it reads from CWD and silently skips on lookup failure. `load_cagevars(dir: &Path) -> ()` reads `<dir>/.cagevars`, parses it, and sets each recognized key only when not already in the process environment. `parse_cagevars(text: &str) -> CageVars` parses `KEY=VALUE` lines and returns a struct with `extra_path: Option<String>`; empty values are treated as absent.
+
+`CTX_CAGE_ALLOW_SPEND` is deliberately excluded from the allowlist — it's a spend-consent gate (ADR-013), not sandbox-inclusion config, and must never be recognized here.

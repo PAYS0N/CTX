@@ -1,0 +1,3 @@
+Configuration file for `ctx-cage` sandbox inclusion, loaded before each `ctx-cage`/`ctx-run` session. Non-secret, local-only settings distinct from `.env`, which is reserved for the summarizer's `ANTHROPIC_API_KEY` and must never hold sandbox config or vice versa. Values already set in the process environment always override file values.
+
+`CTX_CAGE_EXTRA_PATH` is a colon-separated list of extra host directories to read-only bind into the cage and prepend to `PATH`. Each entry must be an existing directory (not a binary); an entry that doesn't exist or is not a directory causes the run to fail with an error rather than silently drop it. Built-in bindings like `/usr`, `/bin`, and Rust toolchain homes are already included.

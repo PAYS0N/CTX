@@ -1,30 +1,7 @@
-`ctx-run <dir> "<task>"` — the one-command entry point for a billed cage
-session, wrapping `ctx_cage::lifecycle::execute`. Agent auth is the
-operator's Claude Code subscription; typing `ctx-run` itself is the spend
-authorization (no `--allow-spend` flag exists here, unlike lower-level
-cage tooling).
+Launches a billed cage session for a task or interactive shell over a target project directory, using the operator's Claude Code subscription for auth. After the session exits successfully, optionally regenerates context summaries via a child `ctx-scan` process.
 
-Reads an optional `~/.config/ctx/env` (via `load_env_file`) that must be
-mode `0600` when present — refuses to run otherwise, since it may hold
-`ANTHROPIC_API_KEY`. That file's `CTX_AGENT_CMD`/`ANTHROPIC_API_KEY` are
-injected only into the child `ctx-scan --update` process used for the
-post-run summary refresh, never into the cage or shell itself.
+The operator's optional `~/.config/ctx/env` (must be `0600` when present) is loaded but only its `CTX_AGENT_CMD` and `ANTHROPIC_API_KEY` are passed into the summary-refresh child — never into the cage itself or the shell. Typing `ctx-run` is the explicit spend authorization; no separate `--allow-spend` flag is needed.
 
-After a successful session (`outcome.exit_code == 0`), prompts
-interactively (`confirm_summarize`) whether to regenerate context
-summaries — but only if stdin is a real terminal (`is_terminal()`,
-matching the PTY relay discipline from ADR-048); non-interactive runs
-default to "no" and print a manual `ctx-scan --update --approve` hint
-instead. `--skip-summarize` bypasses the prompt entirely. Refresh failure
-is never fatal — the session's deliverable already landed by that point.
+`pick_mode` returns `Mode::Interactive` if `--interactive` is set, otherwise `Mode::Task` with the task brief or errors if neither are provided. The session is configured via a `Resolved` struct and handed to `ctx_cage::lifecycle::execute`; its exit code is returned. The `task_id` defaults to `run-<pid>` if not supplied.
 
-`warn_if_no_hooks` checks for `.claude/settings.json` in the target and
-warns (doesn't fail) if absent, since without it the context-chain hook
-won't lead the session.
-
-Sibling binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) are resolved
-via `current_exe()`'s directory, overridable with `CTX_VERIFY_BIN` /
-`CTX_CONTEXT_BIN` / `CTX_SCAN_BIN` env vars — same resolution convention
-as `ctx-cage`. `Mode` is `Task(String)` or `Interactive`; exactly one of
-`--interactive` or a task string must be supplied, enforced in
-`pick_mode`.
+Summary refresh always pins `claude-haiku-4-5-20251001` for leaf summaries and `claude-sonnet-5` for rollups (hardcoded in `AUTO_LEAF_MODEL` and `AUTO_ROLLUP_MODEL`) — these constants must match the defaults `ctx-scan` users expect when they copy the manual-recovery hint. `confirm_summarize` only prompts if stdin is a terminal; piped/CI runs skip to the manual hint. `refresh_summaries` never fails the run: if the child `ctx-scan` exits nonzero, stderr reports the manual command instead. Sibling binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) resolve from the current exe's directory, with environment variable overrides (`CTX_VERIFY_BIN`, `CTX_CONTEXT_BIN`, `CTX_SCAN_BIN`).

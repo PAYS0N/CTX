@@ -1,0 +1,7 @@
+Preflight is the shell-script generator that gets wired into every `claude` invocation launched by the cage lifecycle: it produces the fail-open verification/context-gathering block (`snippet()`) and the final Claude command line (`claude_invocation()`), plus a general-purpose fail-open probe wrapper (`probe()`) that both build on.
+
+The three functions are coupled through the shell-variable contract they establish: `snippet()` writes to `$PREFLIGHT` and appends to `$SYSTEM_PROMPT_FILE`, and `claude_invocation()` assumes `$SYSTEM_PROMPT_FILE` is already populated when it emits `--append-system-prompt-file`. Changing what `snippet()` writes to (env var names, append-vs-overwrite) requires updating `claude_invocation()` in lockstep, since neither function checks the other's output at runtime — the link is purely by shared variable name in generated shell text. All three assume `/cage/bin/...` binaries exist only inside a real cage container; nothing here executes those paths directly, only generates references to them.
+
+The headless/interactive branch in `claude_invocation()` is the other cross-cutting invariant: headless mode must include `$CTX_TASK_BRIEF` and must never combine `--append-system-prompt` with `--append-system-prompt-file`; interactive mode drops the task and instead wraps the invocation in `setsid --ctty --wait`. Any edit to invocation flags must preserve this exclusivity.
+
+No source module file is present in this listing (only `tests.rs.ctx`), so the implementation module itself is described only indirectly through its test coverage.

@@ -15,7 +15,7 @@ use std::path::Path;
 use ctx_summarize::agent::Agent;
 use ctx_summarize::fs::{Fs, StdFs};
 use ctx_summarize::progress::{Progress, WriteProgress};
-use ctx_summarize::runner::{self as summ, Prompts};
+use ctx_summarize::runner::{self as summ, Models, Prompts};
 
 use crate::error::ScanError;
 use crate::hash::{self, Staleness};
@@ -56,11 +56,12 @@ pub fn summarize<F: Fs, A: Agent, P: Progress>(
     agent: &A,
     prompts: &Prompts,
     targets: &[String],
+    models: &Models,
     approve: bool,
     progress: &P,
 ) -> Result<ScanSummary, ScanError> {
     summ::scope_check(targets.len(), approve)?;
-    let s = summ::run_with_prompts(fs, agent, prompts, targets, progress)?;
+    let s = summ::run_with_prompts(fs, agent, prompts, targets, models, progress)?;
     write_readme(fs)?;
     Ok(ScanSummary {
         leaves_written: s.leaves_written,
@@ -81,6 +82,7 @@ pub fn scan_run<A: Agent>(
     base: &Path,
     prompts_dir: &str,
     agent: &A,
+    models: &Models,
     approve: bool,
 ) -> Result<ScanSummary, ScanError> {
     let fs = StdFs::new(base.to_path_buf());
@@ -88,7 +90,7 @@ pub fn scan_run<A: Agent>(
     let targets = walk_dir(base)?;
     reconcile::prune(base, &reconcile::find_orphan_artifacts(&fs, &targets)?)?;
     let progress = WriteProgress::new(std::io::stderr());
-    let summary = summarize(&fs, agent, &prompts, &targets, approve, &progress)?;
+    let summary = summarize(&fs, agent, &prompts, &targets, models, approve, &progress)?;
     hash::store(&fs, &hash::compute(base, &targets)?)?;
     Ok(summary)
 }
@@ -137,18 +139,19 @@ fn regenerate<F: Fs, A: Agent, P: Progress>(
     agent: &A,
     prompts: &Prompts,
     stale: &Staleness,
+    models: &Models,
     approve: bool,
     progress: &P,
 ) -> Result<(), ScanError> {
     summ::scope_check(stale.changed_files.len(), approve)?;
     for f in &stale.changed_files {
-        summ::summarize_leaf(fs, agent, prompts, f, progress)?;
+        summ::summarize_leaf(fs, agent, prompts, f, models.leaf, progress)?;
     }
     for leaf in &stale.orphan_leaves {
         fs.remove(leaf)?;
     }
     for d in &stale.stale_dirs {
-        summ::summarize_rollup(fs, agent, prompts, d, progress)?;
+        summ::summarize_rollup(fs, agent, prompts, d, models.rollup, progress)?;
     }
     Ok(())
 }
@@ -169,6 +172,7 @@ pub fn update_run<A: Agent>(
     base: &Path,
     prompts_dir: &str,
     agent: &A,
+    models: &Models,
     approve: bool,
 ) -> Result<Staleness, ScanError> {
     let fs = StdFs::new(base.to_path_buf());
@@ -185,7 +189,7 @@ pub fn update_run<A: Agent>(
     if stale.needs_regeneration() {
         let prompts = load_prompts(prompts_dir)?;
         let progress = WriteProgress::new(std::io::stderr());
-        regenerate(&fs, agent, &prompts, &stale, approve, &progress)?;
+        regenerate(&fs, agent, &prompts, &stale, models, approve, &progress)?;
         hash::store(&fs, &current)?;
         write_readme(&fs)?;
     }
