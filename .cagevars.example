@@ -12,3 +12,14 @@
 # directory (not the binary itself) — an entry that isn't a directory
 # fails the run with an error rather than being silently dropped.
 # CTX_CAGE_EXTRA_PATH=
+
+# Every other KEY=VALUE line is exported as-is into the caged agent's
+# own environment (ADR-058) — the cage runs under bwrap --clearenv, so
+# this file is the only way to hand it a var beyond what ctx-cage
+# itself sets. Two exceptions: CTX_CAGE_ALLOW_SPEND is never read from
+# here (it's a spend-consent gate, not sandbox config — pass
+# --allow-spend or set it in the invoking shell instead), and any key
+# the cage already manages (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL,
+# PATH, HOME, TASK, ...) fails the run instead of silently overriding
+# it.
+# SOMEVAR=this

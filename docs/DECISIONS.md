@@ -1294,3 +1294,46 @@ this ADR removes. Also rejected: giving `--leaf-model` a `clap`
 eliminating; pinning the model choice inside `ctx_run.rs` instead scopes
 the default to the one automated, unattended path that actually wants
 one.
+
+## ADR-058 — `.cagevars`: arbitrary `KEY=VALUE` passthrough into the cage environment
+**Decision:** `.cagevars` may now hold any `KEY=VALUE` line, not just
+`CTX_CAGE_EXTRA_PATH`. `cagevars::load_cagevars` resolves each such pair
+against the process env (which still wins over the file, same rule as
+`CTX_CAGE_EXTRA_PATH`) and returns it; both `ctx-cage` and `ctx-run`
+thread the result through `Resolved::extra_env` into
+`lifecycle::env::cage_env`, which folds it into the `--setenv` list
+handed to `bwrap`. This is the only path that works: `bwrap` execs the
+cage under `--clearenv`, so a var merely set in the *host* process env
+(what the old `CTX_CAGE_EXTRA_PATH`-only loader did) never reaches the
+sandboxed agent — only pairs explicitly in `BwrapConfig.env` do.
+`CTX_CAGE_ALLOW_SPEND` stays excluded from this passthrough (spend
+gate, not sandbox/agent config, [[ADR-013]]-adjacent). Any key that
+collides with one the cage already assembles — `PATH`, `HOME`, `TASK`,
+`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, etc. — hard-errors the run
+via `CageError::Protocol` rather than silently dropping or overriding
+it; `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` are checked unconditionally
+(`NEVER_OVERRIDABLE`) since they're absent from the assembled env in
+non-billed modes and would otherwise slip through as if they collided
+with nothing.
+**Rationale:** the whole point of `.cagevars` is host-local,
+non-secret, gitignored config for the cage — an arbitrary var an
+operator wants a caged agent to see (a feature flag, a project id) is
+the same category of thing `CTX_CAGE_EXTRA_PATH` already is, and
+restricting the file to one hardcoded key was an artificial limit, not
+a safety property. The hard-error-on-collision behavior mirrors the
+existing `CTX_CAGE_EXTRA_PATH`-entry-must-be-a-directory precedent
+(misconfiguration should fail the run loudly, not surface as a
+confusing surprise deep inside the cage) — and here the stakes are
+higher, since a silently-dropped or silently-applied collision could
+mean a stale `TASK` id or, worse, a `.cagevars` line quietly defeating
+the bound-subscription-credential auth path `cage_env`'s own doc
+comment guarantees.
+**Rejected:** silently dropping colliding keys (matches the existing
+"unknown keys silently ignored" convention for pre-passthrough
+`.cagevars`, but that convention existed because unrecognized keys were
+*meaningless* — now every key is meaningful, so silence would hide a
+real misconfiguration). Also rejected: applying arbitrary vars to the
+host process env the way `CTX_CAGE_EXTRA_PATH` is applied — that would
+give the illusion of reaching the cage while actually doing nothing,
+since `--clearenv` drops host env entirely; explicit passthrough via
+`Resolved::extra_env` is the only mechanism that's actually correct.

@@ -105,6 +105,12 @@ pub(super) fn claude_rw_binds(prep: &Prep) -> Vec<(PathBuf, String)> {
     })
 }
 
+/// Vars a `.cagevars` entry must never be allowed to set, even in a
+/// mode where the assembled env below doesn't already carry them —
+/// letting either through would defeat the bound-subscription-credential
+/// auth path documented on [`cage_env`].
+const NEVER_OVERRIDABLE: &[&str] = &["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"];
+
 /// The complete cage environment (`--clearenv` wipes everything else).
 /// No `ANTHROPIC_API_KEY` is ever set: auth is the bound subscription
 /// credential, and a key in the env would trigger claude's "use the
@@ -117,7 +123,29 @@ pub(super) fn cage_env(r: &Resolved) -> Result<Vec<(String, String)>, CageError>
     if mode_is_billed(&r.mode) {
         env.push(("ANTHROPIC_BASE_URL".to_owned(), CAGE_BASE_URL.to_owned()));
     }
+    add_extra_env(&mut env, &r.extra_env)?;
     Ok(env)
+}
+
+/// Fold `.cagevars`' arbitrary vars into the assembled cage env,
+/// hard-erroring on any key the cage already manages rather than
+/// silently dropping or overriding it (misconfiguration should fail
+/// the run, not surface as a confusing surprise inside the cage).
+fn add_extra_env(
+    env: &mut Vec<(String, String)>,
+    extra: &[(String, String)],
+) -> Result<(), CageError> {
+    for (key, val) in extra {
+        let collides =
+            NEVER_OVERRIDABLE.contains(&key.as_str()) || env.iter().any(|(k, _)| k == key);
+        if collides {
+            return Err(CageError::Protocol(format!(
+                ".cagevars sets {key}, which the cage already manages"
+            )));
+        }
+        env.push((key.clone(), val.clone()));
+    }
+    Ok(())
 }
 
 /// Mode-independent environment: PATH (cage tools + cargo + extra +
@@ -156,4 +184,52 @@ fn base_env(r: &Resolved) -> Result<Vec<(String, String)>, CageError> {
 /// palette; fall back to `xterm-256color`.
 fn host_term() -> String {
     std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{cage_env, Mode, Resolved};
+
+    /// A minimal `Resolved` in `SelfTestStub` mode (no proxy, no
+    /// `CTX_TASK_BRIEF`/`ANTHROPIC_BASE_URL` in the assembled env) so
+    /// `NEVER_OVERRIDABLE` is doing the work in the API-key case below,
+    /// not an incidental collision with something the mode already sets.
+    fn resolved(extra_env: Vec<(String, String)>) -> Resolved {
+        Resolved {
+            target_root: PathBuf::from("/tmp"),
+            task_id: "test-task".to_owned(),
+            mode: Mode::SelfTestStub,
+            ctx_verify_bin: PathBuf::new(),
+            ctx_context_bin: PathBuf::new(),
+            ctx_scan_bin: PathBuf::new(),
+            allow_dirty: false,
+            verbose_proxy_log: false,
+            extra_env,
+        }
+    }
+
+    #[test]
+    fn non_colliding_extra_var_is_exported() {
+        let r = resolved(vec![("SOMEVAR".to_owned(), "this".to_owned())]);
+        let env = cage_env(&r).expect("no collision");
+        assert!(env.contains(&("SOMEVAR".to_owned(), "this".to_owned())));
+    }
+
+    #[test]
+    fn extra_var_colliding_with_an_assembled_key_errors() {
+        let r = resolved(vec![("TASK".to_owned(), "hijacked".to_owned())]);
+        assert!(cage_env(&r).is_err(), "TASK is already set by base_env");
+    }
+
+    #[test]
+    fn api_key_is_rejected_even_when_not_already_assembled() {
+        let r = resolved(vec![("ANTHROPIC_API_KEY".to_owned(), "sk-x".to_owned())]);
+        assert!(
+            cage_env(&r).is_err(),
+            "ANTHROPIC_API_KEY must never be settable via .cagevars, \
+             even in a mode where it isn't already in the assembled env"
+        );
+    }
 }

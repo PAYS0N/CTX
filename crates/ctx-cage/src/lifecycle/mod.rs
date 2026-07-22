@@ -54,6 +54,12 @@ pub struct Resolved {
     /// Print the full (capped) proxy log instead of a one-line summary
     /// when the run's diagnostic is non-empty.
     pub verbose_proxy_log: bool,
+    /// Resolved `.cagevars` arbitrary `KEY=VALUE` pairs (from
+    /// `cagevars::load_cagevars_from_cwd`) to export into the cage's
+    /// own environment. `env::cage_env` rejects any pair whose key
+    /// collides with a var the cage already manages, rather than
+    /// silently dropping or overriding it.
+    pub extra_env: Vec<(String, String)>,
 }
 
 /// Outcome of one cage run: the caged process's exit code, plus an

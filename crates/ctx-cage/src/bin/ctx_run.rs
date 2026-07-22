@@ -23,12 +23,15 @@ use clap::Parser;
 
 use ctx_cage::cli::Mode;
 use ctx_cage::error::CageError;
-use ctx_cage::lifecycle::{execute, Resolved};
+use ctx_cage::lifecycle::execute;
 
 use env_file::load_env_file;
+use resolve::{build_resolved, ctx_run_bins};
 
 #[path = "ctx_run/env_file.rs"]
 mod env_file;
+#[path = "ctx_run/resolve.rs"]
+mod resolve;
 
 /// One-command billed cage session over a target project.
 #[derive(Debug, Parser)]
@@ -164,25 +167,20 @@ fn maybe_refresh_summaries(dir: &Path, scan_bin: &Path, env: &HashMap<String, St
 /// Inner entry point: run the caged session (subscription auth),
 /// refresh summaries on success.
 fn run() -> Result<i32, CageError> {
-    ctx_cage::lifecycle::load_cagevars_from_cwd();
+    let extra_env = ctx_cage::lifecycle::load_cagevars_from_cwd();
     let cli = Cli::parse();
     let env = load_env_file()?;
     let mode = pick_mode(&cli)?;
     warn_if_no_hooks(&cli.dir);
     let bins = ctx_run_bins()?;
-    let resolved = Resolved {
-        target_root: cli.dir.clone(),
-        task_id: cli
-            .task_id
-            .clone()
-            .unwrap_or_else(|| format!("run-{}", std::process::id())),
+    let resolved = build_resolved(
+        cli.dir.clone(),
+        cli.task_id.clone(),
+        cli.allow_dirty,
         mode,
-        ctx_verify_bin: bins.verify,
-        ctx_context_bin: bins.context,
-        ctx_scan_bin: bins.scan.clone(),
-        allow_dirty: cli.allow_dirty,
-        verbose_proxy_log: false,
-    };
+        &bins,
+        extra_env,
+    );
     let outcome = execute(&resolved)?;
     if let Some(diag) = &outcome.diagnostic {
         emit(std::io::stderr().lock(), diag);
@@ -202,32 +200,6 @@ fn warn_if_no_hooks(dir: &Path) {
             "ctx-run: warning — no .claude/settings.json in target; the context-chain hook will not lead this session",
         );
     }
-}
-
-/// Sibling CTX binary paths (same resolution rule as `ctx-cage`).
-struct RunBins {
-    /// Real `ctx-verify`.
-    verify: PathBuf,
-    /// Real `ctx-context`.
-    context: PathBuf,
-    /// Real `ctx-scan`.
-    scan: PathBuf,
-}
-
-/// Resolve sibling binaries from `current_exe` with env overrides.
-fn ctx_run_bins() -> Result<RunBins, CageError> {
-    let me = std::env::current_exe()?;
-    let bin_dir = me
-        .parent()
-        .ok_or_else(|| CageError::Protocol("cannot derive bin dir from current_exe".to_owned()))?;
-    let pick = |env_key: &str, name: &str| -> PathBuf {
-        std::env::var_os(env_key).map_or_else(|| bin_dir.join(name), PathBuf::from)
-    };
-    Ok(RunBins {
-        verify: pick("CTX_VERIFY_BIN", "ctx-verify"),
-        context: pick("CTX_CONTEXT_BIN", "ctx-context"),
-        scan: pick("CTX_SCAN_BIN", "ctx-scan"),
-    })
 }
 
 /// Binary entry point.

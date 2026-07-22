@@ -1,6 +1,8 @@
 //! CLI-level test for `ctx_cage::lifecycle::load_cagevars`: process
 //! env wins over a conflicting `.cagevars` entry, and the file value
-//! fills the gap when the process env is unset.
+//! fills the gap when the process env is unset. Covers both
+//! `CTX_CAGE_EXTRA_PATH` (applied to the process env) and arbitrary
+//! passthrough vars (returned, not applied to the process env).
 
 use std::fs;
 use std::path::PathBuf;
@@ -25,7 +27,7 @@ fn process_env_wins_and_file_fills_the_gap() {
     let dir = tempdir_with_cagevars("CTX_CAGE_EXTRA_PATH=/from/file\n").expect("tempdir");
 
     std::env::set_var("CTX_CAGE_EXTRA_PATH", "/from/process");
-    load_cagevars(&dir);
+    let _ = load_cagevars(&dir);
     assert_eq!(
         std::env::var("CTX_CAGE_EXTRA_PATH").as_deref(),
         Ok("/from/process"),
@@ -33,7 +35,7 @@ fn process_env_wins_and_file_fills_the_gap() {
     );
 
     std::env::remove_var("CTX_CAGE_EXTRA_PATH");
-    load_cagevars(&dir);
+    let _ = load_cagevars(&dir);
     assert_eq!(
         std::env::var("CTX_CAGE_EXTRA_PATH").as_deref(),
         Ok("/from/file"),
@@ -41,5 +43,34 @@ fn process_env_wins_and_file_fills_the_gap() {
     );
 
     std::env::remove_var("CTX_CAGE_EXTRA_PATH");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn arbitrary_var_round_trips_with_process_env_precedence() {
+    let dir = tempdir_with_cagevars("SOMEVAR='this'\n").expect("tempdir");
+    std::env::remove_var("SOMEVAR");
+
+    let vars = load_cagevars(&dir);
+    assert_eq!(
+        vars,
+        vec![("SOMEVAR".to_owned(), "this".to_owned())],
+        ".cagevars fills an arbitrary var when the process env is unset"
+    );
+    assert!(
+        std::env::var_os("SOMEVAR").is_none(),
+        "arbitrary vars are returned for the caller to thread into the cage, \
+         never applied to the host process env"
+    );
+
+    std::env::set_var("SOMEVAR", "from-process");
+    let vars_after_override = load_cagevars(&dir);
+    assert_eq!(
+        vars_after_override,
+        vec![("SOMEVAR".to_owned(), "from-process".to_owned())],
+        "process env must win over a conflicting arbitrary .cagevars entry"
+    );
+
+    std::env::remove_var("SOMEVAR");
     let _ = fs::remove_dir_all(&dir);
 }

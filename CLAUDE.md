@@ -24,9 +24,13 @@ Doctrine: `.context/intent.md`. Rationale:
   (file) is the last resort, and multi-line is not recognized.
 - `.env` holds the summarizer key: never feed it to a model, never
   commit it. `.cagevars` (also gitignored) is separate: non-secret
-  `ctx-cage` sandbox-inclusion config (`CTX_CAGE_EXTRA_PATH` today),
-  loaded automatically from CWD at cage startup — never put secrets in
-  it, and never move `.env`'s contents into it.
+  `ctx-cage` sandbox-inclusion config, loaded automatically from CWD at
+  cage startup — never put secrets in it, and never move `.env`'s
+  contents into it. `CTX_CAGE_EXTRA_PATH` binds extra host dirs; every
+  other `KEY=VALUE` line is exported into the caged agent's own
+  environment (ADR-058), except `CTX_CAGE_ALLOW_SPEND` (never read
+  from here) and any key the cage already manages, which hard-errors
+  the run instead of silently overriding it.
 - `template/` and root workspace lint configs mirror each other;
   change both.
 - Retiring a tool/identifier: add it to `scripts/retired_terms_check.sh`'s

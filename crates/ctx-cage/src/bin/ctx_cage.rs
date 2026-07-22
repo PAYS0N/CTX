@@ -83,7 +83,11 @@ fn default_task_id() -> String {
 
 /// Build the `Resolved` from CLI + filesystem resolution. `ctx-cage`
 /// never carries an API key, so billed modes are refused downstream.
-fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError> {
+fn build_resolved(
+    cli: Cli,
+    mode: Mode,
+    extra_env: Vec<(String, String)>,
+) -> Result<Resolved, CageError> {
     let bins = resolve_bin_paths()?;
     Ok(Resolved {
         target_root: cli.target,
@@ -94,6 +98,7 @@ fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError> {
         ctx_scan_bin: bins.scan,
         allow_dirty: cli.spend_flags.allow_dirty,
         verbose_proxy_log: cli.verbose_proxy_log,
+        extra_env,
     })
 }
 
@@ -102,11 +107,11 @@ fn build_resolved(cli: Cli, mode: Mode) -> Result<Resolved, CageError> {
 /// stderr as a trailer, after the cage's own inherited-stdio output has
 /// already completed.
 fn run() -> Result<i32, HostError> {
-    ctx_cage::lifecycle::load_cagevars_from_cwd();
+    let extra_env = ctx_cage::lifecycle::load_cagevars_from_cwd();
     let cli = Cli::parse();
     let allow_spend = cli.spend_flags.allow_spend || env_allow_spend();
     let mode = resolve_mode(&cli, allow_spend)?;
-    let resolved = build_resolved(cli, mode)?;
+    let resolved = build_resolved(cli, mode, extra_env)?;
     let outcome = execute(&resolved)?;
     if let Some(diag) = &outcome.diagnostic {
         emit(std::io::stderr().lock(), diag);

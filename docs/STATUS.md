@@ -8,6 +8,7 @@ impact band.
 
 | task | description | impact | difficulty |
 |---|---|---|---|
+| make haiku's gather prompt more strict | it keeps trying to implement instead of briefing. Additionally, make it clearer to the next agent not to trust conclusions drawn, only state gathered. | high | medium |
 | mechanical validation of generated summaries | nothing checks generator output before it is written and served: line budgets, banned/hedging phrases, truncation, or cheap factual sanity (root rollup says "five Rust crates"; six exist — persisted into README's generated block). Add a write-time lint in ctx-scan with retry-once | high | medium |
 | force template to be kept in sync | nothing enforces that template is kept up to date; copying it should get you the full system. | high | medium |
 | investigate tool error | looks like the tool is reshelling the same error twice; why? ```FAIL: rationale (2) crates/ctx-cage/src/lifecycle/run.rs has 268 lines (>= 250); split into modules to get under 250. Only if genuinely cohesive and irreducible, add '// rationale  script: crates/ctx-cage/src/lifecycle/run.rs has 268 lines (>= 250); split into modules to get under 250. On…… +2 lines (ctrl+o to expand)```| high | medium |
@@ -16,6 +17,7 @@ impact band.
 | phase 5 e2e smoke fixture | throwaway workspace, buggy file + failing test, generated tree, `--stub` and billed modes; asserts hook injection, native Edit, `ctx-verify` pass, post-session rollup regen, no egress beyond proxy, no writes outside workspace; include degraded-tree cases (stale, absent, truncated) | high | hard |
 | consider the place of prescriptive context | possibly a skill-like setup where 'when interacting with x topic, this is the repos policy on x.' maybe files get flagged with 'x' and then on read the skill for 'x' is injected | high | hard |
 | add instruction to always report suspicious tool output to a file | could add a section below tasks in STATUS that is for agent reports. errors like tools repeating themselves should be automatically caught by agents. | medium | easy |
+| add the option to mount a dir in the cage without adding it to path | right now adding tools usually fails because I add just the /bin, but then they need additional things (like /lib or /share). I want to be able to add those without adding them to path | medium | easy |
 | clean rollup prompts | prevent text like 'No intent.md exists for this directory.', just omit it. | medium | easy |
 | consider caging the ctx-brief agents | I have to manually approve dir and prompt creation each time | medium | easy |
 | ctx-brief dir creation should be automatic, not agent led | unnecessary agent work and more error prone | medium | easy |
