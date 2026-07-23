@@ -7,7 +7,7 @@ mod common;
 
 use std::path::Path;
 
-use common::{cfg, fake_claude, fake_fs, seeded};
+use common::{cfg, cfg_id, fake_claude, fake_fs, seed_status_json, seeded};
 use ctx_brief::error::BriefError;
 use ctx_brief::runner;
 
@@ -109,6 +109,42 @@ fn free_text_request_is_the_item_when_status_is_absent() {
     .expect("run should succeed");
     let gather = claude.nth_print(0).expect("gather call recorded");
     assert_eq!(gather.user, "invent a widget");
+}
+
+#[test]
+fn id_selects_the_matching_row_from_status_json() {
+    let world = seeded(true);
+    seed_status_json(&world);
+    let fs = fake_fs(&world);
+    let claude = fake_claude(&world, &["DOSSIER-XYZ", "FINAL-BRIEF"], None);
+    let out = runner::run(&fs, &claude, &cfg_id(true, 1), Path::new("/tmp/target"))
+        .expect("id-based run should succeed");
+    assert_eq!(out, ".context/.reports/briefs/item.md");
+    let gather = claude.nth_print(0).expect("gather call recorded");
+    assert!(gather
+        .user
+        .starts_with("TASK: wire the Stop-hook staleness report"));
+}
+
+#[test]
+fn unknown_id_errors_instead_of_falling_back() {
+    let world = seeded(true);
+    seed_status_json(&world);
+    let fs = fake_fs(&world);
+    let claude = fake_claude(&world, &[], None);
+    let err = runner::run(&fs, &claude, &cfg_id(true, 99), Path::new("/tmp/target"))
+        .expect_err("must fail when no row has that id");
+    assert!(matches!(err, BriefError::TaskIdNotFound(99)));
+}
+
+#[test]
+fn id_errors_when_status_json_is_missing() {
+    let world = seeded(true);
+    let fs = fake_fs(&world);
+    let claude = fake_claude(&world, &[], None);
+    let err = runner::run(&fs, &claude, &cfg_id(true, 1), Path::new("/tmp/target"))
+        .expect_err("must fail when docs/status.json is absent");
+    assert!(matches!(err, BriefError::TaskIdNotFound(1)));
 }
 
 #[test]

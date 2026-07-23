@@ -6,7 +6,7 @@
 //! text. The table model and parser are shared with `ctx-status` via
 //! [`ctx_core::status_table`] rather than duplicated here.
 
-use ctx_core::status_table::{parse_rows, Row};
+use ctx_core::status_table::{parse_rows, Row, Task};
 
 use crate::error::BriefError;
 
@@ -46,6 +46,24 @@ pub fn resolve(status: &str, request: &str) -> Result<String, BriefError> {
     }
 }
 
+/// Resolve `id` against the `docs/status.json` source of truth (the only
+/// place a stable task id lives — `docs/STATUS.md` never carries one) into
+/// a TASK ITEM string.
+///
+/// # Errors
+///
+/// [`BriefError::TaskIdNotFound`] if `status_json` doesn't parse as a task
+/// array or no row has that id.
+pub fn resolve_id(status_json: &str, id: u64) -> Result<String, BriefError> {
+    let tasks: Vec<Task> =
+        serde_json::from_str(status_json).map_err(|_| BriefError::TaskIdNotFound(id))?;
+    tasks
+        .iter()
+        .find(|t| t.id == id)
+        .map(|t| format_item(&t.row))
+        .ok_or(BriefError::TaskIdNotFound(id))
+}
+
 /// Whether `request` matches at least one row's task column, using the same
 /// substring rule [`resolve`] applies.
 ///
@@ -58,7 +76,7 @@ pub fn matched(status: &str, request: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{matched, resolve, BriefError};
+    use super::{matched, resolve, resolve_id, BriefError};
 
     /// A minimal two-row table with header + separator noise around it.
     const TABLE: &str = "\
@@ -68,6 +86,12 @@ mod tests {
 |---|---|---|---|\n\
 | wire the Stop-hook staleness report | not wired anywhere | high | easy |\n\
 | take the other item | use subscription billing | high | easy |\n";
+
+    /// The `docs/status.json` shape backing the same two rows as `TABLE`.
+    const STATUS_JSON: &str = r#"[
+        {"id": 1, "task": "wire the Stop-hook staleness report", "description": "not wired anywhere", "impact": "high", "difficulty": "easy"},
+        {"id": 2, "task": "take the other item", "description": "use subscription billing", "impact": "high", "difficulty": "easy"}
+    ]"#;
 
     #[test]
     fn single_substring_match_formats_the_row() -> Result<(), BriefError> {
@@ -88,6 +112,26 @@ mod tests {
     fn multiple_matches_are_ambiguous() {
         let err = resolve(TABLE, "the").expect_err("must be ambiguous");
         assert!(matches!(err, BriefError::AmbiguousItem(_)));
+    }
+
+    #[test]
+    fn resolve_id_formats_the_matching_row() -> Result<(), BriefError> {
+        let item = resolve_id(STATUS_JSON, 2)?;
+        assert!(item.starts_with("TASK: take the other item"));
+        assert!(item.contains("DESCRIPTION: use subscription billing"));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_id_errors_when_no_row_has_that_id() {
+        let err = resolve_id(STATUS_JSON, 99).expect_err("must be not-found");
+        assert!(matches!(err, BriefError::TaskIdNotFound(99)));
+    }
+
+    #[test]
+    fn resolve_id_errors_on_malformed_json() {
+        let err = resolve_id("not json", 1).expect_err("must be not-found");
+        assert!(matches!(err, BriefError::TaskIdNotFound(1)));
     }
 
     #[test]

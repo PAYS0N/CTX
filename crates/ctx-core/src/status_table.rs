@@ -22,6 +22,22 @@ pub struct Row {
     pub difficulty: String,
 }
 
+/// One backlog row plus its stable id, as stored in `docs/status.json`.
+///
+/// Never rendered by [`render_row`] or parsed as a table column — it
+/// exists so JSON-backed consumers (`ctx-status`, `ctx-brief`) can
+/// address a row by a stable handle instead of matching task text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Task {
+    /// Stable id; `0` is a placeholder for "not yet assigned" (see
+    /// `ctx-status`'s id-backfill).
+    #[serde(default)]
+    pub id: u64,
+    /// The shared row fields.
+    #[serde(flatten)]
+    pub row: Row,
+}
+
 /// Split `s` on `|` delimiters, treating `\|` as a literal pipe rather than
 /// a delimiter and unescaping it to `|` in the returned pieces. Any other
 /// backslash is left untouched.

@@ -2,28 +2,18 @@
 //! shared table row, the fixed impact/difficulty vocabulary, and the
 //! priority sort.
 
-use serde::{Deserialize, Serialize};
-
-use ctx_core::status_table::Row;
-
 use crate::error::StatusError;
 
-/// One backlog task: a stable identifier plus the shared markdown-table fields.
+/// One backlog task: a stable identifier plus the shared markdown-table
+/// fields. The schema itself lives in `ctx_core::status_table::Task`
+/// (shared with `ctx-brief`, which resolves a task by this same id
+/// against `docs/status.json`); this crate re-exports it since
+/// `ctx-status` is where ids are assigned and backfilled.
 ///
 /// `id` is never shown in `docs/STATUS.md` (that table's shape is shared
 /// with `ctx-brief` and stays untouched) — it surfaces only through
 /// `ctx-status list`, as the handle `delete-task` targets.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Task {
-    /// Stable id, assigned once at `add-task`/migration time and never
-    /// reassigned while the row exists. `0` is a placeholder meaning
-    /// "not yet assigned" — real ids start at 1; see [`backfill_ids`].
-    #[serde(default)]
-    pub id: u64,
-    /// The task/description/impact/difficulty fields.
-    #[serde(flatten)]
-    pub row: Row,
-}
+pub use ctx_core::status_table::Task;
 
 /// The backlog: an ordered list of tasks. Order is insertion order (new
 /// items append at the end); [`priority_sorted`] computes the *display*
@@ -105,7 +95,9 @@ pub fn priority_sorted(store: &Store) -> Vec<Task> {
 
 #[cfg(test)]
 mod tests {
-    use super::{backfill_ids, normalize_difficulty, normalize_impact, priority_sorted, Row, Task};
+    use ctx_core::status_table::Row;
+
+    use super::{backfill_ids, normalize_difficulty, normalize_impact, priority_sorted, Task};
 
     fn row(task: &str, impact: &str, difficulty: &str) -> Task {
         Task {

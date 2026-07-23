@@ -180,6 +180,21 @@ pub fn seeded(with_status: bool) -> Shared {
     Rc::new(RefCell::new(World { files }))
 }
 
+/// The `docs/status.json` counterpart to [`STATUS`], carrying stable ids
+/// for the same two rows.
+pub const STATUS_JSON: &str = r#"[
+    {"id": 1, "task": "wire the Stop-hook staleness report", "description": "not wired anywhere", "impact": "high", "difficulty": "easy"},
+    {"id": 2, "task": "unrelated other item", "description": "noise", "impact": "low", "difficulty": "hard"}
+]"#;
+
+/// Add `docs/status.json` (see [`STATUS_JSON`]) to an already-seeded world.
+pub fn seed_status_json(world: &Shared) {
+    world
+        .borrow_mut()
+        .files
+        .insert("docs/status.json".to_owned(), STATUS_JSON.to_owned());
+}
+
 /// A fake filesystem sharing `world`.
 #[must_use]
 pub fn fake_fs(world: &Shared) -> FakeFs {
@@ -205,6 +220,7 @@ pub fn fake_claude(world: &Shared, outputs: &[&str], creates: Option<(&str, &str
 pub fn cfg(headless: bool, request: &str) -> Config {
     Config {
         request: request.to_owned(),
+        id: None,
         headless,
         out_rel: ".context/.reports/briefs/item.md".to_owned(),
         out_fs: ".context/.reports/briefs/item.md".to_owned(),
@@ -212,5 +228,16 @@ pub fn cfg(headless: bool, request: &str) -> Config {
         plan_model: None,
         prompts_dir: "prompts".to_owned(),
         status_path: "docs/STATUS.md".to_owned(),
+        status_json_path: "docs/status.json".to_owned(),
+    }
+}
+
+/// A Config selecting the backlog row by id instead of free text, writing
+/// to the same fixed brief path as [`cfg`].
+#[must_use]
+pub fn cfg_id(headless: bool, id: u64) -> Config {
+    Config {
+        id: Some(id),
+        ..cfg(headless, "")
     }
 }

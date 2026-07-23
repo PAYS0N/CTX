@@ -1337,3 +1337,40 @@ host process env the way `CTX_CAGE_EXTRA_PATH` is applied — that would
 give the illusion of reaching the cage while actually doing nothing,
 since `--clearenv` drops host env entirely; explicit passthrough via
 `Resolved::extra_env` is the only mechanism that's actually correct.
+
+## ADR-059 — `ctx-brief --id`: resolve a backlog item by its stable id
+**Decision:** `ctx-brief` gains a `--id <u64>` flag, mutually exclusive
+with the positional `<request>` (`conflicts_with`, enforced by clap; a
+`Cli::has_selector` check then rejects the "neither given" case as
+`BriefError::NoSelector`). `--id` looks the row up directly in
+`docs/status.json` — the only place a task id lives, since
+`docs/STATUS.md` deliberately omits it (see the `ctx-status` ADRs) — via
+a new `status_item::resolve_id`, erroring `BriefError::TaskIdNotFound`
+on a missing/unparseable file or an id with no match, rather than
+falling back to free text the way substring-match does. The default
+output slug becomes `item-<id>.md` in this mode (`--out` still
+overrides it either way). The `{id, row}` schema itself
+(`ctx_core::status_table::Task`) is relocated from `ctx-status::model`
+into `ctx-core`, re-exported from `ctx-status::model` unchanged, so both
+crates read the same struct instead of each keeping its own copy.
+**Rationale:** substring matching against `docs/STATUS.md` is ambiguous
+for similarly-worded rows and requires re-typing a title verbatim; an id
+is a precise, stable handle `ctx-status` already assigns. Since
+`docs/STATUS.md` never carries that id by design, resolving it requires
+reading `docs/status.json` instead — and the moment two crates need to
+deserialize the same JSON shape, this project's own anti-duplication
+doctrine (the reason `ctx_core::status_table::Row` exists at all) argues
+for putting `Task` in `ctx-core` next to `Row`, not copying the struct
+into `ctx-brief`.
+**Rejected:** duplicating a local `Task` struct in `ctx-brief` (smallest
+diff, but a second copy of `docs/status.json`'s schema is exactly the
+drift this project is built to prevent — a field rename in
+`ctx-status::model::Task` would silently stop matching). Depending on
+`ctx-status` as a library from `ctx-brief` (avoids touching `ctx-core`,
+but introduces a binary-crate-to-binary-crate dependency edge that
+doesn't exist anywhere else in the workspace, where the two are
+documented as "adjacent tools" sharing only a rendering format).
+Positional auto-detection of a bare numeric argument as an id instead of
+an explicit `--id` flag (shorter to type, but conflates two different
+lookup semantics into one positional and breaks surprisingly if a task
+title is ever purely numeric).

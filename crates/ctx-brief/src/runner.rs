@@ -64,7 +64,11 @@ fn log_status_not_found<W: Write>(mut w: W, status_path: &str) {
 /// A fully resolved brief request, assembled by the CLI layer.
 pub struct Config {
     /// The raw request text (joined argv), for slug and free-text fallback.
+    /// Empty when `id` is `Some` (the two selectors are mutually exclusive).
     pub request: String,
+    /// A stable `docs/status.json` id to look up directly, instead of
+    /// matching `request` against `docs/STATUS.md`.
+    pub id: Option<u64>,
     /// Headless (adjudicate) vs interactive (interview) plan mode.
     pub headless: bool,
     /// Brief path relative to the target repo (handed to the interactive
@@ -80,6 +84,9 @@ pub struct Config {
     pub prompts_dir: String,
     /// `docs/STATUS.md` path relative to the process cwd.
     pub status_path: String,
+    /// `docs/status.json` path relative to the process cwd, read only when
+    /// `id` is `Some`.
+    pub status_json_path: String,
 }
 
 /// Load one prompt file, mapping any read failure to [`BriefError::PromptMissing`].
@@ -156,19 +163,16 @@ fn interactive_plan<F: Fs, C: Claude>(
     }
 }
 
-/// Resolve the item, gather a dossier, plan the brief, and return the
-/// (cwd-relative) path the brief was written to.
-///
-/// # Errors
-///
-/// Propagates ambiguity, prompt, claude, filesystem, and not-written
-/// failures.
-pub fn run<F: Fs, C: Claude>(
-    fs: &F,
-    claude: &C,
-    cfg: &Config,
-    target: &Path,
-) -> Result<String, BriefError> {
+/// Resolve the TASK ITEM: by `cfg.id` against `docs/status.json` when
+/// given, otherwise by matching `cfg.request` against `docs/STATUS.md`
+/// (logging to stderr whether it matched or fell back to free text).
+fn resolve_item<F: Fs>(fs: &F, cfg: &Config) -> Result<String, BriefError> {
+    if let Some(id) = cfg.id {
+        let status_json = fs
+            .read(&cfg.status_json_path)
+            .map_err(|_| BriefError::TaskIdNotFound(id))?;
+        return status_item::resolve_id(&status_json, id);
+    }
     if !fs.exists(&cfg.status_path) {
         log_status_not_found(std::io::stderr(), &cfg.status_path);
     }
@@ -177,6 +181,23 @@ pub fn run<F: Fs, C: Claude>(
     if !status_item::matched(&status, &cfg.request) {
         log_custom_item(std::io::stderr(), &cfg.request);
     }
+    Ok(item)
+}
+
+/// Resolve the item, gather a dossier, plan the brief, and return the
+/// (cwd-relative) path the brief was written to.
+///
+/// # Errors
+///
+/// Propagates task-id-lookup, ambiguity, prompt, claude, filesystem, and
+/// not-written failures.
+pub fn run<F: Fs, C: Claude>(
+    fs: &F,
+    claude: &C,
+    cfg: &Config,
+    target: &Path,
+) -> Result<String, BriefError> {
+    let item = resolve_item(fs, cfg)?;
     let dossier = gather(fs, claude, cfg, &item, target)?;
     if cfg.headless {
         headless_plan(fs, claude, cfg, &item, &dossier, target)?;

@@ -16,6 +16,13 @@ pub enum BriefError {
     /// captured gather/headless passes) produced empty output.
     #[error("claude stage failed: {0}")]
     Claude(String),
+    /// `--id` was given but `docs/status.json` has no row with that id,
+    /// or the file couldn't be read/parsed as a task array.
+    #[error("no docs/status.json row with id {0}")]
+    TaskIdNotFound(u64),
+    /// Neither `<request>` nor `--id` was given.
+    #[error("either <request> or --id is required")]
+    NoSelector,
     /// The interactive plan session exited without leaving a brief at the
     /// expected output path.
     #[error("interactive session exited without writing the brief to {0:?}")]

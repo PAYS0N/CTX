@@ -37,9 +37,14 @@ pub struct Cli {
     /// Directory holding the prompt files (cwd-relative).
     #[arg(long, default_value = "prompts")]
     prompts: String,
+    /// Look up this stable backlog id directly in `docs/status.json`,
+    /// instead of matching `<request>` against `docs/STATUS.md`. Mutually
+    /// exclusive with `<request>`.
+    #[arg(long, conflicts_with = "request")]
+    id: Option<u64>,
     /// The backlog item to brief: matched against the task column, or used
-    /// as free text when nothing matches.
-    #[arg(required = true, num_args = 1..)]
+    /// as free text when nothing matches. Required unless `--id` is given.
+    #[arg(num_args = 0..)]
     request: Vec<String>,
 }
 
@@ -82,17 +87,26 @@ impl Cli {
         &self.target
     }
 
+    /// Whether `--id` or a non-empty `<request>` was given.
+    const fn has_selector(&self) -> bool {
+        self.id.is_some() || !self.request.is_empty()
+    }
+
     /// Assemble the resolved [`Config`] from parsed flags.
     fn to_config(&self) -> Config {
         let request = self.request.join(" ");
-        let out_rel = self
-            .out
-            .clone()
-            .unwrap_or_else(|| format!(".context/.reports/briefs/{}.md", slug(&request)));
+        let out_rel = self.out.clone().unwrap_or_else(|| {
+            let basis = self
+                .id
+                .map_or_else(|| slug(&request), |id| format!("item-{id}"));
+            format!(".context/.reports/briefs/{basis}.md")
+        });
         Config {
             out_fs: under(&self.target, &out_rel),
             status_path: under(&self.target, "docs/STATUS.md"),
+            status_json_path: under(&self.target, "docs/status.json"),
             request,
+            id: self.id,
             headless: self.headless,
             out_rel,
             gather_model: self.gather_model.clone(),
@@ -106,8 +120,9 @@ impl Cli {
 ///
 /// # Errors
 ///
-/// Propagates every runner failure; a stdout write failure is reported as
-/// [`BriefError::Io`].
+/// [`BriefError::NoSelector`] if neither `<request>` nor `--id` was given.
+/// Otherwise propagates every runner failure; a stdout write failure is
+/// reported as [`BriefError::Io`].
 pub fn dispatch<F: Fs, C: Claude, W: Write>(
     fs: &F,
     claude: &C,
@@ -115,6 +130,9 @@ pub fn dispatch<F: Fs, C: Claude, W: Write>(
     target_abs: &Path,
     out: &mut W,
 ) -> Result<(), BriefError> {
+    if !cli.has_selector() {
+        return Err(BriefError::NoSelector);
+    }
     let cfg = cli.to_config();
     let path = runner::run(fs, claude, &cfg, target_abs)?;
     writeln!(out, "{path}").map_err(|e| BriefError::Io {
@@ -125,7 +143,9 @@ pub fn dispatch<F: Fs, C: Claude, W: Write>(
 
 #[cfg(test)]
 mod tests {
-    use super::{slug, under};
+    use clap::Parser;
+
+    use super::{slug, under, Cli};
 
     #[test]
     fn slug_is_kebab_and_trimmed() {
@@ -151,5 +171,36 @@ mod tests {
             under("../other/", "docs/STATUS.md"),
             "../other/docs/STATUS.md"
         );
+    }
+
+    #[test]
+    fn to_config_slugs_the_id_when_out_is_not_given() {
+        let cli = Cli::parse_from(["ctx-brief", "--id", "5"]);
+        let cfg = cli.to_config();
+        assert_eq!(cfg.id, Some(5));
+        assert_eq!(cfg.out_rel, ".context/.reports/briefs/item-5.md");
+    }
+
+    #[test]
+    fn to_config_still_slugs_the_request_text_without_id() {
+        let cli = Cli::parse_from(["ctx-brief", "wire", "the", "thing"]);
+        let cfg = cli.to_config();
+        assert_eq!(cfg.id, None);
+        assert_eq!(cfg.out_rel, ".context/.reports/briefs/wire-the-thing.md");
+    }
+
+    #[test]
+    fn has_selector_is_true_for_id_alone() {
+        assert!(Cli::parse_from(["ctx-brief", "--id", "5"]).has_selector());
+    }
+
+    #[test]
+    fn has_selector_is_true_for_request_alone() {
+        assert!(Cli::parse_from(["ctx-brief", "wire", "the", "thing"]).has_selector());
+    }
+
+    #[test]
+    fn has_selector_is_false_for_neither() {
+        assert!(!Cli::parse_from(["ctx-brief"]).has_selector());
     }
 }
