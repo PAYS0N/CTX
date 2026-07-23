@@ -1,7 +1,5 @@
-`crates/ctx-status` is a binary crate providing the `ctx-status` CLI, whose entire functional contract is described by `src/rollup.ctx` — the crate root adds only packaging (Cargo.toml) around that single binary.
+`crates/ctx-status` is the top-level crate boundary for the `ctx-status` binary — a CLI backlog manager keyed on `docs/status.json`, with `docs/STATUS.md` as its generated, read-only view. Everything the crate does is implemented in `src/`; this directory itself contributes only crate packaging (Cargo.toml) and whatever top-level docs/tests sit alongside it — no additional behavior beyond what `src/rollup.ctx` describes.
 
-Depending on this crate means invoking the compiled binary (`list`, `add-task`, `migrate`, `render`) against `docs/status.json`/`docs/STATUS.md`; there is no library surface for other crates to link against. The shared markdown/table format coupling with `ctx_core::status_table` and `ctx-brief` noted in `src/rollup.ctx` is the main cross-crate concern when changing schema or rendering.
+The contract surface (`list`, `add-task`, `delete-task`, plus hidden `migrate`/`render`) and the two cross-cutting invariants — single id-assignment via max+1 with backfill, and the storage-order/display-order split — are owned entirely within `src/`; nothing at this level modifies or wraps them. Markdown output format (4 columns, no ids) is shared with `ctx-brief`'s `status_table`, so a rendering change here has an external consumer to check.
 
-No other files exist at this level to coordinate; all invariants and coupling live in `src/`.
-
-intent_divergence: no intent.md exists for this directory, so no comparison can be made.
+A typical cross-file change (new task field, new command, error variant) starts in `src/model.rs` or `src/runner.rs` as described in the child rollup, propagates through `contract.rs`'s CONTRACT string, and must stay consistent with `ctx-brief`'s markdown consumer.

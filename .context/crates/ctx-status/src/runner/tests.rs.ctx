@@ -1,5 +1,7 @@
-Tests for the runner module: migration seeding, task appending without reordering, priority-order rendering, and re-syncing the view after manual store edits.
+Test suite for the runner module, covering the five entry points: `migrate` (one-time seed from markdown), `add_task`, `delete_task`, `list`, and `render`.
 
-Uses `FakeFs`, an in-memory `Fs` implementation backed by `BTreeMap<String, String>`, to isolate tests from disk I/O. All four entry points — `migrate`, `list`, `add_task`, `render` — are tested against this fake with a fixed markdown source table containing two tasks.
+Uses `FakeFs`, an in-memory `Fs` implementation backed by `BTreeMap<String, String>`, so tests don't touch the real filesystem. The store is a JSON array of tasks persisted to `paths.store`; `list` and `render` deserialize it directly (no backfilling), while `migrate`, `add_task`, and `delete_task` each read, mutate, and re-serialize it.
 
-Key assertions: `migrate` seeds a 2-task store from SOURCE.md and renders the markdown view; refuses to run twice on a non-empty store. `add_task` appends new rows to the JSON store without reordering existing ones (insertion order preserved). `render` re-syncs the markdown view from a hand-edited JSON store without mutating the store itself. `add_task` rejects invalid impact values with `StatusError::BadImpact`.
+Key invariants being tested: `migrate` seeds the store from a markdown table, assigns sequential ids in source order, and refuses to run twice. `add_task` appends without reordering the store, assigns a fresh id past the current max, and rejects invalid impact values. `delete_task` removes a row by id, keeps the rest in insertion order, and errors on unknown ids. `render` re-syncs the markdown view from a hand-edited store without mutating the store. `list` (tested indirectly) backfills missing ids for legacy rows, assigning them in store order even though tasks display in priority order (high/easy before low/hard).
+
+The `stored()` helper deserializes raw JSON without backfilling, so tests see exactly what was persisted — this is load-bearing for verifying store mutation.

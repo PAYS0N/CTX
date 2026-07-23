@@ -23,6 +23,9 @@ pub enum StatusError {
     /// has content (migration is additive-bootstrap, not a merge).
     #[error("store at {0:?} already has entries; migration only seeds an empty store")]
     StoreNotEmpty(String),
+    /// `delete-task` was given an id no row in the store has.
+    #[error("no task found with id {0}")]
+    TaskIdNotFound(u64),
     /// An underlying filesystem operation failed.
     #[error("io error on {path:?}: {detail}")]
     Io {

@@ -1,31 +1,7 @@
-`crates/` is the workspace root: a family of independent CLI/library
-crates implementing the ctx context-generation and verification system.
-Depending on the workspace as a whole gets you the full pipeline —
-scanning (`ctx-scan`), summarization (`ctx-summarize`), serving/hooking
-(`ctx-context`), status tracking (`ctx-status`), brief generation
-(`ctx-brief`), sandboxed execution (`ctx-cage`), verification
-(`ctx-verify`), and shared primitives (`ctx-core`) — but each crate is
-usable and versioned on its own; there is no umbrella API.
+`crates/` is the workspace root holding eight independent crates that together form the `.context/` tooling ecosystem: generation, verification, sandboxed execution, and consumption of `.ctx`/`rollup.ctx` documents plus a separate status/backlog tool. There is no shared code at this level — each crate is a standalone binary (plus library surface in some cases) with its own error type, CLI, and test suite; this directory itself is just a Cargo workspace container.
 
-The crates share a small set of on-disk contracts rather than code:
-the `.ctx`/`rollup.ctx` mirror-path layout is written by `ctx-summarize`,
-maintained/staled-checked by `ctx-scan`, and read/rendered by
-`ctx-context`; `docs/status.json`/`docs/STATUS.md` is written and read by
-`ctx-status` and also consumed by `ctx-brief`; `ctx-core` supplies the
-denylist, hash-sidecar schema, and STATUS.md table codec that both
-`ctx-scan` and `ctx-status` depend on to stay bit-compatible. A change to
-any of these on-disk formats must be checked against every crate that
-reads or writes it, since there's no shared library enforcing the
-contract beyond `ctx-core`.
+The crates split into a content-lifecycle group and independent utilities. `ctx-summarize` writes `.ctx`/`rollup.ctx` files (leaf-before-rollup ordering); `ctx-scan` maintains the hash-based staleness mirror deciding what needs summarizing and shares the `cpath` layout convention with it explicitly; `ctx-context` reads and serves the resulting chain read-only, never writing. `ctx-core` supplies pure, dependency-free primitives (denylist, hash-sidecar schema, STATUS.md codec) that other crates may depend on. `ctx-cage` sandboxes agent runs used by `ctx-summarize`/`ctx-brief`; `ctx-verify` independently checks repo health via its own `Runner` abstraction. `ctx-brief` and `ctx-status` are adjacent tools: `ctx-brief` generates executor briefs (including a `status_table` reader), and `ctx-status` owns `docs/status.json`/`STATUS.md`, whose markdown output format `ctx-brief` consumes directly — a rendering change in one requires checking the other.
 
-`ctx-cage` is the odd one out: it isolates *agent execution* itself
-(filesystem/network sandboxing) rather than manipulating context
-documents, and is a dependency of whichever crate spawns agent
-subprocesses in production use, not of the document pipeline directly.
+Across the suite, one convention recurs: every crate pairs its `src/` implementation with a `tests/` directory using hermetic fakes (`FakeFs`, `FakeClaude`, `FakeEnv`, `StubAgent`, `RecordingAgent`) rather than real subprocesses/filesystems, and each crate's rollup calls out that the fakes must be kept in sync with the real trait/struct shapes they stand in for — this is a workspace-wide pattern, not a single crate's quirk.
 
-Every crate here independently follows the same pattern — a `src/`
-implementation behind fake-based trait seams (`Fs`/`Agent`/`Env`/etc.)
-and a `tests/` suite that pins the external contract via those fakes —
-but each crate's fakes are private to it; there's no shared fake crate.
-
-No `intent.md` exists at the workspace root, so no divergence check applies.
+No `intent.md` exists for this directory, so no divergence can be assessed.

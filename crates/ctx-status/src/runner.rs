@@ -1,11 +1,13 @@
 //! Orchestration over the [`Fs`] seam: load/save the JSON store, append
-//! new rows, and keep the rendered `docs/STATUS.md` view in sync.
+//! or delete rows, and keep the rendered `docs/STATUS.md` view in sync.
 
 use ctx_core::status_table::{parse_rows, Row};
 
 use crate::error::StatusError;
 use crate::fs::Fs;
-use crate::model::{normalize_difficulty, normalize_impact, priority_sorted, Store};
+use crate::model::{
+    backfill_ids, normalize_difficulty, normalize_impact, priority_sorted, Store, Task,
+};
 use crate::render::render_markdown;
 
 /// Where the store and its rendered view live, relative to the process
@@ -26,18 +28,21 @@ impl Default for Paths {
     }
 }
 
-/// Load the store from `paths.store`, decoding its JSON array of rows.
+/// Load the store from `paths.store`, decoding its JSON array of tasks
+/// and backfilling ids for any row written before the id field existed.
 ///
 /// # Errors
 ///
 /// [`StatusError::Io`] if the file cannot be read; [`StatusError::StoreCorrupt`]
-/// if its contents are not a valid JSON array of rows.
+/// if its contents are not a valid JSON array of tasks.
 fn load<F: Fs>(fs: &F, paths: &Paths) -> Result<Store, StatusError> {
     let text = fs.read(&paths.store)?;
-    serde_json::from_str(&text).map_err(|e| StatusError::StoreCorrupt {
+    let mut store: Store = serde_json::from_str(&text).map_err(|e| StatusError::StoreCorrupt {
         path: paths.store.clone(),
         detail: e.to_string(),
-    })
+    })?;
+    backfill_ids(&mut store);
+    Ok(store)
 }
 
 /// Write `store` to `paths.store` as pretty-printed, git-diffable JSON,
@@ -62,14 +67,14 @@ fn save<F: Fs>(fs: &F, paths: &Paths, store: &Store) -> Result<(), StatusError> 
 /// # Errors
 ///
 /// Propagates a load failure (missing or corrupt store).
-pub fn list<F: Fs>(fs: &F, paths: &Paths) -> Result<Vec<Row>, StatusError> {
+pub fn list<F: Fs>(fs: &F, paths: &Paths) -> Result<Vec<Task>, StatusError> {
     let store = load(fs, paths)?;
     Ok(priority_sorted(&store))
 }
 
 /// `ctx-status add-task`: validate impact/difficulty, append one row to
-/// the store (never reordering or touching existing rows), then persist
-/// the store and re-render the view.
+/// the store (never reordering or touching existing rows) under a fresh
+/// id, then persist the store and re-render the view.
 ///
 /// # Errors
 ///
@@ -82,17 +87,22 @@ pub fn add_task<F: Fs>(
     description: &str,
     impact: &str,
     difficulty: &str,
-) -> Result<(), StatusError> {
+) -> Result<u64, StatusError> {
     let impact = normalize_impact(impact)?;
     let difficulty = normalize_difficulty(difficulty)?;
     let mut store = load(fs, paths)?;
-    store.push(Row {
-        task: task.trim().to_owned(),
-        description: description.trim().to_owned(),
-        impact,
-        difficulty,
+    let id = store.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+    store.push(Task {
+        id,
+        row: Row {
+            task: task.trim().to_owned(),
+            description: description.trim().to_owned(),
+            impact,
+            difficulty,
+        },
     });
-    save(fs, paths, &store)
+    save(fs, paths, &store)?;
+    Ok(id)
 }
 
 /// Re-render `paths.status_md` from the current store, without changing
@@ -107,6 +117,22 @@ pub fn add_task<F: Fs>(
 /// Propagates a load/save failure.
 pub fn render<F: Fs>(fs: &F, paths: &Paths) -> Result<(), StatusError> {
     let store = load(fs, paths)?;
+    save(fs, paths, &store)
+}
+
+/// `ctx-status delete-task`: remove the one row with the given `id`, then
+/// persist the store and re-render the view.
+///
+/// # Errors
+///
+/// [`StatusError::TaskIdNotFound`] if no row has that id; otherwise
+/// propagates a load/save failure.
+pub fn delete_task<F: Fs>(fs: &F, paths: &Paths, id: u64) -> Result<(), StatusError> {
+    let mut store = load(fs, paths)?;
+    if !store.iter().any(|t| t.id == id) {
+        return Err(StatusError::TaskIdNotFound(id));
+    }
+    store.retain(|t| t.id != id);
     save(fs, paths, &store)
 }
 
@@ -132,8 +158,16 @@ pub fn migrate<F: Fs>(fs: &F, paths: &Paths, source_md: &str) -> Result<usize, S
         return Err(StatusError::StoreNotEmpty(paths.store.clone()));
     }
     let text = fs.read(source_md)?;
-    let store = parse_rows(&text);
-    let count = store.len();
+    let rows = parse_rows(&text);
+    let count = rows.len();
+    let store: Store = rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| Task {
+            id: u64::try_from(i + 1).unwrap_or(u64::MAX),
+            row,
+        })
+        .collect();
     save(fs, paths, &store)?;
     Ok(count)
 }

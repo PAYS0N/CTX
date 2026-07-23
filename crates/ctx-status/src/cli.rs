@@ -28,15 +28,15 @@ pub struct Cli {
     command: Command,
 }
 
-/// The one read (`List`) and one additive-write (`AddTask`) surface an
-/// agent is documented to use; `Migrate` is the one-time bootstrap from
+/// The one read (`List`) and two write surfaces (`AddTask`, `DeleteTask`)
+/// an agent is documented to use; `Migrate` is the one-time bootstrap from
 /// the pre-existing hand-maintained table and is hidden from `--help`.
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Print the backlog, priority-sorted.
     List,
-    /// Append a new backlog item. Additive only: never edits, reorders,
-    /// or deletes existing rows.
+    /// Append a new backlog item. Additive only: never edits or reorders
+    /// existing rows.
     ///
     /// --task, --impact, and --difficulty are all required. Example:
     /// ctx-status add-task "fix the thing" --task "fix thing" --impact
@@ -54,6 +54,12 @@ enum Command {
         /// title, not the full `description` again.
         #[arg(long)]
         task: String,
+    },
+    /// Remove a backlog item by id (shown as the leading column of
+    /// `ctx-status list`'s output).
+    DeleteTask {
+        /// The id of the row to remove.
+        id: u64,
     },
     /// One-time bootstrap: seed the store from an existing
     /// STATUS.md-shaped markdown table. Refuses to run against a store
@@ -89,6 +95,17 @@ fn line<W: Write>(out: &mut W, text: &str) -> Result<(), StatusError> {
     })
 }
 
+/// Print every backlog row, one table line each, prefixed with its id —
+/// the handle `delete-task` takes. Ids are `ctx-status list`'s own
+/// surfacing; `docs/STATUS.md` never shows them (its 4-column shape is
+/// shared with `ctx-brief`).
+fn print_list<F: Fs, W: Write>(fs: &F, paths: &Paths, out: &mut W) -> Result<(), StatusError> {
+    for task in runner::list(fs, paths)? {
+        line(out, &format!("| {} {}", task.id, render_row(&task.row)))?;
+    }
+    Ok(())
+}
+
 /// Run the parsed command against `fs`, writing output to `out`.
 ///
 /// # Errors
@@ -98,20 +115,19 @@ fn line<W: Write>(out: &mut W, text: &str) -> Result<(), StatusError> {
 pub fn dispatch<F: Fs, W: Write>(fs: &F, cli: &Cli, out: &mut W) -> Result<(), StatusError> {
     let paths = cli.paths();
     match &cli.command {
-        Command::List => {
-            for row in runner::list(fs, &paths)? {
-                line(out, &render_row(&row))?;
-            }
-            Ok(())
-        },
+        Command::List => print_list(fs, &paths, out),
         Command::AddTask {
             description,
             impact,
             difficulty,
             task,
         } => {
-            runner::add_task(fs, &paths, task, description, impact, difficulty)?;
-            line(out, &format!("added: {task}"))
+            let id = runner::add_task(fs, &paths, task, description, impact, difficulty)?;
+            line(out, &format!("added: [{id}] {task}"))
+        },
+        Command::DeleteTask { id } => {
+            runner::delete_task(fs, &paths, *id)?;
+            line(out, &format!("deleted: [{id}]"))
         },
         Command::Migrate { source } => {
             let count = runner::migrate(fs, &paths, source)?;
@@ -125,93 +141,4 @@ pub fn dispatch<F: Fs, W: Write>(fs: &F, cli: &Cli, out: &mut W) -> Result<(), S
 }
 
 #[cfg(test)]
-mod tests {
-    use std::cell::RefCell;
-    use std::collections::BTreeMap;
-
-    use clap::Parser;
-
-    use super::{dispatch, Cli};
-    use crate::error::StatusError;
-    use crate::fs::Fs;
-
-    #[derive(Default)]
-    struct FakeFs {
-        files: RefCell<BTreeMap<String, String>>,
-    }
-
-    impl Fs for FakeFs {
-        fn read(&self, rel: &str) -> Result<String, StatusError> {
-            self.files
-                .borrow()
-                .get(rel)
-                .cloned()
-                .ok_or_else(|| StatusError::Io {
-                    path: rel.to_owned(),
-                    detail: "missing".to_owned(),
-                })
-        }
-        fn write(&self, rel: &str, contents: &str) -> Result<(), StatusError> {
-            self.files
-                .borrow_mut()
-                .insert(rel.to_owned(), contents.to_owned());
-            Ok(())
-        }
-        fn exists(&self, rel: &str) -> bool {
-            self.files.borrow().contains_key(rel)
-        }
-    }
-
-    #[test]
-    fn add_task_requires_an_explicit_task_title() {
-        let result = Cli::try_parse_from([
-            "ctx-status",
-            "add-task",
-            "a fresh idea",
-            "--impact",
-            "medium",
-            "--difficulty",
-            "easy",
-        ]);
-        assert!(result.is_err(), "must refuse a missing --task");
-    }
-
-    #[test]
-    fn add_task_uses_the_given_title() -> Result<(), StatusError> {
-        let fs = FakeFs::default();
-        fs.write("docs/status.json", "[]")?;
-        let cli = Cli::parse_from([
-            "ctx-status",
-            "add-task",
-            "a fresh idea",
-            "--task",
-            "fresh idea",
-            "--impact",
-            "medium",
-            "--difficulty",
-            "easy",
-        ]);
-        let mut out = Vec::new();
-        dispatch(&fs, &cli, &mut out)?;
-        assert_eq!(String::from_utf8(out).expect("utf8"), "added: fresh idea\n");
-        assert!(fs.read("docs/status.json")?.contains("fresh idea"));
-        Ok(())
-    }
-
-    #[test]
-    fn list_prints_one_table_line_per_row() -> Result<(), StatusError> {
-        let fs = FakeFs::default();
-        fs.write(
-            "docs/status.json",
-            r#"[{"task":"t","description":"d","impact":"high","difficulty":"easy"}]"#,
-        )?;
-        let cli = Cli::parse_from(["ctx-status", "list"]);
-        let mut out = Vec::new();
-        dispatch(&fs, &cli, &mut out)?;
-        assert_eq!(
-            String::from_utf8(out).expect("utf8"),
-            "| t | d | high | easy |\n"
-        );
-        Ok(())
-    }
-}
+mod tests;

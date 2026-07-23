@@ -1,3 +1,5 @@
-Defines the complete error taxonomy for ctx-status — the runner and its CLI boundaries surface only these variants. All errors use `thiserror::Error` to derive `Display` and `std::error::Error`.
+Defines the error taxonomy for ctx-status, surfaced by the runner and its callers.
 
-The enum covers three failure modes: invalid enum-valued fields (`BadImpact`, `BadDifficulty`), corrupted JSON store (`StoreCorrupt`), bootstrap-time safety (`StoreNotEmpty`), and filesystem I/O (`Io`). Each variant that wraps contextual detail includes both the affected path and a human-readable cause string for direct presentation to users.
+All errors are validation or state failures, never panics on user input. `BadImpact` and `BadDifficulty` reject enum values outside the fixed set: "high|medium|low" and "easy|medium|hard". `StoreCorrupt` wraps JSON decode failures with the file path; `StoreNotEmpty` gates migrations to empty stores only (bootstrap, not merge). `TaskIdNotFound` fires when `delete-task` targets a nonexistent id. `Io` wraps filesystem errors with the path and cause.
+
+Emitted by src/runner.rs and middleware that validates task payloads; no coupling to other error types in the crate.

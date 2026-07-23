@@ -16,36 +16,13 @@ within it.
 Below is the final context file for the whole repository.
 
 <!-- BEGIN GENERATED architecture (scripts/gen_readme_architecture.sh --write) -->
-`.` is the workspace root of CTX: an agentic coding system that (1)
-compiles its own lint/compiler regime hard enough to make bad code
-uncompilable rather than merely flagged, and (2) generates and serves a
-`.ctx`/`rollup.ctx` context tree so agents read top-down before touching
-source. The root itself carries no logic — it's the lint contract, the
-crate family, and the supporting scripts/docs/template that implement
-those two goals.
+`.` is the workspace root for CTX, a dogfood system enforcing two layers: an uncompromising Rust lint/test regime applied to its own tooling, and a `.ctx`/`rollup.ctx` context pipeline that agents must read top-down before touching source. This directory itself holds only workspace-level config (Cargo.toml, clippy.toml) plus the top-level subtrees; no source code lives directly here.
 
-`Cargo.toml` and `clippy.toml` together are the enforcement layer: the
-workspace lint table (`unsafe_code` forbid, `unwrap_used`/`panic`/`exit`
-deny, no suppression) and the thresholds clippy alone can't express
-(soft-tier line/complexity limits deferred to `scripts/rationale_check.py`
-and a future dylint crate). `crates/` is where that regime is dogfooded —
-eight crates implementing the context pipeline (scan → summarize → serve)
-plus `ctx-cage` for sandboxed agent execution — sharing on-disk contracts
-(`.ctx` layout, `docs/status.json`) rather than code. `agents/` is the
-model-invocation seam those crates call through, one adapter deep so far.
-`scripts/` backs `ctx-verify` with independently-invocable checks sharing
-a `FAIL:`-output/exit-code protocol. `template/` re-exports that same
-`scripts/` contract plus `.context/` merge policy into every downstream
-project. `docs/` is the ADR log and forward-looking lint spec, read
-directly rather than rolled up further.
+`Cargo.toml` defines the lint table that `template/Cargo.toml` must mirror byte-for-byte — the two are locked together by the dogfood invariant, and drift between them means the template stops enforcing what the real workspace enforces. `clippy.toml` is the single source of truth for numeric lint thresholds, with soft tiers (line count, cognitive complexity) enforced instead by `scripts/rationale_check.py` and a not-yet-built dylint crate — three enforcement points for two thresholds, documented in `docs/DYLINT_RULES.md`.
 
-Editing the lint table means mirroring `Cargo.toml`'s `[workspace.lints]`
-into `template/Cargo.toml` by hand — no automation enforces that mirror.
-Changing the `.ctx`/`rollup.ctx` on-disk format touches `ctx-scan`,
-`ctx-summarize`, `ctx-context`, and `template/.gitattributes`'s merge
-driver patterns simultaneously; there is no single owner. `ctx-cage`'s
-`.cagevars` config is the one file governing agent sandbox environment,
-separate from `.env`'s single `ANTHROPIC_API_KEY`.
+`crates/` is where the actual `.context/` tooling lives (ctx-summarize, ctx-scan, ctx-context, ctx-verify, ctx-cage, ctx-brief, ctx-status, ctx-core), each an independent crate with hermetic fakes in its own tests. `scripts/` backs `ctx-verify` with standalone FAIL-format checks and README/CLAUDE.md doc-generators. `agents/` is the model-invocation boundary the summarization pipeline calls through a subprocess JSON contract. `template/` is the scaffold distributed to downstream projects, carrying a copy of the check-script/generator contract plus `.gitattributes` merge policy that must stay in sync with however `.ctx` layout is actually produced. `docs/` holds the ADR log and forward-looking lint spec, read directly rather than summarized further. `.cagevars.example.ctx` documents the sandbox's env-var contract for `ctx-cage`.
+
+A change to the lint regime starts at `Cargo.toml` and must propagate to `template/Cargo.toml`; a change to `.ctx`/`rollup.ctx` file layout starts in `ctx-scan`/`ctx-summarize` and must propagate to `template/.gitattributes`'s merge-driver patterns and `scripts/gen_readme_architecture.sh`'s prerequisites. The cli-over-core-over-injected-boundaries invariant and the fail-open-context/fail-closed-gate invariant are both stated in intent.md and implemented per-crate in `crates/`, not re-asserted here.
 <!-- END GENERATED architecture -->
 
 ## Tools
@@ -58,7 +35,7 @@ An agent works through the below binaries.
 - **ctx-scan** — ctx-scan <dir> maintains the `.context/` summary tree beside the source, using a content-hash tree (not git) to decide staleness. `--check` reports stale directories and leaves, expected summaries that are missing (never generated or hand-deleted), and orphaned artifacts (summaries/sidecars whose source was deleted or scoped out), without calling the model; `--prune` deletes the orphaned artifacts and sweeps emptied mirror directories, also model-free; `--update` prunes, regenerates only the stale leaves and rollups, then rewrites the hash sidecars (`intent.md` and `.context/.cache|.reports` are never pruned); `--dry-run` lists the files in scope; `--stop-hook` reports staleness as a Claude Code Stop `systemMessage` and always exits 0 (fail-open). Regeneration is a post-session concern — the hook never bills the model.
 - **ctx-cage** — ctx-cage <target> runs an agent subprocess in an offline sandbox over the target project — bwrap with a masked filesystem, fresh namespaces, and no egress except a proxied API relay — and guarantees teardown. Billed modes (`--task`/`--task-file`, or the interactive default) require `--allow-spend` or `CTX_CAGE_ALLOW_SPEND=1`; `--self-test stub` is the always-available no-spend, no-network containment probe.
 - **ctx-brief** — ctx-brief [--headless] <request> turns a `docs/STATUS.md` backlog item — matched as a case-insensitive substring of the task column, or the raw text when nothing matches — into a self-contained task brief for `ctx-cage --task-file`. It runs two subscription-billed `claude` stages inside the target repo so that repo's own context hooks ground every read: a cheap read-only gather pass (`--gather-model`, default haiku) produces a verified dossier (state, constraints, waypoints, unknowns), then a plan pass composes the brief — interviewing the human on open decisions by default, or (`--headless`) adjudicating tactical decisions itself and escalating doctrinal ones. The brief is written to `.context/.reports/briefs/<slug>.md` (never pruned by ctx-scan) unless `--out` overrides it, and its path is printed for the `ctx-cage` hand-off.
-- **ctx-status** — ctx-status list prints the current backlog from the JSON store at `docs/status.json` (source of truth), sorted by impact (high → low) then difficulty (easy → hard) within each band — the on-demand way an agent surfaces priorities, no hook required. `ctx-status add-task <description> --task <title> --impact <high|medium|low> --difficulty <easy|medium|hard>` appends one row — never reordering, editing, or deleting existing ones, preserving operator curation authority — and regenerates `docs/STATUS.md` from the store in the same step, so the human-readable view can never drift from what the store holds. `--task` is required: omitting it would otherwise duplicate the full description into the task column too.
+- **ctx-status** — ctx-status list prints the current backlog from the JSON store at `docs/status.json` (source of truth), each row prefixed with its id, sorted by impact (high → low) then difficulty (easy → hard) within each band — the on-demand way an agent surfaces priorities, no hook required. `ctx-status add-task <description> --task <title> --impact <high|medium|low> --difficulty <easy|medium|hard>` appends one row under a freshly assigned id — never reordering or editing existing ones — and regenerates `docs/STATUS.md` from the store in the same step, so the human-readable view can never drift from what the store holds. `--task` is required: omitting it would otherwise duplicate the full description into the task column too. `ctx-status delete-task <id>` removes the row with that id — run `list` first to find it — refusing if no row has it, and regenerates `docs/STATUS.md` in the same step. Ids are internal to `ctx-status`: they never appear in `docs/STATUS.md` itself, whose 4-column shape stays shared with `ctx-brief`.
 <!-- END GENERATED tool-contracts -->
 
 Summaries are regenerated by `ctx-scan --update`, which drives the

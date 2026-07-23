@@ -1,254 +1,282 @@
 [
   {
+    "id": 1,
     "task": "mark ctx-context . as always read",
     "description": "since its autoinjected on agent start, it shouldn't be reshelled.",
     "impact": "high",
     "difficulty": "easy"
   },
   {
+    "id": 2,
     "task": "make haiku's gather prompt more strict",
     "description": "it keeps trying to implement instead of briefing. Additionally, make it clearer to the next agent not to trust conclusions drawn, only state gathered.",
     "impact": "high",
     "difficulty": "medium"
   },
   {
+    "id": 3,
     "task": "mechanical validation of generated summaries",
     "description": "nothing checks generator output before it is written and served: line budgets, banned/hedging phrases, truncation, or cheap factual sanity (root rollup says \"five Rust crates\"; six exist — persisted into README's generated block). Add a write-time lint in ctx-scan with retry-once",
     "impact": "high",
     "difficulty": "medium"
   },
   {
+    "id": 4,
     "task": "force template to be kept in sync",
     "description": "nothing enforces that template is kept up to date; copying it should get you the full system.",
     "impact": "high",
     "difficulty": "medium"
   },
   {
+    "id": 5,
     "task": "investigate tool error",
     "description": "looks like the tool is reshelling the same error twice; why? ```FAIL: rationale (2) crates/ctx-cage/src/lifecycle/run.rs has 268 lines (>= 250); split into modules to get under 250. Only if genuinely cohesive and irreducible, add '// rationale  script: crates/ctx-cage/src/lifecycle/run.rs has 268 lines (>= 250); split into modules to get under 250. On…… +2 lines (ctrl+o to expand)```",
     "impact": "high",
     "difficulty": "medium"
   },
   {
+    "id": 6,
     "task": "wire the Layer 3 auditor",
     "description": "`prompts/auditor.md` and the `intent_divergence:` label exist but nothing invokes the audit against regenerated rollups; the root rollup itself flags this divergence. Wire it into the regeneration flow",
     "impact": "high",
     "difficulty": "medium"
   },
   {
+    "id": 7,
     "task": "work on summarization prompts",
     "description": "do research research into how to modify the prompts to convey more important info",
     "impact": "high",
     "difficulty": "hard"
   },
   {
+    "id": 8,
     "task": "phase 5 e2e smoke fixture",
     "description": "throwaway workspace, buggy file + failing test, generated tree, `--stub` and billed modes; asserts hook injection, native Edit, `ctx-verify` pass, post-session rollup regen, no egress beyond proxy, no writes outside workspace; include degraded-tree cases (stale, absent, truncated)",
     "impact": "high",
     "difficulty": "hard"
   },
   {
+    "id": 9,
     "task": "consider the place of prescriptive context",
     "description": "possibly a skill-like setup where 'when interacting with x topic, this is the repos policy on x.' maybe files get flagged with 'x' and then on read the skill for 'x' is injected",
     "impact": "high",
     "difficulty": "hard"
   },
   {
+    "id": 10,
     "task": "add instruction to always report suspicious tool output to a file",
     "description": "could add a section below tasks in STATUS that is for agent reports. errors like tools repeating themselves should be automatically caught by agents.",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 11,
     "task": "add the option to mount a dir in the cage without adding it to path",
     "description": "right now adding tools usually fails because I add just the /bin, but then they need additional things (like /lib or /share). I want to be able to add those without adding them to path",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 12,
     "task": "make --interactive default",
     "description": "instead, add a --task flag for non-interactive tasks",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
-    "task": "clean rollup prompts",
-    "description": "prevent text like 'No intent.md exists for this directory.', just omit it.",
-    "impact": "medium",
-    "difficulty": "easy"
-  },
-  {
+    "id": 14,
     "task": "consider caging the ctx-brief agents",
     "description": "I have to manually approve dir and prompt creation each time",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 15,
     "task": "ctx-brief dir creation should be automatic, not agent led",
     "description": "unnecessary agent work and more error prone",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 16,
     "task": "split brief into two modes",
     "description": "brief should require a flag if using a custom task, and otherwise treat a not found status task as a hard error.",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 17,
     "task": "remove ctx-brief from claude.md",
     "description": "only tools relevant to an agent should be included",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 18,
     "task": "summarizer adapter: handle truncation",
     "description": "`agents/summarizer-claude.py` never checks `stop_reason`, so a `max_tokens` cut is written to disk as truth; `CTX_AGENT_TEMPERATURE` is documented in the docstring but never read (dead option)",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 19,
     "task": "hook matcher: add Edit|Write",
     "description": "`.claude/settings.json` matches `Read|Grep|Glob` only, though `hook.rs` already parses `file_path` from Edit events; an agent that Writes a new file gets no chain. Also document post-compaction recovery (\"if you've lost the chain, run `ctx-context <path>`\")",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 20,
     "task": "ctx-verify: scoped runs aren't scoped for doc/test",
     "description": "`effective_args` inserts `-p <pkg>` but leaves `--workspace` in the doc and test specs (`checks.rs:103,113`), so `ctx-verify <crate>` still docs/tests the whole workspace; strip `--workspace` when a package is given, and pin the real cargo flag semantics with one boundary-contract test",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 21,
     "task": "template/root sync check in the battery",
     "description": "doctrine says the lint configs mirror, but no script compares them (comments in the Cargo.toml lint tables already differ); every \"must stay in sync\" claim should name its checking script",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
-    "task": "fix .ctxignore scope inversion",
-    "description": "`Cargo.lock` (584 lines) is summarized — re-billed on every dep bump — while `*.toml` excludes `Cargo.toml`/`clippy.toml`, the load-bearing lint regime; swap them",
-    "impact": "medium",
-    "difficulty": "easy"
-  },
-  {
+    "id": 23,
     "task": "ctx-core test gaps",
     "description": "`hashtree.rs` (shared writer/reader schema; \"silently breaks\" on mismatch) has zero in-crate tests; `access.rs` has two. Concrete case: `is_secret` compares the basename case-sensitively, so `.ENV` evades the secret gate",
     "impact": "medium",
     "difficulty": "easy"
   },
   {
+    "id": 24,
     "task": "fix ctx-scan flags",
     "description": "--dry-run and --check return different vals. Should --dry-run be retired? What is the difference?",
     "impact": "medium",
     "difficulty": "medium"
   },
   {
+    "id": 25,
     "task": "inject verify and context output to start of run",
     "description": "print `ctx-verify` and `ctx-context` results at session start to ground the agent in actual tree state and recent check results",
     "impact": "medium",
     "difficulty": "medium"
   },
   {
+    "id": 26,
     "task": "make sure interrupting context regen doesn't break anything",
     "description": "verify that stopping mid-scan (SIGINT/timeout) leaves `.context/` in a consistent state; no partial hashes, no orphaned sidecars",
     "impact": "medium",
     "difficulty": "medium"
   },
   {
+    "id": 27,
     "task": "stop consuming tools from target/debug",
     "description": "the hook, CLAUDE.md, and permissions all point at debug binaries with `2>/dev/null || true`; a fresh clone serves no context and a stale binary serves old behavior (the ADR-035 incident class). Install to a versioned path or add a binary-staleness check",
     "impact": "medium",
     "difficulty": "medium"
   },
   {
+    "id": 28,
     "task": "prompt version in freshness",
     "description": "content hashes don't cover the summarizer prompts, so a prompt rewrite never invalidates existing summaries — `.context/crates/ctx-core/src/access.rs.ctx` still carries the pre-ADR-039 YAML format. Fold a prompt hash into the freshness input",
     "impact": "medium",
     "difficulty": "medium"
   },
   {
+    "id": 29,
     "task": "resolve cpath/RepoPath duplication",
     "description": "the `.context` mirror-path logic is still duplicated between `ctx-summarize/src/cpath.rs` and `ctx-context/src/repo_path.rs`+`chain.rs` (ADR-020's deferred debt, survived the rename); generated rollups cite the retired `docs/UNIMPLEMENTED.md` as its tracker",
     "impact": "medium",
     "difficulty": "medium"
   },
   {
-    "task": "integrate status more closely into the agent flow",
-    "description": "surface `docs/STATUS.md` priorities and constraints in prompt injection; make agent aware of ability to add tasks to persistent doc. Consider making a status tool instead of having agents manage a markdown table.",
-    "impact": "medium",
-    "difficulty": "medium"
-  },
-  {
+    "id": 31,
     "task": "figure out auth reup in cage",
     "description": "right now I have to leave cage and enter a claude session to fix the auth api error.",
     "impact": "medium",
     "difficulty": "hard"
   },
   {
+    "id": 32,
     "task": "make context files more human readable via line breaks",
     "description": "inject strategic newlines/section breaks in generated `.context/` leaf files to improve readability when agents read them",
     "impact": "low",
     "difficulty": "easy"
   },
   {
+    "id": 33,
     "task": "decide cage-nsswitch.conf disposition",
     "description": "orphan asset with a false header (\"Bound as /etc/nsswitch.conf\" — nothing binds it); ADR-049 deferred the call, still pending",
     "impact": "low",
     "difficulty": "easy"
   },
   {
+    "id": 34,
     "task": "clean up .context/.cache",
     "description": "per-session `hook-*.json`/`cage-*.json` dedup files accumulate with no TTL or cleanup",
     "impact": "low",
     "difficulty": "easy"
   },
   {
+    "id": 35,
     "task": "add matched status item to output logging",
     "description": "for ctx-brief, if no match occurs, a line displays that. Do the same if a match is found, displaying the match.",
     "impact": "low",
     "difficulty": "easy"
   },
   {
+    "id": 36,
     "task": "consider retiring dead allowlist entries in retired_terms_check.sh",
     "description": "after passing the grep once, is there still value in keeping the terms in the list? What if a new file/term with an old name is wanted?",
     "impact": "low",
     "difficulty": "easy"
   },
   {
+    "id": 37,
     "task": "rationale_check: doc-comment placement trap",
     "description": "`has_rationale_before` skips blanks and attributes but not `///` lines, so `// rationale:` above a doc block silently doesn't count; skip doc comments or state the placement rule in the failure message",
     "impact": "low",
     "difficulty": "easy"
   },
   {
+    "id": 38,
     "task": "consider renaming ctx-scan",
     "description": "scan implies read only, while it actually modifies.",
     "impact": "low",
     "difficulty": "medium"
   },
   {
+    "id": 39,
     "task": "fix cage broken pipe",
     "description": "I occasionally see '2026/07/23 12:46:01 socat[7274] E write(6, 0x555824be3000, 118): Broken pipe' when in cage. it happens more frequently when I do ctrl+c to stop claude generation, but it can happen other times. Doesn't seem to affect the functionality at all.",
     "impact": "low",
     "difficulty": "medium"
   },
   {
+    "id": 40,
     "task": "add linting",
     "description": "make DYLINT-RULES into the planned actual linting system",
     "impact": "high",
     "difficulty": "hard"
   },
   {
+    "id": 41,
     "task": "consider model scaling",
     "description": "think about a system in which the summarization model changes to scale with the task; maybe if rollup > 5 files or > 3 levels from a leaf, use opus",
     "impact": "medium",
     "difficulty": "hard"
   },
   {
+    "id": 42,
     "task": "fix scan required params",
     "description": "modelss for regeneration shouldn't be required when using --check",
     "impact": "low",
+    "difficulty": "easy"
+  },
+  {
+    "id": 43,
+    "task": "add more info to post cage summarization",
+    "description": "list what will be summarized if answer 'y'",
+    "impact": "medium",
     "difficulty": "easy"
   }
 ]

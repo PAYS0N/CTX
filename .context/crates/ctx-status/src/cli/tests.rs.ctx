@@ -1,0 +1,5 @@
+Tests for the CLI dispatch layer, exercising argv parsing and id-based command output against a stubbed filesystem.
+
+`FakeFs` implements the `Fs` trait with an in-memory `BTreeMap<String, String>` backed by `RefCell` to allow mutation through an immutable reference; all three methods (`read`, `write`, `exists`) operate on this map and translate filesystem semantics to `StatusError::Io` on missing reads.
+
+Each test parses a `Cli` struct via `clap::Parser::parse_from` with a synthetic argv, then calls `dispatch(&fs, &cli, &mut out)` and asserts on the returned error, stdout captured in `out`, and the mutated filesystem state. The tests verify: `add-task` rejects missing `--task` flag; `add-task` with `--task`, `--impact`, and `--difficulty` writes a new entry and prints `"added: [id] title\n"`; `delete-task` with a valid id removes the row and prints `"deleted: [id]\n"`; `delete-task` with an unknown id returns `StatusError::TaskIdNotFound(id)`; `list` prints one table line per row in format `"| id | task | description | impact | difficulty |\n"`.
