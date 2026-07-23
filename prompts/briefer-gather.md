@@ -17,7 +17,8 @@ Investigate the repository and produce a grounding dossier for the item.
 - Collect the binding constraints that govern the work: the architectural
   invariants, decisions of record, and directory-level intent the
   implementation must respect. Cite the path — and the ADR title or intent
-  clause — each constraint comes from.
+  clause — each constraint comes from. Do not draw your own conclusions;
+  only state existing ones.
 - List the files and directories an executor should read first, in reading
   order, with one line of reason each.
 - Record what remains genuinely unknown after your investigation.
@@ -52,4 +53,5 @@ One sentence restating the item as a goal, in your own words.
 - what is still open, and the exact path or question that would close it.
 
 Emit only these sections. Write `- none` under any section with no
-entries.
+entries. Do not implement anything. Only describe the current state
+of the system.

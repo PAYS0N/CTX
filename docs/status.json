@@ -7,13 +7,6 @@
     "difficulty": "easy"
   },
   {
-    "id": 2,
-    "task": "make haiku's gather prompt more strict",
-    "description": "it keeps trying to implement instead of briefing. Additionally, make it clearer to the next agent not to trust conclusions drawn, only state gathered.",
-    "impact": "high",
-    "difficulty": "medium"
-  },
-  {
     "id": 3,
     "task": "mechanical validation of generated summaries",
     "description": "nothing checks generator output before it is written and served: line budgets, banned/hedging phrases, truncation, or cheap factual sanity (root rollup says \"five Rust crates\"; six exist — persisted into README's generated block). Add a write-time lint in ctx-scan with retry-once",

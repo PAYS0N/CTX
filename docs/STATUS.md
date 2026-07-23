@@ -9,7 +9,6 @@ impact band.
 | task | description | impact | difficulty |
 |---|---|---|---|
 | mark ctx-context . as always read | since its autoinjected on agent start, it shouldn't be reshelled. | high | easy |
-| make haiku's gather prompt more strict | it keeps trying to implement instead of briefing. Additionally, make it clearer to the next agent not to trust conclusions drawn, only state gathered. | high | medium |
 | mechanical validation of generated summaries | nothing checks generator output before it is written and served: line budgets, banned/hedging phrases, truncation, or cheap factual sanity (root rollup says "five Rust crates"; six exist — persisted into README's generated block). Add a write-time lint in ctx-scan with retry-once | high | medium |
 | force template to be kept in sync | nothing enforces that template is kept up to date; copying it should get you the full system. | high | medium |
 | investigate tool error | looks like the tool is reshelling the same error twice; why? ```FAIL: rationale (2) crates/ctx-cage/src/lifecycle/run.rs has 268 lines (>= 250); split into modules to get under 250. Only if genuinely cohesive and irreducible, add '// rationale  script: crates/ctx-cage/src/lifecycle/run.rs has 268 lines (>= 250); split into modules to get under 250. On…… +2 lines (ctrl+o to expand)``` | high | medium |

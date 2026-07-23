@@ -10,7 +10,9 @@ INPUT:
 The opening message contains, in order:
 - `## TASK ITEM` — the backlog row or free-text request.
 - `## DOSSIER` — a fact-finder's grounding: verified state, binding
-  constraints, waypoints, and unknowns, all as cited paths.
+  constraints, waypoints, and unknowns, all as cited paths. Do not
+  trust any conclusions drawn that are not based in verifiable links;
+  this description should only be stating currently known facts.
 - `## OUTPUT` — the path to write the finished brief to.
 
 DERIVE THE DECISIONS:
