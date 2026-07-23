@@ -1,33 +1,30 @@
-`.` is the CTX project root: a Rust workspace (`crates/`) implementing
-the context-generation/verification system, plus everything around it —
-docs, CI scripts, prompts-adjacent agent adapters, sandboxing config, and
-a distributable `template/` scaffold that ships a subset of this
-tooling into consumer projects.
+`.` is the workspace root of CTX: an agentic coding system that (1)
+compiles its own lint/compiler regime hard enough to make bad code
+uncompilable rather than merely flagged, and (2) generates and serves a
+`.ctx`/`rollup.ctx` context tree so agents read top-down before touching
+source. The root itself carries no logic — it's the lint contract, the
+crate family, and the supporting scripts/docs/template that implement
+those two goals.
 
-The core dependency chain runs `ctx-scan` (writes `.ctx`/`rollup.ctx`
-mirror-path files and stale-checks them) → `ctx-summarize` (generates
-them, calling out to `agents/`'s stdin/stdout model adapter) →
-`ctx-context` (serves/renders them, fails open per architectural
-invariant) → `ctx-verify` (gates via `scripts/`'s FAIL-line checks,
-fails closed). `ctx-status` and `ctx-brief` share a second on-disk
-contract, `docs/status.json` + `docs/STATUS.md`. Both contracts are
-described in full in `crates/rollup.ctx` and `docs/rollup.ctx` — an
-editor touching either format must update every reader/writer listed
-there, not just the crate they're changing.
+`Cargo.toml` and `clippy.toml` together are the enforcement layer: the
+workspace lint table (`unsafe_code` forbid, `unwrap_used`/`panic`/`exit`
+deny, no suppression) and the thresholds clippy alone can't express
+(soft-tier line/complexity limits deferred to `scripts/rationale_check.py`
+and a future dylint crate). `crates/` is where that regime is dogfooded —
+eight crates implementing the context pipeline (scan → summarize → serve)
+plus `ctx-cage` for sandboxed agent execution — sharing on-disk contracts
+(`.ctx` layout, `docs/status.json`) rather than code. `agents/` is the
+model-invocation seam those crates call through, one adapter deep so far.
+`scripts/` backs `ctx-verify` with independently-invocable checks sharing
+a `FAIL:`-output/exit-code protocol. `template/` re-exports that same
+`scripts/` contract plus `.context/` merge policy into every downstream
+project. `docs/` is the ADR log and forward-looking lint spec, read
+directly rather than rolled up further.
 
-`template/` duplicates the `scripts/` contract (file-enumeration
-convention, `FAIL:` format, marker-splice rules) into a separate
-distribution tree via `update-template.sh`; the two script sets must be
-kept in sync manually since there's no shared library, only convention.
-`.cagevars.example.ctx` and `agents/` both bound the agent-execution
-surface — `ctx-cage` sandboxes the process, `agents/` defines the
-model I/O contract — but neither depends on the other in-tree.
-
-Per root `intent.md`: Layer 1 (uncompilable-not-discouraged) is enforced
-in `crates/` via shared lint/fake-seam patterns; Layer 2 (context before
-source, drift-checked) is the `.ctx`/`rollup.ctx` pipeline above.
-
-intent_divergence: docs/rollup.ctx records that no validation gate exists
-on summarizer output and drift between prompts and summaries goes
-undetected, which is a live gap against the intent's Layer 2 claim that
-context "cannot silently drift from the source."
+Editing the lint table means mirroring `Cargo.toml`'s `[workspace.lints]`
+into `template/Cargo.toml` by hand — no automation enforces that mirror.
+Changing the `.ctx`/`rollup.ctx` on-disk format touches `ctx-scan`,
+`ctx-summarize`, `ctx-context`, and `template/.gitattributes`'s merge
+driver patterns simultaneously; there is no single owner. `ctx-cage`'s
+`.cagevars` config is the one file governing agent sandbox environment,
+separate from `.env`'s single `ANTHROPIC_API_KEY`.

@@ -23,8 +23,15 @@ __pycache__
 CLAUDE.md
 .ctxignore
 .gitignore
-*.toml
+deny.toml
+rust-toolchain.toml
+rustfmt.toml
+crates/*/Cargo.toml
+template/*.toml
 .claude
 prompts
 docs/retired
 README.md
+docs/STATUS.md
+docs/status.json
+Cargo.lock

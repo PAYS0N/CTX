@@ -1,0 +1,7 @@
+Clippy configuration that sets lints thresholds as the single source of truth for code quality gates across the project.
+
+`too-many-lines-threshold = 80` is the hard fail; the soft tier (30 lines) is enforced separately by `scripts/rationale_check.py` and cannot be expressed in clippy itself. `cognitive-complexity-threshold = 25` is the hard fail; the soft tier (15) is deferred to a custom dylint crate documented in `docs/DYLINT_RULES.md`.
+
+`allow-unwrap-in-tests = true` and `allow-expect-in-tests = true` are required: the project spec exempts `unwrap`/`expect` in test code but bans `#[allow(...)]` annotations project-wide. This clippy.toml is the only mechanism that can express this exemption; without it, the spec's stated test exception would be unrepresentable. Non-test code is unaffected and must not use these patterns.
+
+`doc-valid-idents` adds MVP, CLI, JSON, YAML to clippy's pedantic doc linting; at MVP the project only requires docs to exist, not that every example is runnable.

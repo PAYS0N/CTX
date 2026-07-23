@@ -47,5 +47,6 @@ impact band.
 | add matched status item to output logging | for ctx-brief, if no match occurs, a line displays that. Do the same if a match is found, displaying the match. | low | easy |
 | consider retiring dead allowlist entries in retired_terms_check.sh | after passing the grep once, is there still value in keeping the terms in the list? What if a new file/term with an old name is wanted? | low | easy |
 | rationale_check: doc-comment placement trap | `has_rationale_before` skips blanks and attributes but not `///` lines, so `// rationale:` above a doc block silently doesn't count; skip doc comments or state the placement rule in the failure message | low | easy |
+| fix scan required params | modelss for regeneration shouldn't be required when using --check | low | easy |
 | consider renaming ctx-scan | scan implies read only, while it actually modifies. | low | medium |
 | fix cage broken pipe | I occasionally see '2026/07/23 12:46:01 socat[7274] E write(6, 0x555824be3000, 118): Broken pipe' when in cage. it happens more frequently when I do ctrl+c to stop claude generation, but it can happen other times. Doesn't seem to affect the functionality at all. | low | medium |

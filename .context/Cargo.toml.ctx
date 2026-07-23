@@ -1,0 +1,3 @@
+Workspace root for a dogfood project—the repository builds its own tooling (ctx-context, ctx-summarize, etc.) under the exact lints it enforces on those tools. The workspace comprises eight crates under `crates/`.
+
+The lint table under `[workspace.lints]` is **byte-identical to template/Cargo.toml by design**; any change here must be mirrored there, or the tooling is no longer eating its own dog food. The regime is severe: `unsafe_code` forbid, `unwrap_used` deny, `panic` deny, `exit` deny, `too_many_lines` deny, `cognitive_complexity` deny—no escape hatches. Rust, rustdoc, and clippy (all/pedantic/nursery) are all configured at workspace level, so every crate inherits the same constraints.

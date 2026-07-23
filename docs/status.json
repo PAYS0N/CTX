@@ -244,5 +244,11 @@
     "description": "think about a system in which the summarization model changes to scale with the task; maybe if rollup > 5 files or > 3 levels from a leaf, use opus",
     "impact": "medium",
     "difficulty": "hard"
+  },
+  {
+    "task": "fix scan required params",
+    "description": "modelss for regeneration shouldn't be required when using --check",
+    "impact": "low",
+    "difficulty": "easy"
   }
 ]

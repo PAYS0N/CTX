@@ -23,11 +23,11 @@ competent engineer orients a teammate who is about to work somewhere in
 this subtree.
 
 Lead with what the subtree does for a reader one level up: its job in the
-system and its contract with the rest of the codebase — what you get by
-depending on it, and what kind of work happens inside. Not its internal
+system and its contract with the rest of the codebase, not its internal
 organization.
 
-Then cover only what a cross-file editor needs:
+After fully describing every functionality it provides, then cover only 
+what a cross-file editor needs:
 
 - **Coupling the children share** — a protocol or format two of them both
   touch, a change-A-means-change-B relationship, ordering or lifecycle
@@ -43,9 +43,10 @@ Then cover only what a cross-file editor needs:
   child's `.ctx`.
 
 Close with an intent check. Read the directory's `intent.md`. If the
-subtree as you've described it plausibly satisfies that intent, say
-nothing about it. If it doesn't — the subtree has grown to do things the
-intent doesn't describe, or stopped doing something it says it must — end
+subtree as you've described it satisfies that intent, or the 
+intent.md doesn't exist, say nothing about it. If the subtree doesn't match 
+intent — the subtree has grown to do things the intent doesn't describe,
+or stopped doing something it says it must — end
 with a line beginning `intent_divergence:` that states the gap in one
 sentence. That literal label is read by the auditor, so keep it. Don't
 edit `intent.md`, and don't hedge.
@@ -57,8 +58,6 @@ emit anyway and let the audit flag it.
 
 ## Rules
 
-- No history. No changes, tasks, tickets, or prior versions of this
-  rollup — freshness is tracked by the hash tree.
 - Facts only. No opinions, no refactor suggestions, no remarking that the
   subtree is sprawling or tangled. Intent divergence is the only critical
   signal you emit.
