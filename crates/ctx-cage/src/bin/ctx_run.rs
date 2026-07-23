@@ -27,11 +27,14 @@ use ctx_cage::lifecycle::execute;
 
 use env_file::load_env_file;
 use resolve::{build_resolved, ctx_run_bins};
+use staleness::show_staleness;
 
 #[path = "ctx_run/env_file.rs"]
 mod env_file;
 #[path = "ctx_run/resolve.rs"]
 mod resolve;
+#[path = "ctx_run/staleness.rs"]
+mod staleness;
 
 /// One-command billed cage session over a target project.
 #[derive(Debug, Parser)]
@@ -79,11 +82,14 @@ fn pick_mode(cli: &Cli) -> Result<Mode, CageError> {
 /// discipline as the PTY relay, ADR-048); piped/CI/test invocations
 /// have no one to ask, so they fall back to "no" and the caller prints
 /// the manual command instead.
-fn confirm_summarize() -> bool {
+fn confirm_summarize(dir: &Path) -> bool {
     if !std::io::stdin().is_terminal() {
         return false;
     }
     let mut out = std::io::stdout().lock();
+    if !show_staleness(&mut out, dir) {
+        return false;
+    }
     let wrote = write!(out, "ctx-run: regenerate context summaries now? [y/N] ").is_ok();
     if !wrote || out.flush().is_err() {
         return false;
@@ -151,7 +157,7 @@ fn refresh_summaries(scan_bin: &Path, dir: &Path, env: &HashMap<String, String>)
 /// Offers the post-run summary-refresh prompt and either refreshes or
 /// prints the manual-recovery hint, depending on the answer.
 fn maybe_refresh_summaries(dir: &Path, scan_bin: &Path, env: &HashMap<String, String>) {
-    if confirm_summarize() {
+    if confirm_summarize(dir) {
         refresh_summaries(scan_bin, dir, env);
     } else {
         emit(

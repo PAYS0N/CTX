@@ -259,16 +259,23 @@
     "difficulty": "hard"
   },
   {
-    "id": 42,
-    "task": "fix scan required params",
-    "description": "modelss for regeneration shouldn't be required when using --check",
-    "impact": "low",
-    "difficulty": "easy"
-  },
-  {
     "id": 43,
     "task": "add more info to post cage summarization",
     "description": "list what will be summarized if answer 'y'",
+    "impact": "medium",
+    "difficulty": "easy"
+  },
+  {
+    "id": 44,
+    "task": "add gather logging",
+    "description": "change the gather step to output a single line for each tool use and final tokens used if possible",
+    "impact": "medium",
+    "difficulty": "medium"
+  },
+  {
+    "id": 45,
+    "task": "list individual items",
+    "description": "add list by item id",
     "impact": "medium",
     "difficulty": "easy"
   }

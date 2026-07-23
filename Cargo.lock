@@ -203,6 +203,7 @@ name = "ctx-cage"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ctx-scan",
  "nix",
  "rustix",
  "serde_json",

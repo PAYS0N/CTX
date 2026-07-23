@@ -33,4 +33,8 @@ pub enum ScanError {
         /// Human-readable cause.
         detail: String,
     },
+
+    /// Required model argument was not provided when calling modes that need the agent.
+    #[error("required model argument missing: {0} (needed for --update or default scan)")]
+    MissingModel(String),
 }

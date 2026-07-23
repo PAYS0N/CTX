@@ -107,6 +107,15 @@ fn plan_user(item: &str, dossier: &str, out_rel: Option<&str>) -> String {
     format!("## TASK ITEM\n{item}\n\n## DOSSIER\n{dossier}\n{tail}")
 }
 
+/// Frame the resolved item as research material for the gather stage.
+/// Deliberately distinct from `plan_user`'s `## TASK ITEM` label: the raw
+/// item text starts with `TASK: <title>` (from `status_item::format_item`),
+/// and hand it to the gather model unlabeled and it reads as an instruction
+/// to carry out rather than something to investigate.
+fn gather_user(item: &str) -> String {
+    format!("## ITEM TO INVESTIGATE\n{item}\n")
+}
+
 /// Run the gather pass and return the grounded dossier.
 fn gather<F: Fs, C: Claude>(
     fs: &F,
@@ -117,9 +126,10 @@ fn gather<F: Fs, C: Claude>(
 ) -> Result<String, BriefError> {
     let prompt = load_prompt(fs, cfg, "briefer-gather.md")?;
     let tools: Vec<String> = GATHER_TOOLS.iter().map(|t| (*t).to_owned()).collect();
+    let user = gather_user(item);
     stage_start("gather");
     let started = Instant::now();
-    let dossier = claude.print(&prompt, item, Some(&cfg.gather_model), &tools, target);
+    let dossier = claude.print(&prompt, &user, Some(&cfg.gather_model), &tools, target);
     stage_done("gather", started);
     dossier
 }

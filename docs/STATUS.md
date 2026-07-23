@@ -30,12 +30,14 @@ impact band.
 | template/root sync check in the battery | doctrine says the lint configs mirror, but no script compares them (comments in the Cargo.toml lint tables already differ); every "must stay in sync" claim should name its checking script | medium | easy |
 | ctx-core test gaps | `hashtree.rs` (shared writer/reader schema; "silently breaks" on mismatch) has zero in-crate tests; `access.rs` has two. Concrete case: `is_secret` compares the basename case-sensitively, so `.ENV` evades the secret gate | medium | easy |
 | add more info to post cage summarization | list what will be summarized if answer 'y' | medium | easy |
+| list individual items | add list by item id | medium | easy |
 | fix ctx-scan flags | --dry-run and --check return different vals. Should --dry-run be retired? What is the difference? | medium | medium |
 | inject verify and context output to start of run | print `ctx-verify` and `ctx-context` results at session start to ground the agent in actual tree state and recent check results | medium | medium |
 | make sure interrupting context regen doesn't break anything | verify that stopping mid-scan (SIGINT/timeout) leaves `.context/` in a consistent state; no partial hashes, no orphaned sidecars | medium | medium |
 | stop consuming tools from target/debug | the hook, CLAUDE.md, and permissions all point at debug binaries with `2>/dev/null \|\| true`; a fresh clone serves no context and a stale binary serves old behavior (the ADR-035 incident class). Install to a versioned path or add a binary-staleness check | medium | medium |
 | prompt version in freshness | content hashes don't cover the summarizer prompts, so a prompt rewrite never invalidates existing summaries — `.context/crates/ctx-core/src/access.rs.ctx` still carries the pre-ADR-039 YAML format. Fold a prompt hash into the freshness input | medium | medium |
 | resolve cpath/RepoPath duplication | the `.context` mirror-path logic is still duplicated between `ctx-summarize/src/cpath.rs` and `ctx-context/src/repo_path.rs`+`chain.rs` (ADR-020's deferred debt, survived the rename); generated rollups cite the retired `docs/UNIMPLEMENTED.md` as its tracker | medium | medium |
+| add gather logging | change the gather step to output a single line for each tool use and final tokens used if possible | medium | medium |
 | figure out auth reup in cage | right now I have to leave cage and enter a claude session to fix the auth api error. | medium | hard |
 | consider model scaling | think about a system in which the summarization model changes to scale with the task; maybe if rollup > 5 files or > 3 levels from a leaf, use opus | medium | hard |
 | make context files more human readable via line breaks | inject strategic newlines/section breaks in generated `.context/` leaf files to improve readability when agents read them | low | easy |
@@ -44,6 +46,5 @@ impact band.
 | add matched status item to output logging | for ctx-brief, if no match occurs, a line displays that. Do the same if a match is found, displaying the match. | low | easy |
 | consider retiring dead allowlist entries in retired_terms_check.sh | after passing the grep once, is there still value in keeping the terms in the list? What if a new file/term with an old name is wanted? | low | easy |
 | rationale_check: doc-comment placement trap | `has_rationale_before` skips blanks and attributes but not `///` lines, so `// rationale:` above a doc block silently doesn't count; skip doc comments or state the placement rule in the failure message | low | easy |
-| fix scan required params | modelss for regeneration shouldn't be required when using --check | low | easy |
 | consider renaming ctx-scan | scan implies read only, while it actually modifies. | low | medium |
 | fix cage broken pipe | I occasionally see '2026/07/23 12:46:01 socat[7274] E write(6, 0x555824be3000, 118): Broken pipe' when in cage. it happens more frequently when I do ctrl+c to stop claude generation, but it can happen other times. Doesn't seem to affect the functionality at all. | low | medium |

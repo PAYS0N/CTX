@@ -40,7 +40,7 @@ fn assert_headless_calls(claude: &common::FakeClaude) -> Option<()> {
     assert_eq!(gather.system, "GATHER-PROMPT");
     assert!(gather
         .user
-        .starts_with("TASK: wire the Stop-hook staleness report"));
+        .starts_with("## ITEM TO INVESTIGATE\nTASK: wire the Stop-hook staleness report"));
     assert_eq!(gather.model.as_deref(), Some("haiku"));
     assert!(gather
         .tools
@@ -108,7 +108,7 @@ fn free_text_request_is_the_item_when_status_is_absent() {
     )
     .expect("run should succeed");
     let gather = claude.nth_print(0).expect("gather call recorded");
-    assert_eq!(gather.user, "invent a widget");
+    assert_eq!(gather.user, "## ITEM TO INVESTIGATE\ninvent a widget\n");
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn id_selects_the_matching_row_from_status_json() {
     let gather = claude.nth_print(0).expect("gather call recorded");
     assert!(gather
         .user
-        .starts_with("TASK: wire the Stop-hook staleness report"));
+        .starts_with("## ITEM TO INVESTIGATE\nTASK: wire the Stop-hook staleness report"));
 }
 
 #[test]
@@ -160,5 +160,5 @@ fn no_match_against_a_populated_status_falls_back_to_raw_request() {
     )
     .expect("run should succeed even when no backlog row matches");
     let gather = claude.nth_print(0).expect("gather call recorded");
-    assert_eq!(gather.user, "invent a teleporter");
+    assert_eq!(gather.user, "## ITEM TO INVESTIGATE\ninvent a teleporter\n");
 }

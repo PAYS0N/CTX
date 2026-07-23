@@ -36,14 +36,15 @@ pub struct Cli {
     #[arg(long, default_value = "prompts")]
     prompts: String,
 
-    /// Model the agent should call for leaf summaries. Required; no default.
+    /// Model the agent should call for leaf summaries. Required only when
+    /// the agent will be invoked (full scan or --update mode).
     #[arg(long)]
-    leaf_model: String,
+    leaf_model: Option<String>,
 
-    /// Model the agent should call for rollup summaries. Required; no
-    /// default.
+    /// Model the agent should call for rollup summaries. Required only when
+    /// the agent will be invoked (full scan or --update mode).
     #[arg(long)]
-    rollup_model: String,
+    rollup_model: Option<String>,
 
     /// Claude Code Stop-hook mode: check staleness and emit a
     /// report-only `systemMessage`. Never calls the agent —
@@ -129,14 +130,14 @@ impl Cli {
 
     /// The model the agent should call for leaf summaries.
     #[must_use]
-    pub fn leaf_model(&self) -> &str {
-        &self.leaf_model
+    pub fn leaf_model(&self) -> Option<&str> {
+        self.leaf_model.as_deref()
     }
 
     /// The model the agent should call for rollup summaries.
     #[must_use]
-    pub fn rollup_model(&self) -> &str {
-        &self.rollup_model
+    pub fn rollup_model(&self) -> Option<&str> {
+        self.rollup_model.as_deref()
     }
 }
 
@@ -219,13 +220,22 @@ pub fn stop_hook<W: Write>(dir: &std::path::Path, out: &mut W) -> Result<(), Sca
 ///
 /// # Errors
 ///
-/// [`ScanError::DirNotFound`] if `dir` is not a directory;
-/// propagates walk, summarization, hash, and README write failures.
+/// [`ScanError::DirNotFound`] if `dir` is not a directory; returns an error
+/// if models are not provided when needed; propagates walk, summarization,
+/// hash, and README write failures.
 pub fn dispatch<A: Agent, W: Write>(agent: &A, cli: &Cli, out: &mut W) -> Result<(), ScanError> {
     let base = validate_dir(&cli.dir)?;
+
+    let leaf_model = cli
+        .leaf_model()
+        .ok_or_else(|| ScanError::MissingModel("leaf_model".to_owned()))?;
+    let rollup_model = cli
+        .rollup_model()
+        .ok_or_else(|| ScanError::MissingModel("rollup_model".to_owned()))?;
+
     let models = Models {
-        leaf: cli.leaf_model(),
-        rollup: cli.rollup_model(),
+        leaf: leaf_model,
+        rollup: rollup_model,
     };
     if cli.update() {
         let staleness = update_run(&base, cli.prompts(), agent, &models, cli.approve)?;
