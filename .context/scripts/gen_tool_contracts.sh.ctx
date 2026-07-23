@@ -1,9 +1,5 @@
-Generates/verifies the "tool contracts" doc block (between fixed HTML comment markers) in CLAUDE.md, template/CLAUDE.md, and README.md, sourced live from each binary's own `--contract` output rather than hand-written prose.
+Regenerates the canonical tool-contracts documentation block in CLAUDE.md, template/CLAUDE.md, and README.md by querying the `--contract` output of six binaries (ctx-context, ctx-verify, ctx-scan, ctx-cage, ctx-brief, ctx-status), ensuring the docs cannot drift from the code. The single source of truth is the binary's own contract text.
 
-Usage: `gen_tool_contracts.sh [--write|--check] [ROOT]`; `--write` (default) rewrites the block in place, `--check` emits `FAIL:` lines in ctx-verify's format and sets exit code without modifying files — this is the mode ctx-verify's `contracts` battery check invokes.
+Operates in two modes: `--write` (default) rewrites the marked block in place; `--check` (used by ctx-verify) emits `FAIL:` lines if any doc is stale. Requires all six binaries to already exist at `target/debug/` — the script never invokes cargo itself; install-tools.sh is the sole build step.
 
-Requires `ctx-context`, `ctx-verify`, `ctx-scan`, `ctx-cage`, `ctx-brief` already built and executable at `target/debug/`; never invokes cargo itself, so install-tools.sh (or manual `cargo build`) must run first, and missing binaries cause failure/FAIL rather than a build attempt.
-
-`DOCS` list intentionally differs from `template/scripts/gen_tool_contracts.sh`: this repo's copy targets `CLAUDE.md`, `template/CLAUDE.md`, and `README.md`, while the template copy (synced into scaffolded projects) hardcodes just `CLAUDE.md` — a scaffolded project has no `template/` dir and its README documents the project, not this tooling. Do not merge these into one shared script.
-
-Block boundaries are the literal strings in `$BEGIN`/`$END`; a doc missing either marker fails immediately. Content between markers is replaced wholesale via `awk`, never hand-edited — any manual edit there will be silently overwritten by `--write` or flagged stale by `--check`.
+The marked region (between `<!-- BEGIN GENERATED tool-contracts ... -->` and `<!-- END GENERATED tool-contracts -->`) must exist in each doc file. In `--check` mode, a stale block causes a non-zero exit; in `--write` mode, any missing binary or marker causes immediate failure. Note: template/scripts/gen_tool_contracts.sh hardcodes `DOCS=(CLAUDE.md)` instead of mirroring this list, since scaffolded projects lack a template/ dir and document the cloned project, not the tooling itself.

@@ -1,7 +1,25 @@
-`crates/ctx-brief` is a standalone binary crate: it turns a STATUS.md backlog item or free-text ask into an executor brief by driving `claude` CLI in two stages (gather, then plan) and writing the result to a fixed report path. Depending on this crate means invoking the `ctx-brief` binary; there is no library API beyond what tests exercise directly.
+`crates/ctx-brief` is a binary crate producing executor-facing brief
+markdown files from a `docs/STATUS.md` item or free-text ask, by driving
+Claude twice against a target repo so that repo's own context hooks fire.
+Depending on this crate gets you a CLI (`ctx-brief`) and its output
+contract (a markdown file under `.context/.reports/briefs/`), not a
+library API.
 
-The crate splits into `src/` (the binary and its orchestration logic) and `tests/` (integration coverage against fakes). `src/` owns the actual contract — argument parsing, path derivation, the `Fs`/`Claude` trait seams, and the `CONTRACT` string that must track CLI behavior. `tests/` pins that contract with executable examples but does not enforce it at compile time: `tests/brief.rs`'s call-count and output-path assumptions must be kept in sync by hand with any change to `runner.rs`'s flow or `cli.rs`'s path derivation.
+`src/` holds the full pipeline — CLI parsing, config construction,
+orchestration, and the `Fs`/`Claude` trait seams — behind a single
+`BriefError` type, with `contract.rs` guarding CLI/output docs against
+drift. `tests/` exercises `runner::run` end-to-end against fakes
+(`FakeFs`, `FakeClaude`) standing in for those seams, pinning
+headless/interactive behavior and the literal output path
+`.context/.reports/briefs/item.md`.
 
-The shared invariant spanning both: the literal output path convention (e.g. `.context/.reports/briefs/item.md`) and the two-stage gather/plan flow are asserted in three places independently — `contract.rs`'s `CONTRACT` string, `runner.rs`'s actual logic, and `tests/brief.rs`'s hardcoded expectations — and a change to any one without the other two will pass some checks and silently break others.
+The two subtrees are coupled only through that seam boundary: any change
+to `runner::Config`'s shape, the `Fs`/`Claude` trait signatures, or the
+output-path derivation in `cli.rs::slug()`/`to_config()` must be
+reflected in `tests/common`'s fakes and call-count assumptions, or the
+test suite silently stops testing what runner actually does. `cwd` for
+both Claude invocations must stay pinned to the target repo — this
+invariant is asserted in three places in `src/` and exercised implicitly
+by the integration tests.
 
 No `intent.md` exists for this directory, so no divergence can be assessed.

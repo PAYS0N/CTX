@@ -1,0 +1,7 @@
+Parses and renders the backlog markdown table from `docs/STATUS.md`, keeping the pipe-escaping logic in one place so `ctx-brief` and `ctx-status` don't duplicate it. The table has four columns — task, description, impact, difficulty — and is GitHub-flavoured markdown.
+
+`split_unescaped_pipes` treats `\|` as a literal pipe (unescaping it to `|`) and `|` as a delimiter; any other backslash is left untouched. `split_row` extracts the four trimmed cells from a line that starts with `|`, or returns `None` if it's malformed. `is_separator` and `is_header` skip the table's structural rows.
+
+`parse_rows(status: &str) -> Vec<Row>` iterates lines, extracts data rows (skipping header, separator, and non-table lines), and returns them. `escape_cell(cell: &str) -> String` replaces `|` with `\|` so cells with literal pipes survive round-trip parsing. `render_row(row: &Row) -> String` formats a row as a markdown line with all four cells escaped.
+
+The round-trip is exact: `parse_rows(render_row(row))` reconstructs the input row unchanged, even if cells contain pipes or backslashes.

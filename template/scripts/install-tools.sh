@@ -33,8 +33,8 @@ fi
 
 # ctx-cage's Cargo.toml produces two binaries (ctx-cage, ctx-run) from one
 # package, so the -p list (packages) and the binary list (files) differ.
-PACKAGES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-summarize ctx-brief)
-BINARIES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-run ctx-summarize ctx-brief)
+PACKAGES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-summarize ctx-brief ctx-status)
+BINARIES=(ctx-context ctx-scan ctx-verify ctx-cage ctx-run ctx-summarize ctx-brief ctx-status)
 
 CARGO_ARGS=()
 for pkg in "${PACKAGES[@]}"; do

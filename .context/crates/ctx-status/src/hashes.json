@@ -1,0 +1,15 @@
+{
+  "hash": "7075cb3a132794f1287e0a39e0ebc67dcd12bf0cdb4fbcf3e77dc3db862e35d4",
+  "children": {
+    "cli.rs": "f:4b50e54c3eea972128271c1c8a32fc4693836ed731048236d4be128cede2dee2",
+    "contract.rs": "f:8329ac197b425ae04566a1dfab0d00f8a6017e7b84e9d4e49c098882e241f5fb",
+    "error.rs": "f:76ffd39da3720596217a5b035cb53b6c08bf3d058921008a734e9010c437e5d6",
+    "fs.rs": "f:dde14a0468812bb08f44178caefdc64a7cbf9551dd82e7afaf597df51886ccb5",
+    "lib.rs": "f:e8ed6b10421f7b11a66b8fa0146eb0c1efe7b551b7f8104a03afc3ef53180bfb",
+    "main.rs": "f:05e9c8c32c00511f5df5b01dd8e3066b0506288fe1c7fb6fa9d236a150295742",
+    "model.rs": "f:323f23af43f49ade32ddcb43980ebde485de1c0e3642dcc99a4b0f60b0c4dc33",
+    "render.rs": "f:2b4945c29db8c50c013c95a8129095196116161f36d7e3292a1ee0fe95381a81",
+    "runner": "d:c0d23f0eec684d5eeaa7ca0e2210d4e013b9bc34c58e1db17cc27fd0d359c9ab",
+    "runner.rs": "f:1e6f7cd135ee5aa01e10332bfc2994df001a2e9816f6fa98e88e481b64809265"
+  }
+}

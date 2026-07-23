@@ -1,0 +1,5 @@
+Parses `ctx-status` command-line arguments and dispatches to the runner. Supports four subcommands: `list` (read-only), `add-task` (append to backlog), `migrate` (one-time bootstrap from markdown), and `render` (re-generate markdown from JSON without modifying it).
+
+The `Cli` struct accepts `--store` and `--status` flags to override default paths (`docs/status.json` and `docs/STATUS.md`); these are resolved to a `Paths` struct and threaded through `dispatch()` to the runner. The `AddTask` command requires all three of `--task`, `--impact`, and `--difficulty`; clap enforces this at parse time.
+
+`dispatch<F: Fs, W: Write>(fs, cli, out)` is the only public entry point. It matches on `cli.command` and delegates to `runner::{list, add_task, migrate, render}`, writing human-readable output lines (status table rows or confirmation messages) to `out` via the `line()` helper. Any write failure is mapped to `StatusError::Io` with path `"<stdout>"`.

@@ -18,4 +18,5 @@ path = "src/lib.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+ctx-core = { path = "../ctx-core" }
 thiserror = "2"

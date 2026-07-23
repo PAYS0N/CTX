@@ -1,0 +1,3 @@
+Manages `docs/status.json` as the source of truth for task priorities, surfacing items on demand via `ctx-status list` and accepting new proposals via `ctx-status add-task` instead of hand-edits to the generated `docs/STATUS.md`. The crate mirrors the workspace layering: `main` wires the real `fs::StdFs`, `cli` parses argv, `runner` orchestrates over the `fs::Fs` seam, and `model`/`render` are the pure core (priority sort, markdown rendering) with no filesystem or argv coupling.
+
+The table schema and parser live in `ctx_core::status_table`, shared with `ctx-brief` to avoid duplication; changes to status.json structure must be coordinated there.

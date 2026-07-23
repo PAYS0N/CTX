@@ -1,0 +1,7 @@
+A JSON file tracking the project's pending work: high/medium/low-impact tasks with difficulty estimates, covering context generation validation, tool reliability, test coverage, and integration gaps.
+
+The file is the persistent backlog — agents read it to understand constraints and priorities, and can add tasks by modifying it directly. Tasks are organized by impact and difficulty, with terse descriptions that reference specific files, functions, or behaviors (e.g., "`.claude/settings.json` matches `Read|Grep|Glob` only, though `hook.rs` already parses `file_path` from Edit events").
+
+Several high-impact items block other work: the summarizer needs output validation (line budgets, banned phrases, truncation detection) before writing; the auditor prompt exists but isn't wired into regeneration; gather and haiku prompts need tightening to prevent agents from diverging into implementation. Medium-priority fixes are mostly hygiene: ctx-verify's scoped runs still doc/test the whole workspace; `.ctxignore` inverts scope (summarizes `Cargo.lock` while excluding `Cargo.toml`); the hook matcher ignores `Edit|Write` events; prompt changes don't invalidate stale summaries.
+
+The list also flags structural debt: `cpath.rs` and `repo_path.rs` duplicate path-mirroring logic; tool binaries are consumed from `target/debug` with stale-binary risk; status integration is loose (agents can't reliably read or update priorities without manual markdown editing).

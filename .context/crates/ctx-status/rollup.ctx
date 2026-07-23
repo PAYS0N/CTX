@@ -1,0 +1,7 @@
+`crates/ctx-status` is a binary crate providing the `ctx-status` CLI, whose entire functional contract is described by `src/rollup.ctx` — the crate root adds only packaging (Cargo.toml) around that single binary.
+
+Depending on this crate means invoking the compiled binary (`list`, `add-task`, `migrate`, `render`) against `docs/status.json`/`docs/STATUS.md`; there is no library surface for other crates to link against. The shared markdown/table format coupling with `ctx_core::status_table` and `ctx-brief` noted in `src/rollup.ctx` is the main cross-crate concern when changing schema or rendering.
+
+No other files exist at this level to coordinate; all invariants and coupling live in `src/`.
+
+intent_divergence: no intent.md exists for this directory, so no comparison can be made.

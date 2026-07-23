@@ -1,0 +1,3 @@
+Abstracts filesystem operations relative to a process working directory via the `Fs` trait, allowing the runner to stay pure while tests inject an in-memory fake.
+
+`StdFs` is the real implementation rooted at an absolute base path; `at(rel)` resolves relative paths against it using `PathBuf::join` semantics (an absolute `rel` replaces the base entirely). `read(rel)` returns UTF-8 lossy strings and wraps I/O errors in `StatusError::Io` with the relative path and detail; `write(rel, contents)` creates all parent directories before writing; `exists(rel)` checks path existence. All three path arguments are relative and never panicked on.

@@ -1,0 +1,3 @@
+Defines the complete error taxonomy for ctx-status — the runner and its CLI boundaries surface only these variants. All errors use `thiserror::Error` to derive `Display` and `std::error::Error`.
+
+The enum covers three failure modes: invalid enum-valued fields (`BadImpact`, `BadDifficulty`), corrupted JSON store (`StoreCorrupt`), bootstrap-time safety (`StoreNotEmpty`), and filesystem I/O (`Io`). Each variant that wraps contextual detail includes both the affected path and a human-readable cause string for direct presentation to users.

@@ -1,0 +1,3 @@
+Resolves `ctx-run`'s CLI arguments and environment variables into a `lifecycle::Resolved` config, and locates the three sibling CTX binaries (`ctx-verify`, `ctx-context`, `ctx-scan`) needed at runtime.
+
+`ctx_run_bins() -> Result<RunBins, CageError>` finds binaries in the same directory as the running executable, but respects `CTX_VERIFY_BIN`, `CTX_CONTEXT_BIN`, and `CTX_SCAN_BIN` env overrides for each. `build_resolved(dir, task_id, allow_dirty, mode, bins, extra_env) -> Resolved` assembles the full config struct: uses the provided `task_id` or falls back to `"run-{pid}"`, passes `.cagevars` through as `extra_env`, and hardcodes `verbose_proxy_log` to `false`.

@@ -1,5 +1,5 @@
-`ctx-core` is the shared kernel that `ctx-scan` and `ctx-context` both depend on for path-safety checks and hash-sidecar schema — everything about its contract, invariants, and module breakdown is already stated correctly in `src/rollup.ctx`.
+`crates/ctx-core` is a single-crate wrapper: its entire content is `src/`, whose rollup already documents the crate's purpose and cross-crate contracts in full. There is no crate-level glue, feature configuration, or additional module structure to add beyond what's in `src/rollup.ctx` — `Cargo.toml` just declares the crate and its (minimal/no) dependencies.
 
-There is nothing at the `crates/ctx-core` level beyond the `src/` subtree (Cargo.toml aside): no additional modules, tests, or top-level logic to describe. Readers should treat `src/rollup.ctx` as authoritative for this crate's behavior and invariants.
+Depending on `ctx-core` buys exactly what `src/rollup.ctx` describes: the canonical denylist, hash-sidecar schema, and STATUS.md table codec, all pure and dependency-free. Nothing at this level changes that contract.
 
-No `intent.md` is present for this crate.
+No intent.md exists for this directory to check against.

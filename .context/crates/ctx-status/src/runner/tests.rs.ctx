@@ -1,0 +1,5 @@
+Tests for the runner module: migration seeding, task appending without reordering, priority-order rendering, and re-syncing the view after manual store edits.
+
+Uses `FakeFs`, an in-memory `Fs` implementation backed by `BTreeMap<String, String>`, to isolate tests from disk I/O. All four entry points — `migrate`, `list`, `add_task`, `render` — are tested against this fake with a fixed markdown source table containing two tasks.
+
+Key assertions: `migrate` seeds a 2-task store from SOURCE.md and renders the markdown view; refuses to run twice on a non-empty store. `add_task` appends new rows to the JSON store without reordering existing ones (insertion order preserved). `render` re-syncs the markdown view from a hand-edited JSON store without mutating the store itself. `add_task` rejects invalid impact values with `StatusError::BadImpact`.

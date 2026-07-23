@@ -1,6 +1,7 @@
 {
-  "hash": "44c435c9e1ecd06cafb095e2ce9300e5a416ddec944ada661bfaf0cc5bb1af7d",
+  "hash": "3ed717539b35a0a16360aa2c4c6a5777a93d17261c17ce3e236506d545c66265",
   "children": {
-    "env_file.rs": "f:c213cb113247d4c9927087421cfe3dd7f9225c0ae050f0d84b2e7ef594e4053e"
+    "env_file.rs": "f:c213cb113247d4c9927087421cfe3dd7f9225c0ae050f0d84b2e7ef594e4053e",
+    "resolve.rs": "f:88a4db724f31c87cfaaf830e7e80d1ba3b7f3a6c0d8edb7bf272206a59c535bb"
   }
 }

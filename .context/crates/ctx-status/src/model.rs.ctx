@@ -1,0 +1,7 @@
+Validates and sorts the task backlog by impact (high→low) and difficulty (easy→hard), maintaining two fixed enums and three public entry points for normalization and display ordering.
+
+The backlog is stored as a bare `Vec<Row>` in insertion order; `priority_sorted` returns a cloned, reordered copy without mutating the store. The impact and difficulty vocabularies are hardcoded as 3-element arrays (`["high", "medium", "low"]` and `["easy", "medium", "hard"]`); any task file using different values will fail validation.
+
+`normalize_impact(impact: &str) -> Result<String, StatusError>` and `normalize_difficulty(difficulty: &str) -> Result<String, StatusError>` accept case-insensitive input, return the canonical lowercase spelling, or error with `BadImpact`/`BadDifficulty`. The helper `rank(value: &str, known: &[&str; 3]) -> usize` returns the 0-based index of a value in a known array, or `known.len()` for anything else — this ensures sorting never panics on unexpected store state (hand-edited files) but is guaranteed never hit after normalization has run.
+
+`priority_sorted(store: &Store) -> Vec<Row>` sorts by impact rank first, then difficulty rank within ties; the sort is stable, so ties keep insertion order.

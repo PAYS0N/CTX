@@ -193,6 +193,7 @@ name = "ctx-brief"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ctx-core",
  "thiserror",
 ]
 
@@ -234,6 +235,16 @@ dependencies = [
  "ctx-core",
  "ctx-summarize",
  "ignore",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ctx-status"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ctx-core",
  "serde_json",
  "thiserror",
 ]

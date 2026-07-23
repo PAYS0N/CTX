@@ -1,0 +1,3 @@
+Defines the agent-facing tool contract for `ctx-status` as a single string constant. This string is the source of truth for what the binary does; it is mirrored into `CLAUDE.md` and `README.md` by the `contracts` check, which fails if those docs drift from `CONTRACT`.
+
+The contract documents two entry points: `list` reads and sorts `docs/status.json` by impact then difficulty, and `add-task` appends a row to the store and regenerates `docs/STATUS.md` in one step, never reordering or deleting existing tasks. The `--task` flag is mandatory; omitting it would duplicate the full description into the task column.

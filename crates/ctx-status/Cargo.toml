@@ -1,0 +1,23 @@
+[package]
+name = "ctx-status"
+version = "0.1.0"
+edition = "2021"
+description = "Structured backlog access: a JSON store of source truth, list/add-task over it, and a generated docs/STATUS.md view."
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ctx-status"
+path = "src/main.rs"
+
+[lib]
+name = "ctx_status"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ctx-core = { path = "../ctx-core" }
+serde_json = "1"
+thiserror = "2"

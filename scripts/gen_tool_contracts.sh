@@ -58,7 +58,7 @@ fail_or_die() {
 # accurate whether these binaries are local workspace members (the CTX
 # repo checking itself) or artifacts copied in from elsewhere (a
 # scaffolded project, where they aren't buildable from $ROOT at all).
-for bin in ctx-context ctx-verify ctx-scan ctx-cage ctx-brief; do
+for bin in ctx-context ctx-verify ctx-scan ctx-cage ctx-brief ctx-status; do
     if [[ ! -x "$BIN_DIR/$bin" ]]; then
         fail_or_die "$BIN_DIR/$bin: not found or not executable — run install-tools.sh (or, in the CTX repo itself, cargo build) first"
     fi
@@ -81,6 +81,7 @@ BLOCK+="$(one_contract ctx-verify ctx-verify)"$'\n'
 BLOCK+="$(one_contract ctx-scan ctx-scan)"$'\n'
 BLOCK+="$(one_contract ctx-cage ctx-cage)"$'\n'
 BLOCK+="$(one_contract ctx-brief ctx-brief)"$'\n'
+BLOCK+="$(one_contract ctx-status ctx-status)"$'\n'
 BLOCK+="$END"
 
 # Extract the committed block (markers inclusive) from a doc, or empty.

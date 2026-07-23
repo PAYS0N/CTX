@@ -1,10 +1,10 @@
 {
-  "hash": "b3f754419d6fabf203afc295e6081bf28cba4b5b744eca082303b9825d9c54ba",
+  "hash": "9862bcbd2f5b1f2eb442f6a9ecfd4eeb0f0e11d197c696448f864ea010743890",
   "children": {
     "cycle_check.sh": "f:b8cc98254218a0450ac14ca334fd20e576f202099002e99e34ec1e6ca97adcda",
     "gen_readme_architecture.sh": "f:767add4806fb1862cb6d4d2981a37236a7baf398e8c1ac5095e5ba26b4c0fc6c",
     "gen_tool_contracts.sh": "f:ce425d5d0c7dad98945c94af8f9af60b958bc4849b1a5284158d6cdc28e5ebb9",
-    "install-tools.sh": "f:01805a2eb29a3e8940b71d7ebe0d2a27b791dfbe9b911caed9ace75dfc1e75f8",
+    "install-tools.sh": "f:f0dc7b5c2cf01bc03eeda960b8deadb149114fd8d00e2ccbe4d3f84dec1039c9",
     "machete_check.sh": "f:28bdcd70df8fd6cbcc17480e40a9f1647aac557758ed537cece9e86b61def759",
     "no_allow_check.sh": "f:7891b90a4d396988b57505b6719f38d03ec0cf56e53db90911239d504c593943",
     "rationale_check.py": "f:876fd70afb806fd88d622de2b5b49e07a554744438a20d37c127af40233ce97a",

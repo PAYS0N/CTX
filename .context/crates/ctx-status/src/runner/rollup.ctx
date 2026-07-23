@@ -1,0 +1,7 @@
+Runner is the executable core of ctx-status: it exposes the four operations the CLI and any other caller drive — `migrate` (seed store from SOURCE.md), `add_task`, `render` (regenerate the markdown view from the JSON store), and `list`. Depending on this module gets you those operations against an injected `Fs` trait, with no direct disk coupling — tests exercise the real logic through `FakeFs`, an in-memory `BTreeMap`-backed implementation.
+
+Key invariants spanning the operations: `migrate` is one-shot and refuses to re-seed a non-empty store; `add_task` always appends, never reorders, preserving insertion order in the JSON store; `render` is a pure read-render from the store — it never mutates JSON state, even if the markdown view was hand-edited out of sync. Impact values are validated on insertion (`StatusError::BadImpact` on bad input), so callers can assume stored tasks always carry valid impact.
+
+A typical change to add a new field or task attribute must touch the store schema, the `add_task` validation path, and the render/markdown formatting together, since all three share the same task representation.
+
+No intent.md is present for this directory, so no divergence can be assessed.

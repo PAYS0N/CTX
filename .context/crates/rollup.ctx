@@ -1,7 +1,31 @@
-`crates/` is the workspace root holding seven independent crates that together form a context-generation and enforcement toolchain: scan for staleness, summarize for generation, ctx-context for serving, ctx-cage for sandboxed execution, ctx-verify for CI-style checks, ctx-brief for backlog-to-brief translation, and ctx-core as the shared kernel underneath ctx-scan and ctx-context. There is no shared build logic or code at this level beyond Cargo workspace wiring — each crate is a standalone dependency unit with its own binary and/or library surface.
+`crates/` is the workspace root: a family of independent CLI/library
+crates implementing the ctx context-generation and verification system.
+Depending on the workspace as a whole gets you the full pipeline —
+scanning (`ctx-scan`), summarization (`ctx-summarize`), serving/hooking
+(`ctx-context`), status tracking (`ctx-status`), brief generation
+(`ctx-brief`), sandboxed execution (`ctx-cage`), verification
+(`ctx-verify`), and shared primitives (`ctx-core`) — but each crate is
+usable and versioned on its own; there is no umbrella API.
 
-The cross-crate coupling that matters: `ctx-core` defines path-safety and hash-sidecar schema consumed by both `ctx-scan` and `ctx-context`; `ctx-scan` and `ctx-summarize` share the `.ctx`/`rollup.ctx` mirror-path convention externally (one produces the staleness signal, the other produces the files); and `ctx-cage` is what's expected to sandbox the agent invocations that `ctx-summarize` and `ctx-brief` drive via `claude`, though no crate here enforces that wiring — it's a deployment-level expectation, not a compile-time dependency. A change to the `.ctx` file format or the rollup-path convention touches `ctx-scan`, `ctx-summarize`, and `ctx-context` simultaneously and must be checked against all three's test suites independently.
+The crates share a small set of on-disk contracts rather than code:
+the `.ctx`/`rollup.ctx` mirror-path layout is written by `ctx-summarize`,
+maintained/staled-checked by `ctx-scan`, and read/rendered by
+`ctx-context`; `docs/status.json`/`docs/STATUS.md` is written and read by
+`ctx-status` and also consumed by `ctx-brief`; `ctx-core` supplies the
+denylist, hash-sidecar schema, and STATUS.md table codec that both
+`ctx-scan` and `ctx-status` depend on to stay bit-compatible. A change to
+any of these on-disk formats must be checked against every crate that
+reads or writes it, since there's no shared library enforcing the
+contract beyond `ctx-core`.
 
-Each crate is fail-open or hermetically tested in isolation, but no crate here validates another's contract — e.g. nothing asserts that `ctx-context`'s chain format matches what `ctx-summarize` actually writes, beyond convention.
+`ctx-cage` is the odd one out: it isolates *agent execution* itself
+(filesystem/network sandboxing) rather than manipulating context
+documents, and is a dependency of whichever crate spawns agent
+subprocesses in production use, not of the document pipeline directly.
 
-No `intent.md` exists at this level, so no divergence can be assessed.
+Every crate here independently follows the same pattern — a `src/`
+implementation behind fake-based trait seams (`Fs`/`Agent`/`Env`/etc.)
+and a `tests/` suite that pins the external contract via those fakes —
+but each crate's fakes are private to it; there's no shared fake crate.
+
+No `intent.md` exists at the workspace root, so no divergence check applies.

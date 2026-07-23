@@ -1,0 +1,5 @@
+Renders `docs/STATUS.md` — a human-readable Markdown table of tasks sorted by impact then difficulty — from the in-memory `Store`, which mirrors `docs/status.json`. The render is a pure function: same store always produces identical bytes, so the view never drifts from disk.
+
+`render_markdown(store: &Store) -> String` produces the full document. It emits a fixed header (stating that `docs/status.json` is the source of truth, not this file) followed by rows sorted via `crate::model::priority_sorted`, with each row rendered by `ctx_core::status_table::render_row`. The output always ends with a newline. Determinism is load-bearing: the `add-task` command and migration paths call this after every mutation; tests verify the output is stable and that appending a single row changes only that line, guaranteeing efficient diffs.
+
+The header documents that tasks are sorted by impact (high → low) first, then difficulty (easy → hard) within bands, and directs users to edit via `ctx-status add-task`, never by hand.

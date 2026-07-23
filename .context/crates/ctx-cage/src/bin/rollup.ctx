@@ -1,7 +1,23 @@
-`crates/ctx-cage/src/bin/` holds the two CLI entry points for ctx-cage: `ctx_cage.rs`, a generic orchestrator that gates billed modes behind an explicit flag/env var, and `ctx_run.rs`, a pre-authorized wrapper (`ctx-run`) where invocation itself is the spend consent, aimed at interactive/task sessions with an optional post-run summary refresh. `ctx_run/` is a supporting subdirectory for the latter binary's credentials-file loading.
+`crates/ctx-cage/src/bin/` holds the two executable entry points that
+front the sandboxed-agent lifecycle: `ctx_cage.rs` (the generic containment
+host) and `ctx_run.rs` (the billed, project-facing agent-session launcher),
+plus `ctx_run/` which supplies `ctx_run.rs`'s config-resolution and
+secrets-loading helpers.
 
-Both top-level binaries independently implement the same sibling-binary resolution pattern (`ctx-verify`, `ctx-context`, `ctx-scan` derived from the current exe's directory, overridable via `CTX_VERIFY_BIN`/`CTX_CONTEXT_BIN`/`CTX_SCAN_BIN`) and both build a `Resolved` struct handed to `ctx_cage::lifecycle::execute` — if the resolution or lifecycle contract changes, update both binaries in lockstep. Neither binary ever passes an API key or agent-cmd config into the sandboxed/cage process itself; `ctx_run.rs` and `ctx_run/env_file.rs` share the invariant that credentials loaded from `~/.config/ctx/env` only ever reach the summarizer child process, never the cage's own environment.
+Both binaries gate paid API usage behind explicit opt-in — `ctx_cage.rs`
+via `--allow-spend`/`CTX_CAGE_ALLOW_SPEND`, `ctx_run.rs` via its y/N prompt
+(or `--allow-dirty`-style flags) — and both read local, permission-checked
+env files (`.cagevars`, `~/.config/ctx/env`) for secrets that must never
+reach the sandboxed subprocess's environment beyond the specific variables
+each caller intends to forward. `ctx_run.rs` builds its `Resolved` config
+via `ctx_run::resolve`, keeping that separation (`env_file.rs`'s secrets
+stay confined to the post-run summarizer, never merged into `extra_env`)
+which both binaries' host-side logic depends on.
 
-`ctx_cage.rs` is the general-purpose, explicitly-gated entry point; `ctx_run.rs` is the specialized, pre-authorized one for the common billed workflow, with its own credential-loading logic split into the `ctx_run/` subdirectory.
-
-intent_divergence: no intent.md exists for this directory, so no claim can be checked against it.
+`ctx_cage.rs` is the general-purpose orchestrator: it resolves sibling
+tool binaries, resolves mode, and hands off to `lifecycle::execute()`, with
+uniform host-side error handling (exit 1, stderr) across all failure paths.
+`ctx_run.rs` is a higher-level, domain-specific wrapper around the same
+lifecycle, adding session-completion behavior (optional `ctx-scan --update`
+refresh with hardcoded models) that `ctx_cage.rs` has no equivalent for.
+Both ultimately produce/consume `CageError` and a `lifecycle::Resolved`.
